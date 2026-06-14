@@ -74,36 +74,40 @@ email content is discarded** immediately after parsing.
 
 ### 3.2 Nintendo eShop confirmation (`sender_id = "nintendo"`)
 
-Known sender: `no-reply@accounts.nintendo.com`.
+Known sender: `no-reply@accounts.nintendo.com`. Two kinds of mail arrive from this
+sender: **purchase receipts** ("Thank you for your Nintendo eShop purchase") and
+**Transaction Statements** (funds-added receipts). Only purchase receipts carry a
+game; statements have no `Item` section and are skipped.
 
 | Information present in email | Where it appears | Decision | Mapped to contract | Rationale |
 |---|---|---|---|---|
-| Purchased game title | Body line item ("Title: …") | **Include** | `title` | Required key material. |
-| Platform | Implied by retailer + body ("Nintendo Switch") | **Include** | `platforms = ["Nintendo Switch"]` | Nintendo eShop purchases are Switch-family; parser sets the platform. |
-| Purchase/order date | Email `Date` header / order summary | **Include** | `purchase_date` | Req 3.3 requires `purchase_date` for Gmail records. |
-| Order number | Body ("Order No.") | **Exclude** | — | Financial/order metadata; no consumer and not a contract field. |
-| Price / payment method | Body | **Exclude** | — | Financial data; explicitly out of scope and privacy-sensitive. |
-| Account email / name | Body / To header | **Exclude** | — | PII not required by the contract (Req 4.2). |
+| Purchased game title | Body `Item` section: an `Item` header, a quantity line (e.g. `1x`), then the product name | **Include** | `title` | Required key material. Parsed from the Item section, not the subject. |
+| Platform | Body "Device Type" (e.g. "Nintendo Switch / Nintendo Switch 2") | **Include** | `platforms = ["Nintendo Switch"]` | eShop purchases are Switch-family; parser sets the platform. |
+| Purchase/order date | Email `Date` header | **Include** | `purchase_date` | Best available proxy; reduced to a `date`. |
+| Transaction/receipt number, price, account email | Body | **Exclude** | — | Financial/PII; not contract fields (Req 4.2). |
 
-### 3.3 Microsoft Store confirmation (`sender_id = "microsoft_store"`)
+### 3.3 Microsoft order confirmation (`sender_id = "microsoft_store"`)
 
-Known sender: `account-security-noreply@accountprotection.microsoft.com`.
+Known sender: `microsoft-noreply@microsoft.com` (subject "Your Microsoft order #… has
+been processed"). A single order may contain **multiple line items**, so the parser
+returns one `GameRecord` per item.
 
 | Information present in email | Where it appears | Decision | Mapped to contract | Rationale |
 |---|---|---|---|---|
-| Purchased game title | Body line item | **Include** | `title` | Required key material. |
-| Platform / device | Body ("Xbox", "Windows") | **Include** | `platforms` (parsed; e.g. `["Xbox"]`) | Establishes ownership platform. |
-| Purchase/order date | Email `Date` header / receipt date | **Include** | `purchase_date` | Req 3.3. |
-| Order ID | Body | **Exclude** | — | Order metadata; no consumer. |
-| Price / billing | Body | **Exclude** | — | Financial / privacy-sensitive; out of scope. |
-| Microsoft account identifiers | Headers / body | **Exclude** | — | PII not retained (Req 4.2). |
+| Purchased item title(s) | Body "Order details" pipe-delimited table: `\| <title> \| <qty> \| <price> \|` | **Include** | `title` (one record per row) | Required key material. Header and publisher ("By: …") rows are skipped. |
+| Platform / device | Body tokens ("Xbox", "Windows"/"PC") when present | **Include** | `platforms` (parsed; default `["Xbox"]`) | Establishes ownership platform; precise platform comes from enrichment. |
+| Purchase/order date | Email `Date` header | **Include** | `purchase_date` | Req 3.2. |
+| Order number, price, publisher, account ids | Body | **Exclude** | — | Order metadata / PII; not contract fields. |
 
-**Gmail notes**
+**Retailer notes**
 
-- The retailer→parser mapping is extensible: adding a retailer means adding a
-  known sender and a parser, with no contract change.
-- Genre, playtime, platform availability, and community review are **not** present
-  in purchase emails — they are enrichment fields (Tavily, Req 5.1).
+- The retailer→parser mapping is extensible: adding a retailer means adding a known
+  sender and a parser, with no contract change.
+- **PlayStation** was probed during exploration but the reference mailbox contained
+  no PlayStation purchase receipts (only marketing mail), so no PlayStation parser is
+  defined yet; it can be added when a real receipt format is available.
+- Genre, playtime, platform availability, and community review are **not** present in
+  purchase emails — they are enrichment fields (Tavily, Req 5.1).
 
 ## 4. Tavily enrichment — exposed fields
 
