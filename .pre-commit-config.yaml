@@ -13,3 +13,6 @@ repos:
     hooks:
       - id: mypy
         args: ["--config-file", "pyproject.toml"]
+        # The hook runs in an isolated env; include the typed test deps so mypy
+        # can resolve imports in tests/ just like the local .venv run does.
+        additional_dependencies: ["hypothesis==6.122.3", "pytest==8.3.4"]
