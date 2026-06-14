@@ -3,15 +3,15 @@
 Encodes three correctness properties from ``design.md`` that together guarantee
 the Gmail import is least-privilege and leak-free:
 
-* **Property 8 -- Gmail import restricts to known purchase-confirmation senders**
+* **Property 4 -- Gmail import restricts to known purchase-confirmation senders**
   (Req 3.3, 4.3): every Gmail search query the source issues is built SOLELY from
   the ``KNOWN_SENDERS`` registry (``from:<addr>`` with ``<addr>`` a known sender),
   so unrelated mail is never queried, fetched, or turned into a record.
-* **Property 9 -- Gmail import retains only contract fields** (Req 4.2): for any
+* **Property 5 -- Gmail import retains only contract fields** (Req 4.2): for any
   raw email payload stuffed with arbitrary junk (snippet, message id, extra
   headers/keys, raw body text), the parsed ``GameRecord`` exposes only the
   canonical contract fields and none of that raw content leaks onto it.
-* **Property 10 -- Gmail import requests read-only scope only** (Req 4.1):
+* **Property 6 -- Gmail import requests read-only scope only** (Req 4.1):
   ``SCOPES`` is exactly ``{gmail.readonly}`` and never broadens, regardless of how
   the source is constructed.
 
@@ -165,7 +165,7 @@ def _confirmation_email(title: str, sender: str) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Property 8: Gmail import restricts to known purchase-confirmation senders
+# Property 4: Gmail import restricts to known purchase-confirmation senders
 # ---------------------------------------------------------------------------
 
 _KNOWN_ADDRS = list(GmailSource.KNOWN_SENDERS.values())
@@ -258,7 +258,7 @@ def test_unknown_sender_alone_yields_no_records(unknown: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Property 9: Gmail import retains only contract fields
+# Property 5: Gmail import retains only contract fields
 # ---------------------------------------------------------------------------
 
 _title = (
@@ -395,7 +395,7 @@ def test_untitled_junk_payload_yields_no_record(
 
 
 # ---------------------------------------------------------------------------
-# Property 10: Gmail import requests read-only scope only
+# Property 6: Gmail import requests read-only scope only
 # ---------------------------------------------------------------------------
 
 READONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"

@@ -2,37 +2,38 @@
 
 ## Introduction
 
-A Python application that recommends the next video game to play based on the user's current mood, available time, gaming taste, and the platforms the user owns. A conversational agent powered by a Bedrock base model (Claude Sonnet) called through the Bedrock Runtime Converse API with extended thinking enabled interprets the user's mood and time, draws on a personal game library, and returns one strong recommendation with clear reasoning plus optional alternatives. The user's library is assembled from exactly two record sources — read-only Gmail purchase-confirmation emails (Nintendo eShop, Microsoft Store) and manual entry through the UI/CLI — all normalized into a single canonical Game_Record. Every record is enriched via Tavily (genre, playtime, platform availability, community review) and persisted in a DynamoDB-backed memory store so recommendations favor well-regarded titles playable on hardware the user owns and improve across sessions. The model is a required dependency: if the model call fails, the system surfaces a clear error rather than substituting mock or fabricated output, while the memory store and Tavily degrade gracefully. The UI is built with Streamlit, styled as a retro arcade machine, and provides both a conversational chat and a library/dashboard view on desktop and mobile.
+A Python application that recommends the next video game to play based on the user's current mood, available time, gaming taste, and the platforms the user owns. A **tool-using conversational agent** — a Claude Sonnet base model on Amazon Bedrock, driven through the Bedrock Runtime Converse API "tool use" loop — is the reasoning core: it interprets the user's request in natural language, decides which tools to call and when (manage platforms, read/update the library, import from sources, enrich records, search the web, recall recent recommendations, persist sessions), asks for missing information only when needed, and selects the recommendation itself so the result honors the user's stated taste and genre rather than a fixed deterministic ranking. The user's library is assembled from exactly two record sources — read-only Gmail purchase-confirmation emails (Nintendo eShop, Microsoft Store) and manual entry through the UI/CLI — all normalized into a single canonical Game_Record. Every record is enriched via Tavily (genre, playtime, platform availability, community review) and persisted in a DynamoDB-backed memory store so recommendations favor well-regarded titles playable on hardware the user owns and improve across sessions. The model is a required dependency: if the model call fails, the system surfaces a clear error rather than substituting mock or fabricated output, while the memory store and Tavily degrade gracefully. The UI is built with Streamlit, styled as a retro arcade machine, and provides both a conversational chat and a library/dashboard view on desktop and mobile.
 
 ## Glossary
 
-- **Recommendation_Agent**: The conversational AI agent that interprets user input, manages context, and generates game recommendations. It is driven by a Bedrock base model (Claude Sonnet) called through the Bedrock Runtime Converse API with extended thinking enabled.
+- **Recommendation_Agent**: The tool-using conversational AI agent that interprets user input, decides which Tools to call, manages context, and generates game recommendations. It is a Claude Sonnet base model on Amazon Bedrock driven through the Bedrock Runtime Converse API tool-use loop (see Agent_Runtime and Tool).
+- **Agent_Runtime**: The component that owns the Converse tool-use loop, the system prompt, the Tool registry, and the conversation history. It runs the model, executes the Tools the model requests, and continues until the model emits a final answer. It replaces the former fixed-phase orchestrator.
+- **Tool**: A typed function the model may call during a turn (e.g. get/add/remove platforms, get/update library, import Gmail, enrich game, web search, recent recommendations, save recommendation). Each Tool wraps an existing service and is declared to the model with a JSON-schema input. The Tool set is extensible without changing the loop.
 - **Streamlit_UI**: The web interface built with Streamlit, providing the chat and library/dashboard views on desktop and mobile.
 - **Game_Record**: The single canonical record for one owned game, populated by every record source and used everywhere in the system. Fields include at minimum: title, platform(s), source (one of `gmail`, `manual`, `enrichment`), optional purchase_date, genre, estimated_playtime, community_review, and source/external identifiers. The exact field set is fixed by the Data_Contract.
 - **Data_Contract**: The documented, versioned definition of the Game_Record schema (field names, types, required vs. optional, provenance values) that every record source and consumer conforms to.
 - **Record_Source**: Any interchangeable origin of Game_Records — Gmail purchase emails or manual entry — each of which produces records conforming to the Data_Contract.
 - **Tavily_Enrichment**: The Tavily API integration used to populate Game_Record metadata (genre, estimated_playtime, platform availability, community_review) and to power autocomplete for manual entry.
 - **Memory_Store**: The DynamoDB-backed persistent store and system of record that holds Game_Records, past recommendations, mood patterns, owned platforms, and preferences across sessions. The Recommendation_Agent reads this data and injects it into the model context.
-- **Mood_Input**: Free-text input describing the user's current emotional state, interpreted by the Recommendation_Agent into internal mood dimensions.
-- **Time_Budget**: The time the user has available to play, parsed into a numeric duration in minutes.
+- **Mood_Input**: Free-text describing the user's current state/vibe, which the Recommendation_Agent interprets in context as part of the conversation (no fixed numeric mood dimensions).
+- **Time_Budget**: The time the user has available to play, inferred by the Recommendation_Agent from the conversation.
 - **Owned_Platform**: A gaming platform the user has declared they own (e.g., Nintendo Switch 2, Xbox Series S, PSP).
 - **Platform_List**: The user-configurable, extensible collection of Owned_Platform entries stored in the Memory_Store.
 - **Community_Review**: Aggregated community sentiment, rating, or review score for a game, retrieved via Tavily_Enrichment.
 
 ## Requirements
 
-### Requirement 1: Conversational Mood and Time Intake
+### Requirement 1: Agent-Driven Conversational Intake
 
-**User Story:** As a gamer, I want the agent to ask how I feel and how much time I have, so that recommendations match my current mood and fit my available window.
+**User Story:** As a gamer, I want to tell the agent what I feel like playing in my own words, so that I get a recommendation through a natural conversation instead of a fixed questionnaire.
 
 #### Acceptance Criteria
 
-1. WHEN a recommendation session starts, THE Recommendation_Agent SHALL prompt the user with a conversational mood question.
-2. WHEN the user provides a Mood_Input, THE Recommendation_Agent SHALL interpret the text and map it to internal mood dimensions.
-3. IF the Recommendation_Agent cannot interpret the Mood_Input, THEN THE Recommendation_Agent SHALL ask a clarifying follow-up question.
-4. WHEN the Recommendation_Agent has obtained a Mood_Input, THE Recommendation_Agent SHALL ask the user how much time they have available to play.
-5. WHEN the user states their available time, THE Recommendation_Agent SHALL parse the response into a Time_Budget in minutes.
-6. IF the stated available time is ambiguous, THEN THE Recommendation_Agent SHALL ask the user for a more specific estimate.
+1. WHEN the user sends a message, THE Recommendation_Agent SHALL interpret it as natural conversation and decide how to proceed, rather than routing it through a fixed mood-then-time prompt sequence.
+2. THE Recommendation_Agent SHALL infer the user's mood and available time from the conversation when the user supplies them, and SHALL NOT require them as mandatory, separately-prompted steps.
+3. WHERE the user states taste or genre preferences in free text, THE Recommendation_Agent SHALL honor them when selecting a recommendation.
+4. IF information the Recommendation_Agent needs to make a sound recommendation is missing or ambiguous and it cannot reasonably proceed, THEN THE Recommendation_Agent SHALL ask a focused clarifying question rather than guessing.
+5. WHILE within a single conversation, THE Recommendation_Agent SHALL treat follow-ups (e.g. "I already played it", "something shorter", "something else") as continuations that refine the request without re-asking what is already known.
 
 ### Requirement 2: Source Data Exploration and Data Contract Definition
 
@@ -93,15 +94,16 @@ A Python application that recommends the next video game to play based on the us
 
 ### Requirement 7: Personalized Game Recommendation
 
-**User Story:** As a gamer, I want a single strong recommendation with clear reasoning and optional alternatives, so that I can quickly decide what to play next.
+**User Story:** As a gamer, I want a single strong recommendation that reflects what I actually asked for, with clear reasoning and alternatives, so that I can quickly decide what to play next.
 
 #### Acceptance Criteria
 
-1. WHEN the Recommendation_Agent has the Mood_Input, Time_Budget, library Game_Records, and Platform_List, THE Recommendation_Agent SHALL generate one primary recommendation available on at least one Owned_Platform and fitting within the Time_Budget.
-2. THE Recommendation_Agent SHALL prioritize Game_Records with higher Community_Review quality among candidates that match mood, Time_Budget, and Owned_Platform constraints.
-3. THE Recommendation_Agent SHALL present detailed reasoning for the primary recommendation, including a summary of its Community_Review, explaining the match to mood, available time, taste, and owned platforms.
-4. WHEN the user requests alternatives, THE Recommendation_Agent SHALL provide up to 3 additional recommendations, each available on at least one Owned_Platform, with brief reasoning.
+1. WHEN the Recommendation_Agent has enough context (the user's request including any stated taste/genre, the library Game_Records, and the Platform_List), THE Recommendation_Agent SHALL generate one primary recommendation available on at least one Owned_Platform that reflects the user's mood, available time, and stated taste/genre.
+2. THE Recommendation_Agent SHALL select the recommendation itself — reasoning over the library, its own knowledge of titles, and enrichment/web lookups — rather than delegating the choice to a fixed deterministic ranking; it SHALL favor well-regarded titles while honoring the user's stated preferences.
+3. THE Recommendation_Agent SHALL present detailed reasoning for the primary recommendation, including a summary of its Community_Review when available, explaining the match to mood, available time, taste, and owned platforms.
+4. THE Recommendation_Agent SHALL offer up to 3 additional alternatives, each available on at least one Owned_Platform, with brief reasoning.
 5. IF a candidate's platform availability or Community_Review cannot be confirmed, THEN THE Recommendation_Agent SHALL exclude it from the primary recommendation or indicate the missing information when presenting it as an alternative.
+6. WHEN matching a Game_Record's platform availability to the Platform_List, THE Recommendation_Agent SHALL match at the platform-family level (e.g. owning "Xbox" covers "Xbox Series X/S" and "Xbox One"; "Switch" covers "Nintendo Switch") rather than requiring exact string equality.
 
 ### Requirement 8: Persistent Memory and Personalization
 
@@ -138,3 +140,15 @@ A Python application that recommends the next video game to play based on the us
 3. IF the Memory_Store is unavailable, THEN THE Recommendation_Agent SHALL operate statelessly for the current session and inform the user that personalization is temporarily limited.
 4. IF Tavily_Enrichment is unavailable, THEN THE Recommendation_Agent SHALL recommend using existing Game_Records, user input, and the Platform_List, and inform the user that platform availability and community ratings could not be verified.
 5. IF a Record_Source fails to authenticate or retrieve data, THEN THE Streamlit_UI SHALL display a sanitized message and SHALL continue operating using the remaining Record_Sources, with manual entry available as a fallback.
+
+### Requirement 11: Agent Selects and Acts via Tools
+
+**User Story:** As a gamer, I want the agent to take the right actions on my behalf during the conversation, so that it can manage my platforms and library, look things up, and persist results without me driving each step.
+
+#### Acceptance Criteria
+
+1. THE Recommendation_Agent SHALL act through a defined set of Tools to read and modify the Platform_List, read and update the Game_Record library, import from Record_Sources, enrich records, search the web, retrieve recent recommendations, and persist completed sessions.
+2. THE Recommendation_Agent SHALL decide which Tools to call and in what order, and SHALL ask the user for missing information only when it cannot otherwise proceed.
+3. WHEN a Tool reports an error or returns no data, THE Recommendation_Agent SHALL adapt and continue the conversation, surfacing only sanitized information to the user (Req 10) and never fabricating ratings, platforms, or titles the user does not own.
+4. THE set of Tools SHALL be extensible — adding or removing a Tool SHALL NOT require changing the agent conversation loop.
+5. WHILE running the tool-use loop, THE Agent_Runtime SHALL bound the number of tool-call rounds per user turn so the loop always terminates with either a final answer or a clear fallback message.

@@ -1,9 +1,9 @@
 """Display-facing recommendation model.
 
-A ``Recommendation`` is what the UI renders and the orchestrator stores; it is
-derived from a canonical :class:`~models.game_record.GameRecord` by the
-Recommender. The record uses ``title`` internally, while this display surface
-exposes ``game_title`` (Req 7.1).
+A ``Recommendation`` is what the UI renders and what the agent persists with a
+session (via the ``save_recommendation`` tool); it is derived from a canonical
+:class:`~models.game_record.GameRecord`. The record uses ``title`` internally,
+while this display surface exposes ``game_title`` (Req 7.1).
 """
 
 from __future__ import annotations

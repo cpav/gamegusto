@@ -89,7 +89,7 @@ class Config:
 
     tavily_api_key: str
     dynamodb_table_name: str
-    """Name of the DynamoDB table backing AgentCore-style memory."""
+    """Name of the DynamoDB table backing the memory store."""
 
     # Optional with defaults.
     bedrock_reasoning_budget_tokens: int = _DEFAULT_REASONING_BUDGET_TOKENS

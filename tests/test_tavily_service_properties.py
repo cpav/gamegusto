@@ -2,10 +2,10 @@
 
 Encodes two correctness properties from ``design.md``:
 
-* **Property 7 -- Autocomplete activation threshold** (Req 3.4): a query shorter
+* **Property 3 -- Autocomplete activation threshold** (Req 3.4): a query shorter
   than 3 characters never triggers a Tavily request and yields ``[]``; a query of
   3+ characters triggers exactly one request and surfaces the extracted titles.
-* **Property 21 -- Tavily rate-limit compliance** (Req 5.4): across any sequence
+* **Property 13 -- Tavily rate-limit compliance** (Req 5.4): across any sequence
   of enrich/autocomplete calls within a single minute, the number of real API
   calls never exceeds the free-tier cap (60 RPM); excess calls degrade gracefully
   (return ``[]`` / the record unchanged) without hitting the API, and the budget
@@ -76,7 +76,7 @@ def _make_service(fake: FakeSearchClient) -> TavilyService:
 
 
 # ---------------------------------------------------------------------------
-# Property 7: Autocomplete activation threshold (Req 3.4)
+# Property 3: Autocomplete activation threshold (Req 3.4)
 # ---------------------------------------------------------------------------
 
 
@@ -143,7 +143,7 @@ def test_autocomplete_boundary_lengths_at_or_above(length: int) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Property 21: Tavily rate-limit compliance (Req 5.4)
+# Property 13: Tavily rate-limit compliance (Req 5.4)
 # ---------------------------------------------------------------------------
 
 _OPS = st.lists(st.sampled_from(["auto", "enrich"]), max_size=150)

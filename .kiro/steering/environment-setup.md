@@ -4,7 +4,7 @@ inclusion: always
 
 # Environment Setup
 
-Before writing or running any code, ensure the development environment is provisioned. This project is Python-based (Streamlit, boto3/AgentCore, Tavily, pytest/hypothesis).
+Before writing or running any code, ensure the development environment is provisioned. This project is Python-based (Streamlit, boto3 for Bedrock + DynamoDB, Tavily, pytest/hypothesis).
 
 ## First-time setup (run once per machine)
 
@@ -38,7 +38,7 @@ Before writing or running any code, ensure the development environment is provis
 
 ## Secrets and configuration
 
-- All credentials (AWS, Tavily API key, Xbox client ID/secret) load from environment variables via `config.py`. Never hardcode secrets.
+- All credentials (AWS region/access for Bedrock + DynamoDB, Tavily API key, optional read-only Gmail OAuth) load from environment variables via `config.py`. Never hardcode secrets. The AWS region is `eu-north-1`.
 - Keep a `.env.example` documenting every required variable (names only, no values). The real `.env` must be git-ignored.
 - Never read back or echo secret values in logs, responses, or commits.
 

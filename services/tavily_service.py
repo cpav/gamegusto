@@ -158,6 +158,35 @@ class TavilyService:
             return []
         return self._extract_titles(data)
 
+    def web_search(self, query: str) -> list[dict[str, str]]:
+        """Return raw web snippets for ``query`` to inform agent reasoning.
+
+        Each snippet is ``{"title", "content", "url"}``. Powers the agent's
+        ``web_search`` tool when its own knowledge or record enrichment is
+        insufficient. A rate-limit miss or any failure degrades to ``[]`` rather
+        than raising (Req 5.4, 10.3).
+        """
+        if not query.strip() or not self._available or not self._check_rate_limit():
+            return []
+        try:
+            data = self._search(query)
+        except Exception as exc:  # noqa: BLE001 - degrade on any Tavily failure (Req 10.3)
+            self._degrade(exc)
+            return []
+        snippets: list[dict[str, str]] = []
+        answer = data.get("answer")
+        if isinstance(answer, str) and answer.strip():
+            snippets.append({"title": "summary", "content": answer.strip(), "url": ""})
+        for result in self._results(data):
+            snippets.append(
+                {
+                    "title": str(result.get("title", "")),
+                    "content": str(result.get("content", "")),
+                    "url": str(result.get("url", "")),
+                }
+            )
+        return snippets
+
     @property
     def is_available(self) -> bool:
         """False once a Tavily call has failed; enables graceful degradation."""

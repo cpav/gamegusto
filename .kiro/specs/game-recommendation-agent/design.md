@@ -2,18 +2,20 @@
 
 ## Overview
 
-GameGusto is a Python application that recommends the next video game to play based on the user's mood, available time, taste, and the platforms they own. A conversational agent interprets mood and time using a Claude Sonnet base model on Amazon Bedrock (via the Converse API with extended thinking), draws on a personal library, and returns one strong recommendation with clear reasoning plus up to three alternatives.
+GameGusto is a Python application that recommends the next video game to play based on the user's mood, available time, taste, and the platforms they own. A **tool-using agent** — a Claude Sonnet base model on Amazon Bedrock driven through the Converse API tool-use loop — is the reasoning core: it interprets the user's request, decides which tools to call (manage platforms, read/update the library, import from sources, enrich, web search, recall recent picks, persist sessions), asks for missing information only when needed, and **selects the recommendation itself** so the result honors the user's stated taste and genre. It returns one strong recommendation with clear reasoning plus up to three alternatives, and handles follow-ups ("I already played it", "something shorter") as turns in the same conversation.
 
 The library is assembled from interchangeable **record sources** — read-only Gmail purchase-confirmation emails (valuable for Nintendo, which has no history API) and manual UI entry — all normalized into a **single canonical `Game_Record`**. Every record is enriched via Tavily (genre, playtime, platform availability, community review) and persisted in a DynamoDB-backed store so recommendations favor well-regarded titles playable on owned hardware and improve across sessions.
 
-The application is wired by a top-level `bootstrap.build_app(config)` that constructs the whole graph. A headless conversational CLI (`cli.py`) is the current runnable entrypoint; the Streamlit UI described later is the planned interface. The UI is designed as a retro arcade machine offering two views: a conversational **chat** view and a **library/dashboard** view for managing platforms and games.
+The application is wired by a top-level `bootstrap.build_app(config)` that constructs the whole graph (Bedrock, Tavily, DynamoDB-backed memory, record sources, library assembly, the tool registry, and the agent runtime). A headless conversational CLI (`cli.py`) is the current runnable entrypoint; the Streamlit UI described later is the planned interface. The UI is designed as a retro arcade machine offering two views: a conversational **chat** view and a **library/dashboard** view for managing platforms and games.
 
 ### Design Goals
 
+- **The model is the agent.** The LLM interprets the request, chooses tools, and selects the game. There is no fixed phase machine and no deterministic picker overriding the model's choice.
 - **One data contract.** Every source produces, and every consumer reads, the same `Game_Record`. No per-source record types.
-- **Sources are interchangeable.** A common `RecordSource` protocol means adding or removing a source never changes the orchestrator, recommender, or UI.
+- **Sources and tools are interchangeable.** A common `RecordSource` protocol means adding or removing a source never changes the agent runtime or UI; tools wrap services behind a registry so adding or removing a tool never changes the loop.
 - **Least privilege & privacy.** Gmail is read-only, restricted to known retailers, and never persists raw email content.
-- **Graceful degradation where it makes sense.** The LLM is a hard dependency — mood interpretation and recommendation reasoning require the Bedrock model, and its failure surfaces as an error rather than silent degradation. Memory (DynamoDB) and Tavily, by contrast, degrade gracefully: the session runs statelessly when memory is down, and enrichment is skipped when Tavily is unavailable, without breaking the rest of the app.
+- **Graceful degradation where it makes sense.** The LLM is a hard dependency — the agent loop requires the Bedrock model, and its failure surfaces as an error rather than silent degradation. Memory (DynamoDB) and Tavily, by contrast, degrade gracefully: the session runs statelessly when memory is down, and enrichment/web-search tools return empty results when Tavily is unavailable, without breaking the rest of the app.
+- **Tool use without extended thinking.** The tool-use loop runs with thinking disabled: interleaved `reasoningContent` blocks returned alongside tool use must be echoed back verbatim, which the pinned boto3 cannot round-trip (it surfaces them as `SDK_UNKNOWN_MEMBER`). Running the loop without thinking keeps the message history portable; the model still reasons strongly over the tools.
 
 ## Architecture
 
@@ -31,34 +33,29 @@ The application is wired by a top-level `bootstrap.build_app(config)` that const
 └───────────────────────────────┬────────────────────────────────┘
                                  │
 ┌────────────────────────────────▼───────────────────────────────┐
-│                    Agent Orchestrator                            │
-│   mood → time → platform gate → recommendation → alternatives    │
-└───────┬──────────────────────────────────────────┬──────────────┘
-        │                                           │
-        ▼                                           ▼
-┌────────────────┐                        ┌──────────────────────┐
-│ LibraryService │                        │     Recommender      │
-│  run sources   │                        │  filter to owned     │
-│  → dedup       │                        │  platforms · rank by │
-│  → enrich      │                        │  review · time budget│
-│  → persist     │                        │  · no-repeat         │
-└──┬─────────┬───┘                        └──────────┬───────────┘
-   │         │                                       │
-   ▼         ▼                                       ▼
-┌─────────────────────────┐   ┌──────────────┐  ┌──────────────────┐
-│   RecordSource (proto)   │   │ TavilyService│  │  MemoryService   │
-│  ┌───────────┬─────────┐ │   │  enrich +    │  │   (DynamoDB)     │
-│  │  Gmail    │ Manual  │ │   │  autocomplete│  │ Game_Records ·   │
-│  │  Source   │ Source  │ │   │  rate-limited│  │ platforms ·      │
-│  └───────────┴─────────┘ │   │  cache-first │  │ sessions         │
-└─────────────────────────┘   └──────────────┘  └──────────────────┘
-        │          │                  │                  │
-        ▼          ▼                  ▼                  ▼
-     Gmail API   (manual)        Tavily API         DynamoDB
-    (readonly)    UI entry       (free tier)     (single table)
-
-The Recommender and MoodInterpreter additionally call Bedrock (Converse +
-thinking) for mood interpretation and recommendation reasoning.
+│                       Agent Runtime                              │
+│   Converse tool-use loop · system prompt · tool registry ·       │
+│   conversation history  (the model decides the flow + the pick)  │
+└───────┬───────────────────────────────────────────┬─────────────┘
+        │  converse_tools(messages, tools, system)   │  dispatch(name, input)
+        ▼                                            ▼
+┌────────────────┐                        ┌──────────────────────────┐
+│ BedrockService │                        │       Tool Registry      │
+│  Converse tool │                        │  thin functions + JSON   │
+│  loop turn     │                        │  schemas wrapping the    │
+│  (no thinking) │                        │  services below          │
+└───────┬────────┘                        └──┬────────┬──────────┬───┘
+        ▼                                     ▼        ▼          ▼
+   Bedrock (Claude Sonnet)        ┌────────────────┐ ┌──────────┐ ┌──────────────┐
+                                  │ LibraryService │ │ Tavily   │ │ MemoryService│
+                                  │ sources→dedup  │ │ enrich · │ │  (DynamoDB)  │
+                                  │ →enrich→persist│ │ web srch │ │ records ·    │
+                                  └──┬─────────┬───┘ └────┬─────┘ │ platforms ·  │
+                                     ▼         ▼          ▼       │ sessions     │
+                            ┌──────────────────────┐ Tavily API  └──────┬───────┘
+                            │  RecordSource (proto) │ (free tier)        ▼
+                            │  Gmail · Manual       │               DynamoDB
+                            └──────────────────────┘             (single table)
 ```
 
 ### Layered Structure
@@ -67,21 +64,25 @@ Dependencies point one direction only: `ui → agent → services → models`. L
 
 - **models** — the `Game_Record` contract and supporting dataclasses.
 - **services** — external boundaries: `BedrockService`, `MemoryService` (backed by `DynamoDBMemoryClient`), `TavilyService`, and the record sources (`GmailSource`, `ManualSource`).
-- **agent** — `LibraryService`, `Recommender`, `MoodInterpreter`, `TimeParser`, `AgentOrchestrator`.
+- **agent** — `LibraryService`, `platform_match` (family-aware matching), `ToolRegistry`, and `AgentRuntime`.
 - **ui** — chat view, library/dashboard view, theme.
 
-The whole graph is assembled by `bootstrap.build_app(config)`: it constructs the Bedrock service, Tavily service, the DynamoDB-backed `MemoryService`, the record sources in precedence order (Gmail then manual), `LibraryService`, `Recommender`, and `AgentOrchestrator`. The headless `cli.py` is the current runnable entrypoint; the Streamlit UI is built on the same wiring and is deferred.
+The whole graph is assembled by `bootstrap.build_app(config)`: it constructs the Bedrock service, Tavily service, the DynamoDB-backed `MemoryService`, the record sources in precedence order (Gmail then manual), `LibraryService`, the `ToolRegistry`, and the `AgentRuntime`. The headless `cli.py` is the current runnable entrypoint; the Streamlit UI is built on the same wiring and is deferred.
 
 ### System Flow (recommendation)
 
-1. User opens the app → session initializes; retro arcade theme is injected.
-2. Agent asks about mood → interprets mood dimensions (clarifies if needed).
-3. Agent asks about available time → parses to minutes (clarifies if ambiguous).
-4. Orchestrator loads the `Game_Record` library and `Platform_List` from memory.
-5. If `Platform_List` is empty, the agent prompts the user to add a platform before recommending (Req 6.5).
-6. `Recommender` filters candidates to those whose availability intersects owned platforms, drops games recommended in the last 5 sessions, ranks the rest by community review within the time budget.
-7. Primary recommendation renders in a retro card with reasoning that includes a community-review summary; up to three alternatives in an expandable section.
-8. Session data (primary + alternatives) is persisted to the DynamoDB-backed store.
+The flow is not a fixed sequence — the model decides what to do each turn. A
+typical recommendation conversation looks like:
+
+1. User sends a free-text request (mood, time, taste/genre — whatever they choose to say).
+2. `AgentRuntime` appends the message to history and calls Converse with the tool specs.
+3. The model calls tools as it sees fit — e.g. `get_owned_platforms` (and asks the user to add one if the list is empty), `get_library` (optionally filtered), and `enrich_game`/`web_search` to fill gaps — matching platforms at the family level.
+4. The model **selects** one primary game that honors the request, plus up to three alternatives, and calls `get_recent_recommendations` to avoid recent repeats.
+5. The model emits a final answer with reasoning (including a community-review summary when known) and calls `save_recommendation` to persist the session.
+6. Follow-ups ("I already played it", "something shorter") continue the same conversation; the model excludes the prior pick and offers the next best without re-asking what it already knows.
+
+The loop runs until the model emits a final answer (`stopReason == "end_turn"`),
+bounded by a per-turn cap on tool-call rounds so it always terminates.
 
 ### Library Assembly Flow
 
@@ -428,291 +429,135 @@ class DynamoDBMemoryClient:
 
 ### BedrockService (`services/bedrock_service.py`)
 
-The boundary to the Claude Sonnet **base model** on Amazon Bedrock. It uses the Bedrock Runtime **Converse API** with **extended thinking** enabled, so the model reasons before answering. It is built from `Config` (`bedrock_model_id` + `bedrock_reasoning_budget_tokens`) and calls `bedrock-runtime`'s `converse`, passing `additionalModelRequestFields={"thinking": {"type": "enabled", "budget_tokens": N}}`.
+The boundary to the Claude Sonnet **base model** on Amazon Bedrock via the Bedrock Runtime **Converse API**. It is built from `Config` (`bedrock_model_id` + `bedrock_reasoning_budget_tokens`) and exposes two entry points:
 
-Two invocation styles are exposed: `invoke_with_schema` (augments the prompt to request a JSON object and parses the first valid object out of the reply) used by `MoodInterpreter`, and `invoke_conversational` (free-text reply) used by `Recommender`. The LLM is a **hard dependency**: any transport failure, missing answer text, or unparseable JSON raises `BedrockServiceError` with a sanitized message — there is **no fallback** to mock or deterministic output.
+- `invoke_conversational(prompt, session_id)` — a single-shot free-text reply with extended thinking enabled (used by the live healthcheck `scripts/check_llm.py`).
+- `converse_tools(messages, tools, system)` — **one turn** of a tool-use loop, run **without** extended thinking. The `AgentRuntime` owns the loop and calls this repeatedly. It returns a `ConverseResult` carrying the `stop_reason`, the concatenated answer `text`, any `tool_uses`, and the raw `assistant_content` blocks (kept verbatim for the next turn). Only well-formed `text`/`toolUse` blocks are retained, so any block the SDK cannot represent (`SDK_UNKNOWN_MEMBER`, e.g. interleaved reasoning) is never echoed back.
+
+The LLM is a **hard dependency**: any transport failure or malformed response raises `BedrockServiceError` with a sanitized message — there is **no fallback** to mock or deterministic output.
 
 ```python
 # services/bedrock_service.py
+from dataclasses import dataclass, field
 from typing import Any
 from config import Config
 
 class BedrockServiceError(RuntimeError):
     """Raised when a Bedrock invocation fails; message is already sanitized."""
 
+@dataclass
+class ToolUse:
+    tool_use_id: str
+    name: str
+    input: dict[str, Any]
+
+@dataclass
+class ConverseResult:
+    stop_reason: str                            # "tool_use" | "end_turn" | ...
+    text: str                                   # concatenated answer text
+    tool_uses: list[ToolUse] = field(default_factory=list)
+    assistant_content: list[dict] = field(default_factory=list)  # raw blocks to echo back
+
 class BedrockService:
-    """Invokes a Bedrock base model via Converse with extended thinking."""
-
-    def __init__(self, config: Config, client: Any | None = None):
-        self._model_id = config.bedrock_model_id
-        self._reasoning_budget = config.bedrock_reasoning_budget_tokens
-        # defaults to a boto3 "bedrock-runtime" client for config.aws_region
-        ...
-
-    def invoke_with_schema(self, prompt: str, schema: dict[str, Any]) -> dict[str, Any]:
-        """Converse, then parse the reply into a dict matching `schema`.
-        Raises BedrockServiceError on failure or when no JSON object is present."""
-        ...
+    def __init__(self, config: Config, client: Any | None = None): ...
 
     def invoke_conversational(self, prompt: str, session_id: str) -> str:
-        """Return the model's free-text response. Raises BedrockServiceError on failure."""
+        """Single-shot free-text reply (extended thinking on). Raises on failure."""
         ...
 
-    def _converse(self, prompt: str) -> str:
-        """Call Converse with extended thinking; return the answer text."""
+    def converse_tools(
+        self, messages: list[dict], tools: list[dict], system: str
+    ) -> ConverseResult:
+        """One Converse turn with `tools` available (no thinking). The runtime
+        executes any requested tools and calls again until stop_reason==end_turn.
+        Raises BedrockServiceError (sanitized) on transport failure."""
         response = self._client.converse(
             modelId=self._model_id,
-            messages=[{"role": "user", "content": [{"text": prompt}]}],
+            system=[{"text": system}],
+            messages=messages,
+            toolConfig={"tools": tools},
             inferenceConfig={"maxTokens": self._reasoning_budget + ANSWER_TOKEN_HEADROOM},
-            additionalModelRequestFields={
-                "thinking": {"type": "enabled", "budget_tokens": self._reasoning_budget}
-            },
         )
-        return self._extract_text(response)   # ignores thinking blocks; needs answer text
+        return self._parse_tool_turn(response)
 ```
 
-### MoodInterpreter & TimeParser (`agent/`)
+### Tool Registry (`agent/tools.py`)
+
+Each tool is a thin function plus a Converse `toolSpec` (JSON schema) wrapping an existing service. The model decides which to call; the registry only declares the surface and dispatches. **Selection of the game is the model's job, not a tool** — it reads the library, applies the user's taste/mood/time/owned platforms, and may enrich or web-search to fill gaps. Tools never raise: expected failures return `{"ok": False, "error": ...}` and the underlying services already degrade gracefully.
+
+| Tool | Input | Backed by |
+|---|---|---|
+| `get_owned_platforms` | – | `MemoryService.get_platform_list` |
+| `add_platform` / `remove_platform` | name / id | `MemoryService` |
+| `get_library` | optional `platform`, `genre`, `has_playtime` | `MemoryService.get_records` (+ family-aware filter) |
+| `add_manual_game` | title, platform, optional playtime/genre | `MemoryService.upsert_record` |
+| `set_game_fields` | title, optional playtime/genre | `MemoryService.upsert_record` (manual playtime fill) |
+| `import_gmail` | – | `LibraryService.refresh` (returns imported delta) |
+| `enrich_game` | title | `TavilyService.enrich` + persist |
+| `web_search` | query | `TavilyService.web_search` |
+| `get_recent_recommendations` | optional n | `MemoryService.get_recent_recommendations` |
+| `save_recommendation` | game_title, reasoning, optional mood/time/alternatives | `MemoryService.store_session` |
 
 ```python
-# agent/mood_interpreter.py
-from dataclasses import dataclass
-from services.bedrock_service import BedrockService
+# agent/tools.py
+class ToolRegistry:
+    def __init__(self, memory: MemoryService, library: LibraryService,
+                 tavily: TavilyService, user_id: str): ...
 
-@dataclass
-class MoodDimensions:
-    energy_level: float        # 0.0–1.0
-    stress_level: float        # 0.0–1.0
-    social_desire: float       # 0.0–1.0
-    challenge_appetite: float  # 0.0–1.0
+    def specs(self) -> list[dict]:
+        """The Converse toolSpec list advertised to the model."""
+        ...
 
-@dataclass
-class MoodInterpretation:
-    mood_dimensions: MoodDimensions | None
-    needs_clarification: bool
-    clarification_question: str | None
-
-class MoodInterpreter:
-    def __init__(self, bedrock: BedrockService):
-        self._bedrock = bedrock
-
-    def interpret(self, text: str) -> MoodInterpretation:
-        """Map free-text mood to dimensions; flag clarification when unclear
-        (Req 1.2, 1.3). The LLM is a hard dependency: a Bedrock failure
-        propagates as BedrockServiceError rather than degrading to a canned
-        response. A clarification is returned only when the model itself reports
-        the mood uninterpretable (or omits required dimensions)."""
+    def dispatch(self, name: str, tool_input: dict) -> dict:
+        """Execute a tool by name; an unknown name returns an error result
+        rather than raising, so a hallucinated tool never crashes the loop."""
         ...
 ```
 
+Platform filtering and matching are **family-aware** via `agent/platform_match.py`: `platforms_match("Xbox", "Xbox Series X") == True`; names outside the known families (Xbox, PlayStation, Nintendo, PC) fall back to exact case-insensitive comparison so the free-text Platform_List stays extensible (Req 6.4, 7.6).
+
+### AgentRuntime (`agent/runtime.py`)
+
+Owns the Converse tool-use loop, the system prompt, the tool registry, and the conversation history. There is no phase state machine: each user message is one `send(...)` that runs the loop until the model emits a final answer, bounded by a per-turn cap on tool rounds. The system prompt encodes the behavior the brief requires: honor the whole request (taste/genre), reason about mood/time natively, select the game itself, match platforms by family, treat enrichment playtime as completion-time (not a session budget), handle in-conversation follow-ups, and call `save_recommendation` after presenting a pick.
+
 ```python
-# agent/time_parser.py
-from dataclasses import dataclass
-import re
+# agent/runtime.py
+from dataclasses import dataclass, field
 
 @dataclass
-class TimeParseResult:
-    minutes: int | None
-    needs_clarification: bool
-    clarification_question: str | None
-
-class TimeParser:
-    PATTERNS = [
-        (r"(\d+(?:\.\d+)?)\s*h\w*\s*(?:and\s*)?(\d+)\s*m",
-         lambda m: int(float(m.group(1)) * 60) + int(m.group(2))),
-        (r"(\d+)\s*h\w*", lambda m: int(m.group(1)) * 60),
-        (r"(\d+)\s*m\w*", lambda m: int(m.group(1))),
-    ]
-    AMBIGUOUS = ["a bit", "a little", "some time", "a while", "not long"]
-
-    def parse(self, text: str) -> TimeParseResult:
-        """Parse explicit hours/minutes to a positive int; clarify on vague
-        input (Req 1.5, 1.6)."""
-        t = text.lower().strip()
-        if any(p in t for p in self.AMBIGUOUS):
-            return TimeParseResult(None, True,
-                "Could you give a rough estimate, like '30 minutes' or '2 hours'?")
-        for pattern, extract in self.PATTERNS:
-            if (m := re.search(pattern, t)):
-                return TimeParseResult(extract(m), False, None)
-        return TimeParseResult(None, True,
-            "How much time do you have? Try '45 minutes' or '1 hour'.")
-```
-
-### Recommender (`agent/recommender.py`)
-
-Operates entirely over `Game_Records`: filter to owned platforms, rank by review, respect time budget, avoid repeats, build reasoning with a review summary (Req 5.3, 7). Eligible-candidate selection is exposed publicly (`eligible_candidates`) so the orchestrator can derive alternatives from the same ranked set used to pick the primary.
-
-```python
-# agent/recommender.py
-from models.game_record import GameRecord
-from models.platform import OwnedPlatform
-from models.recommendation import Recommendation
-from agent.mood_interpreter import MoodDimensions
-from services.bedrock_service import BedrockService
-from services.memory_service import MemoryService
-
-class Recommender:
-    def __init__(self, bedrock: BedrockService, memory: MemoryService):
-        self._bedrock = bedrock
-        self._memory = memory
-
-    def recommend(
-        self,
-        mood: MoodDimensions,
-        time_budget_minutes: int,
-        library: list[GameRecord],
-        owned_platforms: list[OwnedPlatform],
-        user_id: str,
-    ) -> Recommendation:
-        """One primary recommendation, playable + within budget + well-reviewed.
-        Returns an empty sentinel (blank game_title) when nothing matches."""
-        eligible = self.eligible_candidates(library, owned_platforms, time_budget_minutes, user_id)
-        if not eligible:
-            return self._no_recommendation()
-        primary_record = self._select_primary(eligible)            # top review score (Req 7.2)
-        rec = self._to_recommendation(primary_record)
-        rec.reasoning = self._build_reasoning(
-            primary_record, mood, time_budget_minutes, owned_platforms, user_id
-        )
-        return rec
-
-    def eligible_candidates(
-        self,
-        library: list[GameRecord],
-        owned_platforms: list[OwnedPlatform],
-        time_budget_minutes: int,
-        user_id: str,
-    ) -> list[GameRecord]:
-        """Filter the library to eligible candidates, ranked by review (Req 7.1, 7.2, 8.3).
-        Public so the orchestrator can derive alternatives from the same set."""
-        recent = {r.game_title for r in self._memory.get_recent_recommendations(user_id, 5)}
-        owned = self._owned_set(owned_platforms)
-        eligible = [
-            g for g in library
-            if g.title not in recent                           # no-repeat (Req 8.3)
-            and self._is_playable(g, owned)                    # owned platform (Req 5.3, 7.1)
-            and g.estimated_playtime is not None
-            and g.estimated_playtime <= time_budget_minutes    # time budget (Req 7.1)
-        ]
-        eligible.sort(key=self._review_score, reverse=True)    # rank by review (Req 7.2)
-        return eligible
-
-    def alternatives(
-        self,
-        eligible: list[GameRecord],
-        owned_platforms: list[OwnedPlatform],
-        exclude_title: str | None = None,
-        max_count: int = 3,
-    ) -> list[Recommendation]:
-        """Up to 3 alternatives, each playable on an owned platform, ranked by
-        review, excluding `exclude_title` (typically the primary) (Req 7.4)."""
-        ...
-
-    @staticmethod
-    def _is_playable(g: GameRecord, owned: set[str]) -> bool:
-        """Confirmed availability intersecting owned platforms. Unconfirmed
-        availability is excluded from the primary (Req 5.3, 7.5)."""
-        if not g.platform_availability:           # unconfirmed → excluded
-            return False
-        return any(p.casefold() in owned for p in g.platform_availability)
-
-    @staticmethod
-    def _review_score(g: GameRecord) -> float:
-        """Rank key; missing review sorts below any reviewed record (Req 7.2)."""
-        return g.community_review.score if g.community_review else -1.0
-
-    def _build_reasoning(self, record, mood, minutes, owned_platforms, user_id) -> str:
-        """Compose a deterministic factual core (which ALWAYS includes the
-        community-review summary, or notes it is unavailable — Req 7.3, 7.5,
-        plus the time budget and playable owned platforms) PLUS a model-generated
-        narrative. The LLM is a hard dependency: a Bedrock failure propagates as
-        BedrockServiceError rather than silently degrading to deterministic-only."""
-        base = self._deterministic_reasoning(record, mood, minutes, owned_platforms)
-        narrative = self._bedrock.invoke_conversational(self._reasoning_prompt(base), user_id)
-        return f"{base} {narrative.strip()}".strip()
-```
-
-### AgentOrchestrator (`agent/orchestrator.py`)
-
-Drives the conversation: mood → time → platform gate → recommendation → alternatives (Req 1, 6.5, 7). After selecting the primary, it derives up to 3 alternatives from the same eligible set (`recommender.eligible_candidates(...)` then `recommender.alternatives(...)`, excluding the primary title) and persists both the primary and the alternatives in the session.
-
-```python
-# agent/orchestrator.py
-from dataclasses import dataclass
-from agent.mood_interpreter import MoodInterpreter
-from agent.time_parser import TimeParser
-from agent.recommender import Recommender
-from agent.library_service import LibraryService
-from services.memory_service import MemoryService
-from models.session import SessionState
-from models.recommendation import Recommendation
-
-@dataclass
-class AgentResponse:
+class AgentReply:
     message: str
-    recommendation: Recommendation | None = None
-    alternatives: list[Recommendation] | None = None
-    error: str | None = None
-    is_stateless_mode: bool = False
-    needs_platforms: bool = False   # set when empty Platform_List blocks rec (Req 6.5)
+    is_stateless_mode: bool = False     # memory unavailable -> personalization limited (Req 10.2)
+    tool_calls: list[str] = field(default_factory=list)
 
-class AgentOrchestrator:
-    def __init__(
-        self,
-        mood_interpreter: MoodInterpreter,
-        time_parser: TimeParser,
-        recommender: Recommender,
-        library_service: LibraryService,
-        memory_service: MemoryService,
-    ):
-        self._mood = mood_interpreter
-        self._time = time_parser
-        self._recommender = recommender
-        self._library = library_service
-        self._memory = memory_service
-        self.session = SessionState()
+class AgentRuntime:
+    def __init__(self, bedrock: BedrockService, tools: ToolRegistry,
+                 memory: MemoryService, system_prompt: str = SYSTEM_PROMPT):
+        self._messages: list[dict] = []
+        ...
 
-    def process_message(self, user_input: str) -> AgentResponse:
-        """Route input by conversation phase."""
-        phase = self.session.current_phase
-        if phase == "mood_gathering":
-            return self._handle_mood(user_input)
-        if phase == "time_gathering":
-            return self._handle_time(user_input)
-        return self._generate_recommendation()
+    def reset(self) -> None:
+        """Clear history to start a fresh conversation."""
+        self._messages = []
 
-    def _generate_recommendation(self) -> AgentResponse:
-        """Gate on Platform_List, then recommend (Req 6.5, 7.1)."""
-        user_id = self.session.user_id
-        platforms = self._memory.get_platform_list(user_id)
-        if not platforms:
-            self.session.current_phase = "platform_setup"
-            return AgentResponse(
-                message="Tell me which platforms you own before I recommend — "
-                        "add at least one in the Library view.",
-                needs_platforms=True,
-            )
-        library = self._library.refresh(user_id)
-        rec = self._recommender.recommend(
-            mood=self.session.mood,
-            time_budget_minutes=self.session.time_budget_minutes,
-            library=library,
-            owned_platforms=platforms,
-            user_id=user_id,
-        )
-        if not rec.game_title:                          # sentinel: no candidate matched
-            return AgentResponse(message=rec.reasoning)
-        # Derive alternatives from the same eligible, review-ranked set (Req 7.4).
-        eligible = self._recommender.eligible_candidates(
-            library, platforms, self.session.time_budget_minutes, user_id
-        )
-        alternatives = self._recommender.alternatives(
-            eligible, platforms, exclude_title=rec.game_title
-        )
-        self.session.primary_recommendation = rec
-        self.session.alternatives = alternatives
-        self._persist_session(user_id, rec)             # persists primary + alternatives (Req 8.1)
-        return AgentResponse(message=rec.reasoning, recommendation=rec, alternatives=alternatives)
+    def send(self, user_text: str) -> AgentReply:
+        """Run the tool loop for one user message until a final answer.
+        Raises BedrockServiceError (sanitized) — the LLM is a hard dependency."""
+        self._messages.append({"role": "user", "content": [{"text": user_text}]})
+        for _ in range(MAX_TOOL_ITERATIONS):
+            result = self._bedrock.converse_tools(self._messages, self._tools.specs(), self._system)
+            if result.assistant_content:
+                self._messages.append({"role": "assistant", "content": result.assistant_content})
+            if result.stop_reason != "tool_use" or not result.tool_uses:
+                return self._reply(result.text.strip())          # final answer
+            tool_results = [
+                {"toolResult": {"toolUseId": u.tool_use_id,
+                                "content": [{"json": self._tools.dispatch(u.name, u.input)}],
+                                "status": "success"}}
+                for u in result.tool_uses
+            ]
+            self._messages.append({"role": "user", "content": tool_results})
+        return self._reply(ITERATION_LIMIT_MESSAGE)              # cap reached
 ```
 
 ### Streamlit UI (`ui/`)
@@ -790,32 +635,25 @@ def inject_retro_theme() -> None:
 ```
 
 ```python
-# ui/chat_view.py — conversational chat + recommendation card (Req 9.3)
+# ui/chat_view.py — conversational chat (Req 9.3)
 import streamlit as st
-from models.recommendation import Recommendation
 
 def render_chat_view():
-    """Chat with the agent; primary rec in a card, alternatives expandable."""
-    orchestrator = get_orchestrator()
-    for msg in st.session_state.get("messages", []):
+    """Chat with the agent; the agent's reply (its recommendation + reasoning) is
+    free-text rendered inside a retro 'rec-card'. The agent decides the flow, so
+    the view just relays turns; it shows the stateless notice when memory is down."""
+    runtime = get_runtime()
+    for msg in st.session_state.setdefault("messages", []):
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
     if prompt := st.chat_input("Insert coin... type your message"):
-        response = orchestrator.process_message(prompt)
-        if response.recommendation:
-            _render_card(response.recommendation)
-
-def _render_card(rec: Recommendation):
-    st.markdown('<div class="rec-card">', unsafe_allow_html=True)
-    st.subheader(f"🎮 {rec.game_title}")
-    st.markdown(f"**Why this game:** {rec.reasoning}")
-    review = rec.community_review
-    review_line = (f"⭐ {review.score:.1f}/10 — {review.sentiment_summary}"
-                   if review else "⭐ community rating unavailable")
-    st.caption(f"⏱️ ~{rec.estimated_playtime} min | 🎭 {rec.genre} | "
-               f"🕹️ {', '.join(rec.platform_availability)}")
-    st.caption(review_line)
-    st.markdown('</div>', unsafe_allow_html=True)
+        st.session_state["messages"].append({"role": "user", "content": prompt})
+        reply = runtime.send(prompt)              # AgentReply (may raise on LLM failure)
+        with st.chat_message("assistant"):
+            st.markdown(f'<div class="rec-card">{reply.message}</div>', unsafe_allow_html=True)
+            if reply.is_stateless_mode:
+                st.caption("⚠️ memory unavailable — personalization is limited")
+        st.session_state["messages"].append({"role": "assistant", "content": reply.message})
 ```
 
 ```python
@@ -947,7 +785,7 @@ class GameRecord:
         return self.genre is not None and bool(self.platform_availability)
 ```
 
-> Note on `game_title` vs `title`: the recommendation surface (`Recommendation`) exposes `game_title` for display; the canonical record uses `title`. The recommender maps one to the other when constructing a `Recommendation`.
+> Note on `game_title` vs `title`: the recommendation surface (`Recommendation`) exposes `game_title` for display; the canonical record uses `title`. The `save_recommendation` tool maps one to the other when persisting a session.
 
 ### Supporting Models
 
@@ -984,24 +822,17 @@ class Recommendation:
 ```python
 # models/session.py
 from dataclasses import dataclass, field
-from agent.mood_interpreter import MoodDimensions
-from models.platform import OwnedPlatform
 from models.recommendation import Recommendation
 
 @dataclass
-class SessionState:
-    user_id: str = "anonymous"
-    # mood_gathering | time_gathering | platform_setup | recommendation | alternatives
-    current_phase: str = "mood_gathering"
-    mood: MoodDimensions | None = None
-    time_budget_minutes: int | None = None
-    primary_recommendation: Recommendation | None = None
-    alternatives: list[Recommendation] = field(default_factory=list)
-
-@dataclass
 class SessionData:
+    """Completed session persisted to memory for personalization (Req 8.1).
+    The agent drives the conversation itself (no fixed phase machine), so the
+    in-memory SessionState of the old design is gone; the live conversation
+    state is simply the AgentRuntime message history. `mood` is a free-text
+    summary the agent supplies rather than fixed numeric dimensions."""
     user_id: str
-    mood: MoodDimensions
+    mood: str
     time_budget_minutes: int
     recommendation: Recommendation
     alternatives: list[Recommendation] = field(default_factory=list)
@@ -1045,8 +876,7 @@ A single DynamoDB table keyed by user (`PK = USER#<user_id>`), holding `Game_Rec
     "user_id": "string",
     "session_id": "string",
     "timestamp": "ISO-8601",
-    "mood_dimensions": {"energy_level": 0.7, "stress_level": 0.3,
-                         "social_desire": 0.5, "challenge_appetite": 0.8},
+    "mood": "relaxed, in the mood for a chill solo RPG",
     "time_budget_minutes": 90,
     "recommendation": { "game_title": "Hades", "...": "..." },
     "alternatives": [],
@@ -1103,13 +933,12 @@ gamegusto/
 │   ├── library_view.py         # platforms, games, history, add/edit (Req 9.4, 9.5)
 │   └── sidebar.py              # connect Gmail + import + view switch (Req 9.6)
 ├── agent/
-│   ├── orchestrator.py         # conversation flow + platform gating + alternatives
-│   ├── library_service.py      # source assembly: precedence, dedup, enrich, persist
-│   ├── recommender.py          # filter, rank, time budget, no-repeat, reasoning
-│   ├── mood_interpreter.py     # mood → dimensions (via Bedrock)
-│   └── time_parser.py          # time → minutes
+│   ├── runtime.py              # AgentRuntime: Converse tool-use loop + system prompt
+│   ├── tools.py                # ToolRegistry: tool specs + dispatch wrapping services
+│   ├── platform_match.py       # family-aware platform matching (Xbox ~ Xbox Series X)
+│   └── library_service.py      # source assembly: precedence, dedup, enrich, persist
 ├── services/
-│   ├── bedrock_service.py      # Bedrock Converse + extended thinking (base model)
+│   ├── bedrock_service.py      # Bedrock Converse: converse_tools (loop) + invoke_conversational
 │   ├── memory_service.py       # Game_Records + Platform_List + sessions (MemoryClient)
 │   ├── dynamodb_memory_client.py # DynamoDB single-table MemoryClient
 │   ├── tavily_service.py       # enrichment + autocomplete, rate-limited
@@ -1153,157 +982,112 @@ Gmail is **optional**: if its variables are unset, the Gmail source is not const
 Layered per the project's testing-strategy steering: fast unit/property tests everywhere, integration and e2e where boundaries and flows justify the cost. Property tests use Hypothesis with a minimum of 100 iterations.
 
 ### Unit Tests (example-based)
-- **Conversation flow:** orchestrator transitions mood → time → platform gate → recommendation.
-- **Empty-platform gating:** empty `Platform_List` returns `needs_platforms=True` and no recommendation.
-- **Time/mood clarification:** vague time and uninterpretable mood return clarification prompts.
-- **Tavily degradation:** enrichment failure and rate-limit produce documented degradation/messaging.
+- **Bedrock tool turn:** `converse_tools` parses tool-use and final-answer responses, drops `SDK_UNKNOWN_MEMBER` blocks, sends `system`/`toolConfig` without thinking, and sanitizes transport/malformed errors.
+- **Tool dispatch:** every tool round-trips against the real service graph (in-memory memory, fake Tavily) — platforms CRUD, library + family-aware filters, manual add, `set_game_fields`, enrich, web_search, recent recs, save; unknown tool returns an error result.
+- **Agent loop:** final answer, multi-round tool dispatch, the iteration cap fallback, the stateless flag, and history reset (scripted Bedrock, no network).
+- **Platform matching:** family resolution and `platforms_match`/`owned_intersects` for same-family, cross-family, and unknown-name cases.
+- **Tavily degradation:** enrichment/web_search failure and rate-limit produce documented degradation.
 - **Gmail parsing:** per-retailer parsers turn representative Nintendo eShop / Microsoft Store emails into correct `GameRecord`s.
-- **UI smoke:** `inject_retro_theme` produces CSS containing the pixel font and a responsive media query; recommendation card includes title, reasoning, playtime, genre, availability, review line.
-- **Source skip:** an unavailable source is skipped and the rest of the library still assembles.
+- **Wiring/CLI:** `bootstrap.build_app` wires the runtime offline; CLI command handlers behave as documented.
+- **UI smoke (deferred):** `inject_retro_theme` produces CSS containing the pixel font and a responsive media query.
 
 ### Property-Based Tests (Hypothesis)
-Map directly to the Correctness Properties below (P1–P21). Examples: dedup correctness, every recommendation playable on an owned platform, review-driven ranking monotonicity, time-budget constraint, no-repeat, rate-limit compliance, Game_Record/Platform_List round-trips, Gmail scope/privacy/known-sender, error sanitization.
+Map directly to the Correctness Properties below. Examples: dedup correctness, source-unavailability resilience, autocomplete threshold, Gmail scope/privacy/known-sender, Game_Record/Platform_List/session round-trips, platform-family matching, tool-registry totality, rate-limit compliance, error sanitization.
 
 ### Integration Tests (`@pytest.mark.integration`)
-- **Bedrock Converse:** the base model returns parseable JSON (mood schema) and free-text reasoning with extended thinking enabled.
+- **Bedrock Converse tool use:** a live `converse_tools` turn returns a well-formed tool-use/end-turn response for the configured Sonnet model.
 - **Tavily API:** enrichment returns parseable genre/playtime/availability/review.
 - **Gmail API:** read-only OAuth + restricted query retrieves and parses representative purchase emails (needs a test mailbox).
 - **DynamoDB memory:** store/retrieve cycle for records, platform list, and sessions (single-table keys; Decimal/float round-trip).
 
 ### End-to-End Tests (`@pytest.mark.e2e`)
-- Full mood → time → platform gate → recommendation → alternatives flow, with services mocked at the network edge.
+- Full agent conversation with a scripted model over the real graph (network edge faked): a taste-rich request yields a matching owned title, and an "I already played it" follow-up offers the next best within the same conversation.
 
 ## Correctness Properties
 
-*A property is a characteristic or behavior that should hold true across all valid executions of a system — essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.* Each property is validated by a Hypothesis test (minimum 100 iterations) tagged **Feature: game-recommendation-agent, Property {n}**.
+*A property is a characteristic or behavior that should hold true across all valid executions of a system — essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.* Each property is validated by an automated test (Hypothesis with a minimum of 100 iterations where a range of inputs applies) tagged **Feature: game-recommendation-agent, Property {n}**.
 
-### Property 1: Mood interpretation produces valid dimensions
+> **Note on the re-architecture.** Game selection moved from a deterministic `Recommender` to the model's judgment, so the former deterministic-ranking properties (review-driven ranking, hard time-budget cut-off, deterministic no-repeat, mood→dimension mapping, time-string parsing, and the empty-platform gate) are **retired** as machine-checked invariants — they were guarantees about code that no longer makes the choice. The recommendation behavior they targeted (honoring taste, fitting time, avoiding repeats, requiring an owned platform) is now exercised by the scripted multi-turn **e2e** test and steered by the system prompt and tools. The properties below are the invariants that remain genuinely deterministic.
 
-*For any* non-empty, meaningful free-text mood input, when the MoodInterpreter returns mood dimensions, every dimension (energy_level, stress_level, social_desire, challenge_appetite) SHALL be a float in [0.0, 1.0].
-
-**Validates: Requirements 1.2**
-
-### Property 2: Uninterpretable mood triggers clarification
-
-*For any* mood input that is empty, gibberish, or unrelated to emotional state, the MoodInterpreter SHALL return `needs_clarification=True` with a non-empty `clarification_question`.
-
-**Validates: Requirements 1.3**
-
-### Property 3: Time budget parsing
-
-*For any* time expression containing explicit numeric hours and/or minutes (e.g., "2 hours", "45 min", "1h30m"), the TimeParser SHALL parse it to the correct number of minutes as a positive integer.
-
-**Validates: Requirements 1.5**
-
-### Property 4: Ambiguous time triggers clarification
-
-*For any* time input containing only vague phrases without numeric values (e.g., "a bit", "a while"), the TimeParser SHALL return `needs_clarification=True` with a non-empty `clarification_question`.
-
-**Validates: Requirements 1.6**
-
-### Property 5: Dedup is precedence-aware and key-normalized
+### Property 1: Dedup is precedence-aware and key-normalized
 
 *For any* set of Game_Records drawn from multiple sources with overlapping titles/platforms, the assembled library SHALL contain no two records with the same normalized dedup key (casefolded, whitespace-stripped title + platform), and for each colliding key the surviving record SHALL come from the higher-precedence source (Gmail > manual). Every unique key from the inputs SHALL be present.
 
 **Validates: Requirements 2.3, 3.1, 3.5**
 
-### Property 6: Source unavailability does not break assembly
+### Property 2: Source unavailability does not break assembly
 
 *For any* subset of available record sources, `LibraryService.refresh` SHALL succeed using only the available sources without raising, and manual entry SHALL remain usable regardless of which other sources are available.
 
 **Validates: Requirements 3.6, 10.4**
 
-### Property 7: Autocomplete activation threshold
+### Property 3: Autocomplete activation threshold
 
 *For any* query string with fewer than 3 characters, TavilyService autocomplete SHALL return an empty list; for queries of 3 or more characters it MAY return suggestions.
 
 **Validates: Requirements 3.4**
 
-### Property 8: Gmail import restricts to known purchase-confirmation senders
+### Property 4: Gmail import restricts to known purchase-confirmation senders
 
 *For any* mailbox containing an arbitrary mix of purchase-confirmation emails from known senders and unrelated mail, every Game_Record produced by GmailSource SHALL originate from a known purchase-confirmation sender, and no record SHALL be produced from unrelated mail.
 
 **Validates: Requirements 3.3, 4.3**
 
-### Property 9: Gmail import retains only contract fields
+### Property 5: Gmail import retains only contract fields
 
 *For any* purchase email with arbitrary content, the data retained and stored from a Gmail import SHALL consist solely of Game_Record contract fields (such as title, platform, purchase_date) plus enrichment, and SHALL NOT include raw email content.
 
 **Validates: Requirements 4.2**
 
-### Property 10: Gmail import requests read-only scope only
+### Property 6: Gmail import requests read-only scope only
 
 *For any* construction or authentication of GmailSource, the requested OAuth scope set SHALL be exactly `{gmail.readonly}` and SHALL NOT include any broader scope.
 
 **Validates: Requirements 4.1**
 
-### Property 11: Game_Record store round-trip
+### Property 7: Game_Record store round-trip
 
 *For any* set of Game_Records (including enrichment fields and any source, including manual UI writes) stored via MemoryService, retrieving records for the same user SHALL return records with matching title, platforms, source, purchase_date, and enrichment fields (genre, estimated_playtime, platform_availability, community_review).
 
 **Validates: Requirements 5.2, 9.5**
 
-### Property 12: Platform_List CRUD round-trip
+### Property 8: Platform_List CRUD round-trip
 
 *For any* sequence of add, edit, and remove operations applied to a user's Platform_List, retrieving the Platform_List SHALL return exactly the set implied by those operations, and arbitrary free-text platform names SHALL be supported without error.
 
 **Validates: Requirements 6.1, 6.2, 6.3, 6.4**
 
-### Property 13: Session persistence round-trip
+### Property 9: Session persistence round-trip
 
-*For any* completed session (recommendation, feedback, mood pattern, context) stored via MemoryService, retrieving session data for the same user SHALL return matching values.
+*For any* completed session (recommendation, mood summary, time budget, alternatives, feedback) stored via MemoryService, retrieving recent recommendations for the same user SHALL return the stored primaries newest-first.
 
 **Validates: Requirements 8.1, 8.2**
 
-### Property 14: Empty platform list blocks recommendation
+### Property 10: Platform matching is family-aware
 
-*For any* recommendation request where the Platform_List is empty, the agent SHALL return a response prompting the user to add at least one Owned_Platform and SHALL NOT produce a primary recommendation.
+*For any* owned platform name and available platform name that resolve to the same known family (Xbox, PlayStation, Nintendo, PC), `platforms_match` SHALL return true; for names in different known families it SHALL return false; for names outside the known families it SHALL match exactly (case-insensitive, whitespace-trimmed).
 
-**Validates: Requirements 6.5**
+**Validates: Requirements 5.3, 7.1, 7.6**
 
-### Property 15: Every recommendation is playable on an owned platform
+### Property 11: Tool registry is total
 
-*For any* combination of library records, owned platforms, mood, and time budget, every game returned by the Recommender (primary and all alternatives, 0–3) SHALL have confirmed platform availability intersecting the user's Platform_List, each with non-empty reasoning.
+*For any* tool advertised in the registry's specs there SHALL be a handler, and *for any* tool name (including unknown names) `dispatch` SHALL return a result dict without raising — an unknown name yielding an error result rather than an exception.
 
-**Validates: Requirements 5.3, 7.1, 7.4**
+**Validates: Requirements 11.1, 11.2, 11.4**
 
-### Property 16: Unconfirmed availability is never the primary recommendation
+### Property 12: The agent loop always terminates
 
-*For any* candidate whose platform availability is empty or unconfirmed, that candidate SHALL be excluded from the primary recommendation.
+*For any* sequence of model turns, `AgentRuntime.send` SHALL return an `AgentReply` within the bounded number of tool-call rounds — either the model's final answer or a clear fallback message — and SHALL NOT loop unboundedly.
 
-**Validates: Requirements 7.5**
+**Validates: Requirements 11.5**
 
-### Property 17: Community review quality drives ranking
+### Property 13: Tavily rate-limit compliance
 
-*For any* set of candidates equally eligible on mood, time budget, and owned-platform constraints, the primary recommendation SHALL have the maximum community review score among them, and any candidate ordering SHALL be non-increasing in review score (candidates lacking review data ranked below any reviewed candidate).
-
-**Validates: Requirements 7.2**
-
-### Property 18: Primary reasoning includes a community review summary
-
-*For any* primary recommendation whose record has community review data, the `reasoning` SHALL include the review's sentiment summary; *for any* primary lacking review data, the reasoning SHALL indicate community review data is unavailable.
-
-**Validates: Requirements 7.3**
-
-### Property 19: Time budget constraint on recommendations
-
-*For any* recommendation generated by the Recommender, the recommended game's `estimated_playtime` SHALL be less than or equal to the user's `time_budget_minutes`.
-
-**Validates: Requirements 7.1**
-
-### Property 20: No repeat recommendations in recent history
-
-*For any* user with a non-empty recommendation history, the Recommender SHALL not produce a primary recommendation matching any game recommended in the most recent 5 sessions, unless the user explicitly requests a re-recommendation.
-
-**Validates: Requirements 8.3**
-
-### Property 21: Tavily rate-limit compliance
-
-*For any* sequence of Tavily calls (enrichment or autocomplete), TavilyService SHALL not exceed the free-tier limit (60 requests per minute); any call that would exceed the limit SHALL return empty results rather than calling the API.
+*For any* sequence of Tavily calls (enrichment, autocomplete, or web search), TavilyService SHALL not exceed the free-tier limit (60 requests per minute); any call that would exceed the limit SHALL return empty results rather than calling the API.
 
 **Validates: Requirements 5.4**
 
-### Property 22: Error messages never expose technical details
+### Property 14: Error messages never expose technical details
 
 *For any* exception raised by an external service (the Bedrock model, memory (DynamoDB), Tavily, or Gmail), the message shown to the user SHALL not contain stack traces, API keys, endpoint URLs, or internal error codes.
 

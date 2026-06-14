@@ -1,39 +1,17 @@
-"""Session models for conversation state and persisted session records.
+"""Persisted session record for personalization (Req 8.1).
 
-``SessionState`` is the in-memory state the orchestrator drives through the
-conversation phases; ``SessionData`` is the persisted record written to memory
-for personalization (Req 8.1).
-
-To respect the layered architecture (models never import the agent layer at
-runtime), ``MoodDimensions`` is referenced only under ``TYPE_CHECKING`` together
-with ``from __future__ import annotations``, so the annotation stays a string
-and no agent module is imported at runtime.
+``SessionData`` is the completed-session record written to memory after the agent
+makes a recommendation. It feeds the no-repeat logic and cross-session
+personalization (Req 8.2, 8.3). The agent now drives the conversation itself
+(there is no fixed mood/time phase machine), so ``mood`` is a free-text summary
+the agent supplies rather than a fixed set of numeric dimensions.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
 
 from models.recommendation import Recommendation
-
-if TYPE_CHECKING:
-    from agent.mood_interpreter import MoodDimensions
-
-
-@dataclass
-class SessionState:
-    """Mutable conversation state for a single user session."""
-
-    user_id: str = "anonymous"
-    current_phase: str = "mood_gathering"
-    """One of: mood_gathering, time_gathering, platform_setup, recommendation,
-    alternatives."""
-
-    mood: MoodDimensions | None = None
-    time_budget_minutes: int | None = None
-    primary_recommendation: Recommendation | None = None
-    alternatives: list[Recommendation] = field(default_factory=list)
 
 
 @dataclass
@@ -41,7 +19,9 @@ class SessionData:
     """Completed session persisted to memory for personalization (Req 8.1)."""
 
     user_id: str
-    mood: MoodDimensions
+    mood: str
+    """Free-text summary of the player's mood/context for this session."""
+
     time_budget_minutes: int
     recommendation: Recommendation
     alternatives: list[Recommendation] = field(default_factory=list)

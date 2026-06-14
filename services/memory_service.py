@@ -1,8 +1,8 @@
-"""Persistent store backed by AWS Bedrock AgentCore Memory.
+"""Persistent store backed by a DynamoDB memory client.
 
 The single store for the canonical ``GameRecord`` library, the user's
 ``Platform_List``, and completed sessions (Req 6, 8, 10.2). It is the only
-component that talks to the AgentCore memory client, which is injected via the
+component that talks to the memory client, which is injected via the
 constructor so the service stays testable.
 
 Two invariants shape this module:
@@ -18,7 +18,6 @@ Two invariants shape this module:
 
 from __future__ import annotations
 
-from dataclasses import asdict
 from datetime import date
 from typing import Any, Protocol
 
@@ -34,7 +33,7 @@ class MemoryClient(Protocol):
 
     Keyed documents (records, platform list) use ``get_value``/``put_value``;
     the append-only session log uses ``append_event``/``list_events``. The
-    concrete AgentCore client is injected at construction.
+    concrete DynamoDB client is injected at construction.
     """
 
     def get_value(self, user_id: str, key: str) -> dict[str, Any] | None:
@@ -55,15 +54,15 @@ class MemoryClient(Protocol):
 
 
 class MemoryService:
-    """Stores Game_Records, the Platform_List, and sessions in AgentCore Memory."""
+    """Stores Game_Records, the Platform_List, and sessions in DynamoDB."""
 
     RECORDS_KEY = "records"
     PLATFORMS_KEY = "platforms"
     SESSIONS_KEY = "sessions"
 
-    def __init__(self, agentcore_client: MemoryClient) -> None:
-        """Build the service around an injected AgentCore memory ``agentcore_client``."""
-        self._client = agentcore_client
+    def __init__(self, client: MemoryClient) -> None:
+        """Build the service around an injected memory ``client`` (DynamoDB-backed)."""
+        self._client = client
         self._available = True
         self._last_error: str | None = None
 
@@ -308,7 +307,7 @@ class MemoryService:
         """Serialize a completed session to the persisted schema (Req 8.1)."""
         return {
             "user_id": session.user_id,
-            "mood_dimensions": asdict(session.mood),
+            "mood": session.mood,
             "time_budget_minutes": session.time_budget_minutes,
             "recommendation": MemoryService._recommendation_to_dict(session.recommendation),
             "alternatives": [

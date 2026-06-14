@@ -2,7 +2,7 @@
 
 A ``RecordSource`` is an interchangeable origin of ``GameRecord``s (Gmail,
 manual entry). Defining the boundary as a ``Protocol`` lets the library
-assembly, recommender, and UI depend on the shape rather than any concrete
+assembly, the agent, and the UI depend on the shape rather than any concrete
 source, so adding or removing a source never ripples upward (Req 3.1).
 
 The contract is deliberately failure-tolerant: ``fetch_records`` must never

@@ -2,18 +2,17 @@
 
 Encodes three correctness properties from ``design.md``:
 
-* **Property 11** — Game_Record store round-trip (Validates: Requirements 5.2, 9.5)
-* **Property 12** — Platform_List CRUD round-trip (Validates: Requirements 6.1, 6.2, 6.3, 6.4)
-* **Property 13** — Session persistence round-trip (Validates: Requirements 8.1, 8.2)
+* **Property 7** — Game_Record store round-trip (Validates: Requirements 5.2, 9.5)
+* **Property 8** — Platform_List CRUD round-trip (Validates: Requirements 6.1, 6.2, 6.3, 6.4)
+* **Property 9** — Session persistence round-trip (Validates: Requirements 8.1, 8.2)
 
 The service is exercised against an in-memory fake :class:`MemoryClient`; no real
-AWS/AgentCore service is contacted.
+AWS/DynamoDB service is contacted.
 """
 
 from __future__ import annotations
 
 import copy
-from dataclasses import dataclass
 from typing import Any
 
 from hypothesis import given
@@ -27,20 +26,6 @@ from services.memory_service import MemoryService
 
 USER_ID = "test-user"
 MISSING_ID = "__definitely-not-a-real-platform-id__"
-
-
-@dataclass
-class MoodDimensions:
-    """Local stand-in for ``agent.mood_interpreter.MoodDimensions``.
-
-    ``MemoryService._session_to_dict`` calls ``dataclasses.asdict`` on the mood,
-    so the test's mood must be a dataclass instance with the four dimensions.
-    """
-
-    energy_level: float
-    stress_level: float
-    social_desire: float
-    challenge_appetite: float
 
 
 class FakeMemoryClient:
@@ -74,8 +59,6 @@ class FakeMemoryClient:
 
 _text = st.text(max_size=20)
 _nonempty_text = st.text(min_size=1, max_size=20)
-_finite_float = st.floats(allow_nan=False, allow_infinity=False, min_value=-1e6, max_value=1e6)
-
 _community_reviews = st.builds(
     CommunityReview,
     score=st.floats(min_value=0.0, max_value=10.0, allow_nan=False, allow_infinity=False),
@@ -109,18 +92,10 @@ _recommendations = st.builds(
     community_review=st.one_of(st.none(), _community_reviews),
 )
 
-_moods = st.builds(
-    MoodDimensions,
-    energy_level=_finite_float,
-    stress_level=_finite_float,
-    social_desire=_finite_float,
-    challenge_appetite=_finite_float,
-)
-
 _sessions = st.builds(
     SessionData,
     user_id=st.just(USER_ID),
-    mood=_moods,
+    mood=_text,
     time_budget_minutes=st.integers(min_value=0, max_value=100_000),
     recommendation=_recommendations,
     alternatives=st.lists(_recommendations, max_size=3),
@@ -154,12 +129,12 @@ def _dedup_first_wins(records: list[GameRecord]) -> list[GameRecord]:
     return result
 
 
-# --- Property 11: Game_Record store round-trip ---
+# --- Property 7: Game_Record store round-trip ---
 
 
 @given(records=st.lists(_game_records, max_size=8))
 def test_game_record_store_round_trip(records: list[GameRecord]) -> None:
-    """Property 11: stored records survive the round-trip, deduped, contract-only.
+    """Property 7: stored records survive the round-trip, deduped, contract-only.
 
     **Validates: Requirements 5.2, 9.5**
     """
@@ -186,7 +161,7 @@ def test_game_record_store_round_trip(records: list[GameRecord]) -> None:
     record=_game_records,
 )
 def test_upsert_record_adds_then_replaces(initial: list[GameRecord], record: GameRecord) -> None:
-    """Property 11: upsert_record adds a new record and replaces by dedup key (Req 9.5).
+    """Property 7: upsert_record adds a new record and replaces by dedup key (Req 9.5).
 
     **Validates: Requirements 5.2, 9.5**
     """
@@ -217,7 +192,7 @@ def test_upsert_record_adds_then_replaces(initial: list[GameRecord], record: Gam
     assert [r for r in after if r.dedup_key == record.dedup_key] == [replacement]
 
 
-# --- Property 12: Platform_List CRUD round-trip ---
+# --- Property 8: Platform_List CRUD round-trip ---
 
 
 @given(
@@ -225,7 +200,7 @@ def test_upsert_record_adds_then_replaces(initial: list[GameRecord], record: Gam
     new_name=_text,
 )
 def test_platform_list_crud_round_trip(platforms: list[OwnedPlatform], new_name: str) -> None:
-    """Property 12: add/get/update/remove round-trip with free-text names.
+    """Property 8: add/get/update/remove round-trip with free-text names.
 
     **Validates: Requirements 6.1, 6.2, 6.3, 6.4**
     """
@@ -253,7 +228,7 @@ def test_platform_list_crud_round_trip(platforms: list[OwnedPlatform], new_name:
     assert service.remove_platform(USER_ID, MISSING_ID) is False
 
 
-# --- Property 13: Session persistence round-trip ---
+# --- Property 9: Session persistence round-trip ---
 
 
 @given(
@@ -261,7 +236,7 @@ def test_platform_list_crud_round_trip(platforms: list[OwnedPlatform], new_name:
     limit=st.integers(min_value=1, max_value=10),
 )
 def test_session_persistence_round_trip(sessions: list[SessionData], limit: int) -> None:
-    """Property 13: stored sessions' primary recommendations round-trip newest-first.
+    """Property 9: stored sessions' primary recommendations round-trip newest-first.
 
     **Validates: Requirements 8.1, 8.2**
     """
