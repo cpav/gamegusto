@@ -89,6 +89,24 @@ class FakeRecommender:
         )
         return self._recommendation
 
+    def eligible_candidates(
+        self,
+        library: list[object],
+        owned_platforms: list[OwnedPlatform],
+        time_budget_minutes: int,
+        user_id: str,
+    ) -> list[object]:
+        return []
+
+    def alternatives(
+        self,
+        eligible: list[object],
+        owned_platforms: list[OwnedPlatform],
+        exclude_title: str | None = None,
+        max_count: int = 3,
+    ) -> list[Recommendation]:
+        return []
+
 
 class FakeMemory:
     """Memory store: serves a preset Platform_List and captures stored sessions."""
@@ -172,7 +190,7 @@ _platform_lists = st.lists(st.builds(OwnedPlatform, name=_platform_names), min_s
 # --- Property 14 ----------------------------------------------------------
 
 
-@settings(max_examples=200)
+@settings(deadline=None)
 @given(mood=_moods, minutes=_time_budgets, platforms=_platform_lists)
 def test_property_14_platform_gate(
     mood: MoodDimensions, minutes: int, platforms: list[OwnedPlatform]

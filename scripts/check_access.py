@@ -3,9 +3,9 @@
 Validates connectivity and configuration for the services GameGusto depends on
 and prints a clear PASS / FAIL / SKIPPED report:
 
-* Required services (AWS / Bedrock, Tavily) report PASS or FAIL.
-* Optional services (Xbox, Gmail) report SKIPPED when their environment
-  variables are unset, otherwise PASS or FAIL.
+* Required services (AWS / Bedrock, Tavily, DynamoDB) report PASS or FAIL.
+* Optional services (Gmail) report SKIPPED when their environment variables
+  are unset, otherwise PASS or FAIL.
 
 The script never crashes on a service failure and never echoes secret values:
 configuration is referenced by variable name only, and failures are reduced to
@@ -91,9 +91,9 @@ def check_aws(config: Config | None, config_error: str | None) -> CheckResult:
     try:
         sts = boto3.client("sts", region_name=config.aws_region, config=_BOTO_CONFIG)
         sts.get_caller_identity()
-        # Confirm the Bedrock agent runtime is reachable in the configured region.
+        # Confirm the Bedrock runtime is reachable in the configured region.
         boto3.client(
-            "bedrock-agent-runtime",
+            "bedrock-runtime",
             region_name=config.aws_region,
             config=_BOTO_CONFIG,
         )
@@ -126,26 +126,25 @@ def check_tavily(config: Config | None, config_error: str | None) -> CheckResult
     return CheckResult(service, Status.PASS, "API key accepted", required=True)
 
 
-def check_xbox(config: Config | None) -> CheckResult:
-    """Check optional Xbox credentials (skipped when unset)."""
-    service = "Xbox"
-    if config is not None:
-        enabled = config.xbox_enabled
-    else:
-        enabled = bool(os.environ.get("XBOX_CLIENT_ID") and os.environ.get("XBOX_CLIENT_SECRET"))
-    if not enabled:
+def check_dynamodb(config: Config | None, config_error: str | None) -> CheckResult:
+    """Check that the DynamoDB table is reachable and ACTIVE."""
+    service = "DynamoDB"
+    if config is None:
         return CheckResult(
             service,
-            Status.SKIPPED,
-            "XBOX_CLIENT_ID / XBOX_CLIENT_SECRET not set",
-            required=False,
+            Status.FAIL,
+            f"configuration incomplete ({config_error})",
+            required=True,
         )
-    return CheckResult(
-        service,
-        Status.PASS,
-        "credentials configured (OAuth verified at runtime)",
-        required=False,
-    )
+    try:
+        client = boto3.client("dynamodb", region_name=config.aws_region, config=_BOTO_CONFIG)
+        described = client.describe_table(TableName=config.dynamodb_table_name)
+        status = described["Table"]["TableStatus"]
+    except Exception as exc:  # noqa: BLE001 - any failure is reported, never raised
+        return CheckResult(service, Status.FAIL, _sanitize_failure(exc), required=True)
+    if status != "ACTIVE":
+        return CheckResult(service, Status.FAIL, f"table status is {status}", required=True)
+    return CheckResult(service, Status.PASS, f"table '{config.dynamodb_table_name}' ACTIVE", True)
 
 
 def check_gmail(config: Config | None) -> CheckResult:
@@ -191,7 +190,7 @@ def main() -> None:
     results = [
         check_aws(config, config_error),
         check_tavily(config, config_error),
-        check_xbox(config),
+        check_dynamodb(config, config_error),
         check_gmail(config),
     ]
     _print_report(results)

@@ -1,8 +1,8 @@
 """Library assembly across record sources.
 
 Coordinates the record sources into a single deduplicated, enriched library.
-``refresh`` walks the injected sources in precedence order (Xbox -> Gmail ->
-manual, ordered by the caller), merges their records with the user's existing
+``refresh`` walks the injected sources in precedence order (Gmail -> manual,
+ordered by the caller), merges their records with the user's existing
 stored library, dedups by :attr:`GameRecord.dedup_key` with earlier sources
 winning, enriches cache-first via Tavily, and persists the result to memory.
 
@@ -45,7 +45,7 @@ class LibraryService:
         existing = self._memory.get_records(user_id)
         seen = {r.dedup_key for r in existing}
         merged = list(existing)
-        for source in self._sources:  # Xbox -> Gmail -> manual
+        for source in self._sources:  # Gmail -> manual
             if not source.is_available():
                 continue  # skip; remaining sources still run (Req 3.6)
             for record in source.fetch_records():

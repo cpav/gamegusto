@@ -1,7 +1,7 @@
 """Canonical owned-game record contract (data contract v1.0.0).
 
 This module realizes the locked ``GameRecord`` schema documented in
-``docs/data-contract.md``. Every record source (Xbox, Gmail, manual) produces
+``docs/data-contract.md``. Every record source (Gmail, manual) produces
 records conforming to this contract, and every consumer (LibraryService,
 Recommender, MemoryService, UI) reads it. There are no per-source record types.
 """
@@ -12,9 +12,9 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Literal
 
-CONTRACT_VERSION = "1.0.0"
+CONTRACT_VERSION = "2.0.0"
 
-Source = Literal["xbox", "gmail", "manual", "enrichment"]
+Source = Literal["gmail", "manual", "enrichment"]
 
 
 @dataclass

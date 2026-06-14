@@ -1,6 +1,6 @@
 """The ``RecordSource`` protocol — the single seam every record origin implements.
 
-A ``RecordSource`` is an interchangeable origin of ``GameRecord``s (Xbox, Gmail,
+A ``RecordSource`` is an interchangeable origin of ``GameRecord``s (Gmail,
 manual entry). Defining the boundary as a ``Protocol`` lets the library
 assembly, recommender, and UI depend on the shape rather than any concrete
 source, so adding or removing a source never ripples upward (Req 3.1).
@@ -23,7 +23,7 @@ class RecordSource(Protocol):
     """An interchangeable origin of ``GameRecord``s (Req 3.1)."""
 
     name: str
-    """Source identifier: one of ``"xbox"``, ``"gmail"``, or ``"manual"``."""
+    """Source identifier: one of ``"gmail"`` or ``"manual"``."""
 
     def is_available(self) -> bool:
         """True when the source is configured/connected and reachable (Req 3.6)."""

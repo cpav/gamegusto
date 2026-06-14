@@ -91,6 +91,24 @@ class FakeRecommender:
         )
         return self._recommendation
 
+    def eligible_candidates(
+        self,
+        library: list[object],
+        owned_platforms: list[OwnedPlatform],
+        time_budget_minutes: int,
+        user_id: str,
+    ) -> list[object]:
+        return []
+
+    def alternatives(
+        self,
+        eligible: list[object],
+        owned_platforms: list[OwnedPlatform],
+        exclude_title: str | None = None,
+        max_count: int = 3,
+    ) -> list[Recommendation]:
+        return []
+
 
 class FakeMemory:
     """Memory store: serves a preset Platform_List and captures stored sessions."""

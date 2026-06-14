@@ -1,13 +1,13 @@
 # GameGusto Data Contract
 
-**Contract version:** `1.0.0`
+**Contract version:** `2.0.0`
 **Status:** Locked
-**Last updated:** 2025-06-09
+**Last updated:** 2026-06-14
 **Owns:** `models/game_record.py` (`GameRecord`, `CommunityReview`)
 
 > Satisfies Requirement 2 (Source Data Exploration and Data Contract Definition).
 > This document is the single source of truth for the canonical `GameRecord`
-> schema. Every Record_Source (Xbox, Gmail, manual) produces records conforming
+> schema. Every Record_Source (Gmail, manual) produces records conforming
 > to this contract, and every consumer (LibraryService, Recommender, MemoryService,
 > UI) reads it. There are no per-source record types.
 
@@ -17,14 +17,25 @@ Requirement 2.1 mandates that the `GameRecord` schema be **derived from a
 documented exploration of what each source actually exposes**, not from
 assumptions. This document records that exploration:
 
-- Section 3 — the real fields exposed by the **Xbox platform API**.
-- Section 4 — the **Gmail purchase-confirmation email** structure per supported
+- Section 3 — the **Gmail purchase-confirmation email** structure per supported
   retailer (Nintendo eShop, Microsoft Store).
-- Section 5 — the **Tavily** enrichment response fields.
+- Section 4 — the **Tavily** enrichment response fields.
 
 For every exposed field, the exploration records an explicit **include / exclude**
-decision (Req 2.4). Section 6 defines the normalized **dedup key** (Req 2.3) and
-Section 7 locks the versioned `GameRecord` contract (Req 2.2).
+decision (Req 2.4). Section 5 defines the normalized **dedup key** (Req 2.3) and
+Section 6 locks the versioned `GameRecord` contract (Req 2.2).
+
+### 1.1 Persistence (storage-agnostic)
+
+The contract describes the canonical in-memory `GameRecord` shape only; it is
+**storage-agnostic**. In production these records are **persisted in a DynamoDB
+table using a single-table design**, written and read through the
+`MemoryService` / `DynamoDBMemoryClient` boundary. DynamoDB does not accept
+native floating-point numbers, so the persistence layer performs
+`float`↔`Decimal` conversion for numeric fields (e.g. `community_review.score`)
+at the read/write boundary. That conversion is an implementation detail of the
+persistence layer and is **not part of this contract** — consumers always see
+the Python types declared in Section 6.
 
 ## 2. Exploration methodology and caveats
 
@@ -32,11 +43,6 @@ This is a deliberate discovery spike that *precedes* locking the contract. Field
 inventories below were assembled from the official/public documentation and the
 observable response shapes of each source:
 
-- **Xbox** — the Xbox Live / Microsoft profile + title-history surfaces reached
-  through the OAuth2 authorization-code flow (XBL3.0 tokenized calls). There is
-  no first-party "owned games" endpoint with a stable public contract, so the
-  fields below reflect the title-history/achievements surface that exposes owned
-  titles for an authenticated user.
 - **Gmail** — the Gmail REST API (`users.messages.list` / `users.messages.get`)
   under the `gmail.readonly` scope, inspecting real purchase-confirmation message
   headers and bodies from the two supported retailers.
@@ -47,43 +53,14 @@ Where a field's availability is unreliable, that is noted and the field is eithe
 excluded or made optional. The contract intentionally keeps required fields to the
 minimum every source can guarantee.
 
-## 3. Xbox platform API — exposed fields
-
-Source provenance value: `source = "xbox"` (Req 3.2).
-
-The authenticated title-history surface returns, per owned title, roughly the
-following fields:
-
-| Exposed field | Type (raw) | Description | Decision | Mapped to contract | Rationale |
-|---|---|---|---|---|---|
-| `titleId` | string | Stable Xbox title identifier | **Include** | `external_ids["xbox"]` | Useful for cross-referencing and future re-sync; kept under provenance-namespaced IDs. |
-| `name` | string | Display title of the game | **Include** | `title` | Primary key material; required by the contract. |
-| `devices` / `platforms` | list[string] | Devices the title runs on (e.g. `XboxSeriesX`, `PC`) | **Include** | `platforms` | The user owns the title on these; drives dedup and ownership. |
-| `displayImage` / `images` | list[object] | Box art / promo image URLs | **Exclude** | — | Presentation-only; not needed for recommendation logic. UI uses theme styling, not box art. |
-| `achievement.currentAchievements` | int | Achievements unlocked | **Exclude** | — | Engagement metric, not relevant to mood/time/platform matching. |
-| `achievement.totalGamerscore` | int | Gamerscore earned | **Exclude** | — | Same as above. |
-| `titleHistory.lastTimePlayed` | datetime | Last play timestamp | **Exclude** | — | Not part of the recommendation contract; no requirement consumes play recency. May be reconsidered in a future contract version if "recently played" personalization is added. |
-| `titleHistory.visible` | bool | Whether title shows on profile | **Exclude** | — | Profile presentation flag; irrelevant to ownership for our purposes. |
-| `detail.releaseDate` | datetime | Game release date | **Exclude** | — | Not a contract field; release date is not used by the recommender. Genre/playtime/review come from Tavily, not Xbox. |
-| `detail.description` | string | Marketing description | **Exclude** | — | Not used; Tavily provides enrichment text where needed. |
-| `pfn` (package family name) | string | Store package identifier | **Exclude** | — | Store-internal identifier with no consumer in this system. |
-| (no purchase timestamp) | — | Xbox title history does not reliably expose a *purchase* date | n/a | `purchase_date` left `None` | Purchase date is sourced from Gmail, not Xbox (Req 3.3). |
-
-**Xbox notes**
-
-- Xbox provides ownership + platform but **no** genre, playtime, or community
-  review — those are enrichment fields populated by Tavily (Req 5.1).
-- `purchase_date` is intentionally not populated from Xbox; it stays `None` for
-  Xbox-sourced records.
-
-## 4. Gmail purchase-confirmation emails — exposed fields
+## 3. Gmail purchase-confirmation emails — exposed fields
 
 Source provenance value: `source = "gmail"` (Req 3.3). Access is **read-only**
 (`gmail.readonly`, Req 4.1) and the search is **restricted to known retailer
 senders** (Req 3.3, 4.3). Per Req 4.2, only contract fields are retained; **raw
 email content is discarded** immediately after parsing.
 
-### 4.1 Gmail envelope fields (common)
+### 3.1 Gmail envelope fields (common)
 
 | Exposed field | Type (raw) | Description | Decision | Mapped to contract | Rationale |
 |---|---|---|---|---|---|
@@ -95,7 +72,7 @@ email content is discarded** immediately after parsing.
 | `snippet` | string | Body preview | **Exclude** | — | Raw content; never stored. |
 | `labelIds` | list[string] | Gmail labels | **Exclude** | — | Mailbox metadata; irrelevant. |
 
-### 4.2 Nintendo eShop confirmation (`sender_id = "nintendo"`)
+### 3.2 Nintendo eShop confirmation (`sender_id = "nintendo"`)
 
 Known sender: `no-reply@accounts.nintendo.com`.
 
@@ -108,7 +85,7 @@ Known sender: `no-reply@accounts.nintendo.com`.
 | Price / payment method | Body | **Exclude** | — | Financial data; explicitly out of scope and privacy-sensitive. |
 | Account email / name | Body / To header | **Exclude** | — | PII not required by the contract (Req 4.2). |
 
-### 4.3 Microsoft Store confirmation (`sender_id = "microsoft_store"`)
+### 3.3 Microsoft Store confirmation (`sender_id = "microsoft_store"`)
 
 Known sender: `account-security-noreply@accountprotection.microsoft.com`.
 
@@ -128,7 +105,7 @@ Known sender: `account-security-noreply@accountprotection.microsoft.com`.
 - Genre, playtime, platform availability, and community review are **not** present
   in purchase emails — they are enrichment fields (Tavily, Req 5.1).
 
-## 5. Tavily enrichment — exposed fields
+## 4. Tavily enrichment — exposed fields
 
 Tavily-populated fields carry `source = "enrichment"` when a record originates
 purely from enrichment; when enriching an existing source record, enrichment
@@ -161,7 +138,7 @@ Tavily returns a search envelope; we derive structured enrichment from it:
   score; only the derived, normalized review value populates
   `community_review.score`.
 
-## 6. Normalized dedup key (Req 2.3)
+## 5. Normalized dedup key (Req 2.3)
 
 Records from different sources must collapse to one when they describe the same
 owned game. The dedup key is the **normalized title + first platform**:
@@ -181,16 +158,16 @@ Normalization rules:
 - The `|` separator keeps title and platform segments unambiguous.
 
 Dedup precedence (consumed by `LibraryService.refresh`, Req 3.5): sources run in
-order **Xbox → Gmail → manual**; the first record seen for a given `dedup_key`
+order **Gmail → manual**; the first record seen for a given `dedup_key`
 wins and later duplicates are skipped. `MemoryService` applies the same key
 defensively so duplicates are never persisted.
 
-## 7. The locked `GameRecord` contract (Req 2.2)
+## 6. The locked `GameRecord` contract (Req 2.2)
 
-Realized in code as `models/game_record.py`. **Locked at version 1.0.0** by this
+Realized in code as `models/game_record.py`. **Locked at version 2.0.0** by this
 exploration task; all sources and consumers conform to it from this point on.
 
-### 7.1 `CommunityReview`
+### 6.1 `CommunityReview`
 
 | Field | Type | Required | Provenance | Notes |
 |---|---|---|---|---|
@@ -198,70 +175,77 @@ exploration task; all sources and consumers conform to it from this point on.
 | `sentiment_summary` | `str` | yes | enrichment | Short summary used in recommendation reasoning (Req 7.3). |
 | `source_count` | `int` | yes | enrichment | Number of aggregated sources. |
 
-### 7.2 `GameRecord`
+### 6.2 `GameRecord`
 
 | Field | Type | Required | Default | Provenance | Notes |
 |---|---|---|---|---|---|
-| `title` | `str` | **yes** | — | xbox, gmail, manual | Canonical display/key title. |
-| `platforms` | `list[str]` | no | `[]` | xbox, gmail, manual | Platforms the user owns the title on. First entry feeds the dedup key. |
-| `source` | `Literal["xbox","gmail","manual","enrichment"]` | no | `"manual"` | — | Provenance; the only permitted values (Req 2.2). |
+| `title` | `str` | **yes** | — | gmail, manual | Canonical display/key title. |
+| `platforms` | `list[str]` | no | `[]` | gmail, manual | Platforms the user owns the title on. First entry feeds the dedup key. |
+| `source` | `Literal["gmail","manual","enrichment"]` | no | `"manual"` | — | Provenance; the only permitted values (Req 2.2). |
 | `purchase_date` | `date \| None` | no | `None` | gmail | Set for Gmail imports (Req 3.3); `None` otherwise. |
 | `genre` | `str \| None` | no | `None` | enrichment | Tavily (Req 5.1). |
 | `estimated_playtime` | `int \| None` | no | `None` | enrichment | Minutes; Tavily (Req 5.1). Normalized to minutes to compare against the Time_Budget. |
 | `community_review` | `CommunityReview \| None` | no | `None` | enrichment | Tavily (Req 5.1, 7.2). |
 | `platform_availability` | `list[str]` | no | `[]` | enrichment | Platforms the game is available on (Req 5.3); drives the playable filter. |
-| `external_ids` | `dict[str, str]` | no | `{}` | xbox | Provenance-namespaced IDs, e.g. `{"xbox": "<titleId>"}`. |
+| `external_ids` | `dict[str, str]` | no | `{}` | — | Reserved/optional. Currently **unused** (formerly held the Xbox `titleId`); retained for future source-specific IDs. Defaults to `{}`. |
 
-### 7.3 Derived members
+### 6.3 Derived members
 
 | Member | Kind | Definition | Requirement |
 |---|---|---|---|
 | `dedup_key` | property → `str` | `f"{title.strip().casefold()}\|{platform.strip().casefold()}"` where `platform = platforms[0]` or `""` | 2.3, 3.5 |
 | `is_enriched()` | method → `bool` | `genre is not None and bool(platform_availability)` | 5.1 |
 
-### 7.4 Permitted `source` / provenance values (Req 2.2)
+### 6.4 Permitted `source` / provenance values (Req 2.2)
 
 | Value | Meaning |
 |---|---|
-| `xbox` | Produced by the Xbox platform API source. |
 | `gmail` | Extracted from a read-only Gmail purchase-confirmation email. |
 | `manual` | Entered by the user through the library UI. |
 | `enrichment` | Originated purely from enrichment (no owning source). |
 
-### 7.5 Field provenance matrix
+### 6.5 Field provenance matrix
 
 Which source can populate which field (✓ = populates, — = leaves at default):
 
-| Field | xbox | gmail | manual | enrichment |
-|---|---|---|---|---|
-| `title` | ✓ | ✓ | ✓ | — |
-| `platforms` | ✓ | ✓ | ✓ | — |
-| `source` | ✓ | ✓ | ✓ | ✓ |
-| `purchase_date` | — | ✓ | optional | — |
-| `genre` | — | — | optional | ✓ |
-| `estimated_playtime` | — | — | optional | ✓ |
-| `community_review` | — | — | — | ✓ |
-| `platform_availability` | — | — | — | ✓ |
-| `external_ids` | ✓ | — | — | — |
+| Field | gmail | manual | enrichment |
+|---|---|---|---|
+| `title` | ✓ | ✓ | — |
+| `platforms` | ✓ | ✓ | — |
+| `source` | ✓ | ✓ | ✓ |
+| `purchase_date` | ✓ | optional | — |
+| `genre` | — | optional | ✓ |
+| `estimated_playtime` | — | optional | ✓ |
+| `community_review` | — | — | ✓ |
+| `platform_availability` | — | — | ✓ |
+| `external_ids` | — | — | — |
 
-## 8. Versioning policy
+## 7. Versioning policy
 
 - This contract is **semantically versioned**. The current locked version is
-  **`1.0.0`**.
-- **Patch** (`1.0.x`): documentation clarifications, no schema change.
-- **Minor** (`1.x.0`): backward-compatible additions (new optional field, new
+  **`2.0.0`**.
+- **Patch** (`2.0.x`): documentation clarifications, no schema change.
+- **Minor** (`2.x.0`): backward-compatible additions (new optional field, new
   permitted `source` value, new retailer parser).
 - **Major** (`x.0.0`): breaking changes — removing/renaming a field, changing a
-  field's type or required-ness, or changing the dedup key algorithm.
-- Any change to the dedup key normalization (Section 6) or to `GameRecord`'s
+  field's type or required-ness, removing a permitted `source` value, or changing
+  the dedup key algorithm.
+- Any change to the dedup key normalization (Section 5) or to `GameRecord`'s
   field set/types is a contract change and must bump the version here and in
   `models/game_record.py`, and re-validate the model unit tests (task 2.4).
 
-## 9. Traceability
+### Version history
+
+| Version | Change | Type |
+|---|---|---|
+| `1.0.0` | Initial locked contract (sources: Xbox, Gmail, manual; enrichment via Tavily). | — |
+| `2.0.0` | Removed the `xbox` provenance value and the Xbox source exploration. Permitted `source` set narrowed to (`gmail`, `manual`, `enrichment`). This is a **MAJOR** bump because removing a permitted `source` value is a breaking change to the contract's permitted source set. | Major |
+
+## 8. Traceability
 
 | Requirement | Where satisfied |
 |---|---|
-| 2.1 — contract derived from documented source exploration | Sections 3, 4, 5 |
-| 2.2 — schema: names, types, required/optional, provenance values | Section 7 |
-| 2.3 — normalized title+platform dedup key | Section 6, 7.3 |
-| 2.4 — every exposed field has an include/exclude decision | Sections 3, 4, 5 (decision columns) |
+| 2.1 — contract derived from documented source exploration | Sections 3, 4 |
+| 2.2 — schema: names, types, required/optional, provenance values | Section 6 |
+| 2.3 — normalized title+platform dedup key | Section 5, 6.3 |
+| 2.4 — every exposed field has an include/exclude decision | Sections 3, 4 (decision columns) |
