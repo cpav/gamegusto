@@ -102,10 +102,10 @@ Every source produces and every consumer reads the single canonical `GameRecord`
     - Per-retailer parsers turn representative Nintendo eShop / Microsoft Store emails into correct `GameRecord`s; an unavailable source is skipped without error
     - _Requirements: 3.3, 3.6_
 
-- [~] 5. Checkpoint - services and sources
+- [x] 5. Checkpoint - services and sources
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 6. Agent layer
+- [x] 6. Agent layer
   - [x] 6.1 Implement MoodInterpreter
     - `agent/mood_interpreter.py`: `MoodDimensions`, `MoodInterpretation`, and `MoodInterpreter.interpret` mapping free text to dimensions and flagging clarification when unclear
     - _Requirements: 1.1, 1.2, 1.3_
@@ -114,25 +114,25 @@ Every source produces and every consumer reads the single canonical `GameRecord`
     - `agent/time_parser.py`: `TimeParser.parse` returning minutes for explicit hour/minute expressions and `needs_clarification` for vague input
     - _Requirements: 1.4, 1.5, 1.6_
 
-  - [~] 6.3 Write property tests for mood and time intake
+  - [x] 6.3 Write property tests for mood and time intake
     - **Property 1: Mood interpretation produces valid dimensions** (Validates: Requirements 1.2)
     - **Property 2: Uninterpretable mood triggers clarification** (Validates: Requirements 1.3)
     - **Property 3: Time budget parsing** (Validates: Requirements 1.5)
     - **Property 4: Ambiguous time triggers clarification** (Validates: Requirements 1.6)
 
-  - [~] 6.4 Implement LibraryService
+  - [x] 6.4 Implement LibraryService
     - `agent/library_service.py`: `refresh` runs sources in precedence order Xbox → Gmail → manual, dedups by `dedup_key` (earlier source wins), enriches cache-first via Tavily, persists to memory, and skips unavailable sources
     - _Requirements: 3.1, 3.5, 3.6, 5.1, 5.2, 8.1, 10.4_
 
-  - [~] 6.5 Write property tests for library assembly
+  - [x] 6.5 Write property tests for library assembly
     - **Property 5: Dedup is precedence-aware and key-normalized** (Validates: Requirements 2.3, 3.1, 3.5)
     - **Property 6: Source unavailability does not break assembly** (Validates: Requirements 3.6, 10.4)
 
-  - [~] 6.6 Implement Recommender
+  - [x] 6.6 Implement Recommender
     - `agent/recommender.py`: operate over `GameRecord`s — filter to owned platforms, exclude unconfirmed availability from the primary, rank by community review, respect the time budget, avoid repeats from the last 5 sessions, build reasoning including the review summary, and provide up to 3 alternatives
     - _Requirements: 5.3, 7.1, 7.2, 7.3, 7.4, 7.5, 8.3_
 
-  - [~] 6.7 Write property tests for the recommender
+  - [x] 6.7 Write property tests for the recommender
     - **Property 15: Every recommendation is playable on an owned platform** (Validates: Requirements 5.3, 7.1, 7.4)
     - **Property 16: Unconfirmed availability is never the primary recommendation** (Validates: Requirements 7.5)
     - **Property 17: Community review quality drives ranking** (Validates: Requirements 7.2)
@@ -140,11 +140,11 @@ Every source produces and every consumer reads the single canonical `GameRecord`
     - **Property 19: Time budget constraint on recommendations** (Validates: Requirements 7.1)
     - **Property 20: No repeat recommendations in recent history** (Validates: Requirements 8.3)
 
-  - [~] 6.8 Implement AgentOrchestrator
+  - [x] 6.8 Implement AgentOrchestrator
     - `agent/orchestrator.py`: `AgentResponse` (incl. `needs_platforms`); drive mood → time → platform gate → recommendation; an empty `Platform_List` blocks recommendation with `needs_platforms=True`
     - _Requirements: 1.1, 1.4, 6.5, 7.1, 10.2_
 
-  - [~] 6.9 Write property test for the platform gate
+  - [x] 6.9 Write property test for the platform gate
     - **Property 14: Empty platform list blocks recommendation**
     - **Validates: Requirements 6.5**
 
@@ -152,7 +152,7 @@ Every source produces and every consumer reads the single canonical `GameRecord`
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 8. Retro arcade Streamlit UI (Req 9)
-  - [~] 8.1 Implement the retro arcade theme
+  - [x] 8.1 Implement the retro arcade theme
     - `ui/theme.py`: retro arcade CSS (Press Start 2P font, neon/CRT styling), responsive media queries, idempotent single-injection per session
     - _Requirements: 9.1, 9.2_
 
