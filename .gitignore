@@ -1,6 +1,11 @@
 # Secrets and local environment
 .env
 
+# Local credential files (Gmail OAuth client + cached token, etc.)
+# Keep the directory and its README, ignore everything else inside.
+secrets/*
+!secrets/README.md
+
 # Virtual environment
 .venv/
 
@@ -19,3 +24,6 @@ __pycache__/
 .coverage.*
 coverage.xml
 htmlcov/
+
+# macOS
+.DS_Store
