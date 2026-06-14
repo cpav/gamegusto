@@ -1,0 +1,59 @@
+[project]
+name = "gamegusto"
+version = "0.1.0"
+description = "GameGusto - a mood-aware game recommendation agent."
+requires-python = ">=3.9"
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+extend-exclude = [".venv"]
+
+[tool.ruff.lint]
+# E/F: pycodestyle + pyflakes, I: isort, UP: pyupgrade, B: flake8-bugbear.
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+strict_equality = true
+exclude = ['^\.venv/']
+
+[[tool.mypy.overrides]]
+# Third-party packages without bundled type stubs.
+module = [
+    "boto3.*",
+    "botocore.*",
+    "tavily.*",
+    "googleapiclient.*",
+    "google.*",
+    "google_auth_oauthlib.*",
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "integration: tests that exercise real external services (need credentials)",
+    "e2e: end-to-end conversational flow tests",
+]
+# Default fast run excludes the slow layers and enforces the coverage floor.
+addopts = "-m \"not integration and not e2e\" --cov=. --cov-report=term-missing --cov-fail-under=85"
+
+[tool.coverage.run]
+omit = [
+    "tests/*",
+    ".venv/*",
+    "scripts/*",
+]

@@ -1,0 +1,8 @@
+# Runtime dependencies (pinned for reproducible installs)
+streamlit==1.40.1
+boto3==1.35.76
+requests==2.32.3
+tavily-python==0.5.0
+google-api-python-client==2.154.0
+google-auth==2.36.0
+google-auth-oauthlib==1.2.1
