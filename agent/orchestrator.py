@@ -122,9 +122,14 @@ class AgentOrchestrator:
         if not rec.game_title:  # sentinel: no candidate matched (Req 7.1)
             return self._respond(rec.reasoning)
 
+        eligible = self._recommender.eligible_candidates(library, platforms, time_budget, user_id)
+        alternatives = self._recommender.alternatives(
+            eligible, platforms, exclude_title=rec.game_title
+        )
         self.session.primary_recommendation = rec
+        self.session.alternatives = alternatives
         self._persist_session(user_id, mood, time_budget, rec)
-        return self._respond(rec.reasoning, recommendation=rec)
+        return self._respond(rec.reasoning, recommendation=rec, alternatives=alternatives)
 
     def _persist_session(
         self,
@@ -143,6 +148,7 @@ class AgentOrchestrator:
                 mood=mood,
                 time_budget_minutes=time_budget,
                 recommendation=recommendation,
+                alternatives=list(self.session.alternatives),
             ),
         )
 
@@ -150,12 +156,14 @@ class AgentOrchestrator:
         self,
         message: str,
         recommendation: Recommendation | None = None,
+        alternatives: list[Recommendation] | None = None,
         needs_platforms: bool = False,
     ) -> AgentResponse:
         """Build a response, reflecting stateless mode from memory health (Req 10.2)."""
         return AgentResponse(
             message=message,
             recommendation=recommendation,
+            alternatives=alternatives,
             is_stateless_mode=not self._memory.is_available,
             needs_platforms=needs_platforms,
         )

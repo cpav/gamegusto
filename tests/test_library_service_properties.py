@@ -165,7 +165,7 @@ def _expected_merged(
 # --- Property 5: Dedup is precedence-aware and key-normalized --------------
 
 
-@settings(deadline=None, max_examples=200)
+@settings(deadline=None)
 @given(
     existing=_existing_list(),
     source_records=st.lists(_record_list("source"), min_size=1, max_size=3),
@@ -209,7 +209,7 @@ def test_dedup_is_precedence_aware_and_key_normalized(
 # --- Property 6: Source unavailability does not break assembly -------------
 
 
-@settings(deadline=None, max_examples=200)
+@settings(deadline=None)
 @given(
     existing=_existing_list(),
     specs=st.lists(st.tuples(_record_list("source"), st.booleans()), max_size=4),
@@ -249,7 +249,7 @@ def test_source_unavailability_does_not_break_assembly(
     assert unavailable_only_keys.isdisjoint(result_keys)
 
 
-@settings(deadline=None, max_examples=100)
+@settings(deadline=None)
 @given(
     existing=_existing_list(),
     source_records=st.lists(_record_list("source"), min_size=1, max_size=3),

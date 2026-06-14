@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from services.bedrock_service import BedrockService, BedrockServiceError
+from services.bedrock_service import BedrockService
 
 #: Mood dimensions requested from the agent; each clamped to [0.0, 1.0].
 _DIMENSION_FIELDS = ("energy_level", "stress_level", "social_desire", "challenge_appetite")
@@ -70,11 +70,14 @@ class MoodInterpreter:
         self._bedrock = bedrock
 
     def interpret(self, text: str) -> MoodInterpretation:
-        """Map free-text mood to dimensions; flag clarification when unclear (Req 1.2, 1.3)."""
-        try:
-            data = self._bedrock.invoke_with_schema(self._prompt(text), _MOOD_SCHEMA)
-        except BedrockServiceError:
-            return self._clarify()
+        """Map free-text mood to dimensions; flag clarification when unclear (Req 1.2, 1.3).
+
+        The LLM is a hard dependency: a Bedrock failure propagates as
+        ``BedrockServiceError`` rather than degrading to a canned response. A
+        clarification is returned only when the model itself reports the mood is
+        uninterpretable or omits required dimensions (Req 1.3).
+        """
+        data = self._bedrock.invoke_with_schema(self._prompt(text), _MOOD_SCHEMA)
         return self._build(data)
 
     def _build(self, data: dict[str, Any]) -> MoodInterpretation:

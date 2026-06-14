@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
@@ -156,17 +157,16 @@ def test_uninterpretable_payload_triggers_clarification(payload: dict[str, Any])
     assert result.clarification_question.strip()
 
 
-def test_service_error_triggers_clarification_without_propagating() -> None:
-    """A sanitized service failure degrades to a clarification, never raising.
+def test_service_error_propagates_without_fallback() -> None:
+    """A Bedrock failure propagates as ``BedrockServiceError`` (LLM is required).
+
+    The interpreter no longer degrades to a canned clarification on transport
+    failure — the error surfaces so a misconfigured model is not masked.
 
     **Validates: Requirements 1.3**
     """
-    result = MoodInterpreter(_StubBedrock(error=True)).interpret("anything")
-
-    assert result.needs_clarification is True
-    assert result.mood_dimensions is None
-    assert result.clarification_question
-    assert result.clarification_question.strip()
+    with pytest.raises(BedrockServiceError):
+        MoodInterpreter(_StubBedrock(error=True)).interpret("anything")
 
 
 # Malformed/garbage payloads: empty, missing the interpretable flag, or carrying

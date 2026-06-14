@@ -2,18 +2,18 @@
 
 ## Overview
 
-GameGusto is a Python application that recommends the next video game to play based on the user's mood, available time, taste, and the platforms they own. A conversational agent on AWS Bedrock AgentCore interprets mood and time, draws on a personal library, and returns one strong recommendation with clear reasoning plus optional alternatives.
+GameGusto is a Python application that recommends the next video game to play based on the user's mood, available time, taste, and the platforms they own. A conversational agent interprets mood and time using a Claude Sonnet base model on Amazon Bedrock (via the Converse API with extended thinking), draws on a personal library, and returns one strong recommendation with clear reasoning plus up to three alternatives.
 
-The library is assembled from interchangeable **record sources** — the Xbox platform API, read-only Gmail purchase-confirmation emails (valuable for Nintendo, which has no history API), and manual UI entry — all normalized into a **single canonical `Game_Record`**. Every record is enriched via Tavily (genre, playtime, platform availability, community review) and persisted in AgentCore Memory so recommendations favor well-regarded titles playable on owned hardware and improve across sessions.
+The library is assembled from interchangeable **record sources** — read-only Gmail purchase-confirmation emails (valuable for Nintendo, which has no history API) and manual UI entry — all normalized into a **single canonical `Game_Record`**. Every record is enriched via Tavily (genre, playtime, platform availability, community review) and persisted in a DynamoDB-backed store so recommendations favor well-regarded titles playable on owned hardware and improve across sessions.
 
-The UI is built with Streamlit, styled as a retro arcade machine, and offers two views: a conversational **chat** view and a **library/dashboard** view for managing platforms and games.
+The application is wired by a top-level `bootstrap.build_app(config)` that constructs the whole graph. A headless conversational CLI (`cli.py`) is the current runnable entrypoint; the Streamlit UI described later is the planned interface. The UI is designed as a retro arcade machine offering two views: a conversational **chat** view and a **library/dashboard** view for managing platforms and games.
 
 ### Design Goals
 
 - **One data contract.** Every source produces, and every consumer reads, the same `Game_Record`. No per-source record types.
 - **Sources are interchangeable.** A common `RecordSource` protocol means adding or removing a source never changes the orchestrator, recommender, or UI.
 - **Least privilege & privacy.** Gmail is read-only, restricted to known retailers, and never persists raw email content.
-- **Graceful degradation.** Any single source, Tavily, or memory can fail without breaking the rest of the app.
+- **Graceful degradation where it makes sense.** The LLM is a hard dependency — mood interpretation and recommendation reasoning require the Bedrock model, and its failure surfaces as an error rather than silent degradation. Memory (DynamoDB) and Tavily, by contrast, degrade gracefully: the session runs statelessly when memory is down, and enrichment is skipped when Tavily is unavailable, without breaking the rest of the app.
 
 ## Architecture
 
@@ -47,15 +47,18 @@ The UI is built with Streamlit, styled as a retro arcade machine, and offers two
    ▼         ▼                                       ▼
 ┌─────────────────────────┐   ┌──────────────┐  ┌──────────────────┐
 │   RecordSource (proto)   │   │ TavilyService│  │  MemoryService   │
-│  ┌────────┬───────┬────┐ │   │  enrich +    │  │ (AgentCore Mem)  │
-│  │ Xbox   │ Gmail │Man-│ │   │  autocomplete│  │ Game_Records ·   │
-│  │ Source │Source │ual │ │   │  rate-limited│  │ platforms ·      │
-│  └────────┴───────┴────┘ │   │  cache-first │  │ sessions         │
+│  ┌───────────┬─────────┐ │   │  enrich +    │  │   (DynamoDB)     │
+│  │  Gmail    │ Manual  │ │   │  autocomplete│  │ Game_Records ·   │
+│  │  Source   │ Source  │ │   │  rate-limited│  │ platforms ·      │
+│  └───────────┴─────────┘ │   │  cache-first │  │ sessions         │
 └─────────────────────────┘   └──────────────┘  └──────────────────┘
         │          │                  │                  │
         ▼          ▼                  ▼                  ▼
-   Xbox API   Gmail API          Tavily API        Bedrock AgentCore
-              (readonly)         (free tier)
+     Gmail API   (manual)        Tavily API         DynamoDB
+    (readonly)    UI entry       (free tier)     (single table)
+
+The Recommender and MoodInterpreter additionally call Bedrock (Converse +
+thinking) for mood interpretation and recommendation reasoning.
 ```
 
 ### Layered Structure
@@ -63,9 +66,11 @@ The UI is built with Streamlit, styled as a retro arcade machine, and offers two
 Dependencies point one direction only: `ui → agent → services → models`. Lower layers never import higher ones.
 
 - **models** — the `Game_Record` contract and supporting dataclasses.
-- **services** — external boundaries: `MemoryService`, `TavilyService`, and the record sources (`XboxSource`, `GmailSource`, `ManualSource`).
+- **services** — external boundaries: `BedrockService`, `MemoryService` (backed by `DynamoDBMemoryClient`), `TavilyService`, and the record sources (`GmailSource`, `ManualSource`).
 - **agent** — `LibraryService`, `Recommender`, `MoodInterpreter`, `TimeParser`, `AgentOrchestrator`.
 - **ui** — chat view, library/dashboard view, theme.
+
+The whole graph is assembled by `bootstrap.build_app(config)`: it constructs the Bedrock service, Tavily service, the DynamoDB-backed `MemoryService`, the record sources in precedence order (Gmail then manual), `LibraryService`, `Recommender`, and `AgentOrchestrator`. The headless `cli.py` is the current runnable entrypoint; the Streamlit UI is built on the same wiring and is deferred.
 
 ### System Flow (recommendation)
 
@@ -75,17 +80,17 @@ Dependencies point one direction only: `ui → agent → services → models`. L
 4. Orchestrator loads the `Game_Record` library and `Platform_List` from memory.
 5. If `Platform_List` is empty, the agent prompts the user to add a platform before recommending (Req 6.5).
 6. `Recommender` filters candidates to those whose availability intersects owned platforms, drops games recommended in the last 5 sessions, ranks the rest by community review within the time budget.
-7. Primary recommendation renders in a retro card with reasoning that includes a community-review summary; alternatives in an expandable section.
-8. Session data is persisted to AgentCore Memory.
+7. Primary recommendation renders in a retro card with reasoning that includes a community-review summary; up to three alternatives in an expandable section.
+8. Session data (primary + alternatives) is persisted to the DynamoDB-backed store.
 
 ### Library Assembly Flow
 
 `LibraryService.refresh()` runs sources in precedence order and produces a clean, enriched, persisted library:
 
-1. Run sources in order **Xbox → Gmail → manual**; each returns `list[Game_Record]` (Req 3.1).
+1. Run sources in order **Gmail → manual**; each returns `list[Game_Record]` (Req 3.1).
 2. Deduplicate the combined stream against existing records by **normalized dedup key** (title + platform); earlier sources win (Req 3.5).
 3. Enrich any record missing metadata via Tavily, cache-first from memory (Req 5.1, 5.2).
-4. Persist the deduplicated, enriched records to AgentCore Memory (Req 3.5, 8.1).
+4. Persist the deduplicated, enriched records to the DynamoDB-backed store (Req 3.5, 8.1).
 5. A source that is unavailable or unconfigured is skipped; the remaining sources still run and manual entry is always available (Req 3.6, 10.4).
 
 ## Source Exploration & Data Contract
@@ -96,8 +101,7 @@ Requirement 2 calls for the `Game_Record` schema to be **derived from a document
 
 A discovery task probes each source and records its real fields in `docs/data-contract.md`:
 
-- **Xbox platform API** — title, platform/device, acquisition/play data, and any IDs returned per owned title.
-- **Gmail purchase emails** — per-retailer (Nintendo eShop, Microsoft Store) confirmation structure: how title, platform, and purchase date appear in subject/body.
+- **Gmail purchase emails** — per-retailer (Nintendo eShop, Microsoft Store) confirmation structure: how title, platform, and purchase date appear in subject/body. (The Microsoft Store parser may yield platform `"Xbox"`.)
 - **Tavily responses** — which enrichment fields are reliably available (genre, playtime, platform availability, review score/sentiment).
 
 For every field a source exposes, the doc records the field and the decision to **include or exclude** it from the contract (Req 2.4).
@@ -120,7 +124,7 @@ from models.game_record import GameRecord
 class RecordSource(Protocol):
     """An interchangeable origin of Game_Records (Req 3.1)."""
 
-    name: str  # "xbox" | "gmail" | "manual"
+    name: str  # "gmail" | "manual"
 
     def is_available(self) -> bool:
         """True when configured/connected and reachable (Req 3.6)."""
@@ -129,35 +133,6 @@ class RecordSource(Protocol):
     def fetch_records(self) -> list[GameRecord]:
         """Return records conforming to the Data_Contract. Never raises to the
         caller — on failure returns [] and reports unavailability (Req 10.4)."""
-        ...
-```
-
-#### XboxSource (Req 3.2)
-
-```python
-# services/sources/xbox_source.py
-from models.game_record import GameRecord
-
-class XboxSource:
-    """Owned games from the Xbox platform API (source='xbox')."""
-
-    name = "xbox"
-
-    def __init__(self, client_id: str, client_secret: str):
-        self._client_id = client_id
-        self._client_secret = client_secret
-        self._token: str | None = None
-
-    def is_available(self) -> bool:
-        return self._token is not None
-
-    def authenticate(self, auth_code: str) -> bool:
-        """OAuth2 authorization-code flow for the platform API."""
-        ...
-
-    def fetch_records(self) -> list[GameRecord]:
-        """Map every retrieved title to a GameRecord, populating all available
-        metadata with source='xbox' (Req 3.2)."""
         ...
 ```
 
@@ -188,25 +163,26 @@ class GmailSource:
     # registry, so unrelated mail is never matched (Req 3.3, 4.3). Extensible.
     KNOWN_SENDERS: dict[str, str] = {
         "nintendo": "no-reply@accounts.nintendo.com",
-        "microsoft_store": "account-security-noreply@accountprotection.microsoft.com",
+        "microsoft_store": "microsoft-noreply@microsoft.com",
     }
 
     def __init__(
         self,
-        credentials_path: str,
         token_path: str,
-        redirect_uri: str,
         parser_registry: dict[str, EmailParser] | None = None,
     ):
-        self._credentials_path = credentials_path
+        # The source only needs the cached read-only token; the client-secrets
+        # file is used once by scripts/gmail_authorize.py to mint it.
         self._token_path = token_path
-        self._redirect_uri = redirect_uri
         self._parsers = parser_registry or self._default_parsers()
         self._service = None  # lazily-built googleapiclient resource
-        self._available = False
 
     def is_available(self) -> bool:
-        return self._available
+        # Lazily authenticate so the assembly's availability gate reflects real
+        # connectability rather than whether a fetch has already run.
+        if self._service is None:
+            self.authenticate()
+        return self._service is not None
 
     def authenticate(self) -> bool:
         """Run the read-only OAuth flow (gmail.readonly) and cache the token (Req 4.1)."""
@@ -251,14 +227,15 @@ class ManualSource:
 
     name = "manual"
 
-    def __init__(self, memory: "MemoryService"):
+    def __init__(self, memory: "MemoryService", user_id: str):
         self._memory = memory
+        self._user_id = user_id
 
     def is_available(self) -> bool:
         return True   # manual entry is always available (Req 3.6)
 
     def fetch_records(self) -> list[GameRecord]:
-        """Return user-entered records staged in memory."""
+        """Return user-entered records (source='manual') staged in memory."""
         ...
 ```
 
@@ -276,7 +253,7 @@ from services.memory_service import MemoryService
 class LibraryService:
     def __init__(
         self,
-        sources: list[RecordSource],      # in precedence order: Xbox, Gmail, manual
+        sources: list[RecordSource],      # in precedence order: Gmail, manual
         tavily: TavilyService,
         memory: MemoryService,
     ):
@@ -290,7 +267,7 @@ class LibraryService:
         seen = {r.dedup_key for r in existing}
         merged = list(existing)
 
-        for source in self._sources:                  # Xbox → Gmail → manual
+        for source in self._sources:                  # Gmail → manual
             if not source.is_available():
                 continue                               # skip; others continue (Req 3.6)
             for record in source.fetch_records():
@@ -368,7 +345,7 @@ class TavilyService:
 
 ### MemoryService (`services/memory_service.py`)
 
-The single store for `Game_Records`, the `Platform_List`, and sessions in AgentCore Memory (Req 6, 8, 10.2).
+The single store for `Game_Records`, the `Platform_List`, and sessions (Req 6, 8, 10.2). `MemoryService` is unchanged from its original design: it depends only on a small `MemoryClient` protocol (`get_value`/`put_value` for keyed documents, `append_event`/`list_events` for the session log) and is injected with a concrete client at construction. The concrete client is now `DynamoDBMemoryClient` (see below).
 
 ```python
 # services/memory_service.py
@@ -378,8 +355,8 @@ from models.session import SessionData
 from models.recommendation import Recommendation
 
 class MemoryService:
-    def __init__(self, agentcore_client):
-        self._client = agentcore_client
+    def __init__(self, client):           # a MemoryClient (e.g. DynamoDBMemoryClient)
+        self._client = client
         self._available = True
 
     # --- Game_Records (single store for ALL sources + UI) ---
@@ -405,6 +382,93 @@ class MemoryService:
     @property
     def is_available(self) -> bool:
         return self._available
+```
+
+### DynamoDBMemoryClient (`services/dynamodb_memory_client.py`)
+
+The concrete `MemoryClient` behind `MemoryService`, backing all persistence with a single DynamoDB table. The manual-entry UI path, the Gmail import, and the agent all read and write the same store (Req 6, 8, 10.2).
+
+Single-table design, keyed per user:
+
+- `PK = USER#<user_id>`
+- `SK = DOC#<key>` — keyed documents (e.g. the records library and the platform list), read/written via `get_value` / `put_value`.
+- `SK = EVENT#sessions#<ts>#<id>` — the append-only session log, written via `append_event` and read newest-first via `list_events`. The timestamp + uuid suffix keeps events chronologically sortable and collision-free.
+
+DynamoDB's document API rejects `float` and requires `Decimal`, so values are converted to `Decimal` on write and back to `int`/`float` on read **at this boundary only** — callers keep working with plain Python types.
+
+```python
+# services/dynamodb_memory_client.py
+from typing import Any
+
+class DynamoDBMemoryClient:
+    """Stores GameGusto memory in one DynamoDB table (single-table design).
+
+    Implements the MemoryClient protocol. A boto3 Table resource may be injected
+    for testing; otherwise one is created lazily for table_name in region_name."""
+
+    def __init__(self, table_name: str, region_name: str | None = None, table: Any | None = None):
+        ...
+
+    def get_value(self, user_id: str, key: str) -> dict[str, Any] | None:
+        """Read the DOC#<key> document for the user, Decimal -> int/float."""
+        ...
+
+    def put_value(self, user_id: str, key: str, value: dict[str, Any]) -> None:
+        """Write the DOC#<key> document, float -> Decimal."""
+        ...
+
+    def append_event(self, user_id: str, key: str, event: dict[str, Any]) -> None:
+        """Append to the EVENT#<key>#<ts>#<id> log (sortable, newest-first)."""
+        ...
+
+    def list_events(self, user_id: str, key: str, limit: int) -> list[dict[str, Any]]:
+        """Return up to `limit` most-recent events for the key, newest first."""
+        ...
+```
+
+### BedrockService (`services/bedrock_service.py`)
+
+The boundary to the Claude Sonnet **base model** on Amazon Bedrock. It uses the Bedrock Runtime **Converse API** with **extended thinking** enabled, so the model reasons before answering. It is built from `Config` (`bedrock_model_id` + `bedrock_reasoning_budget_tokens`) and calls `bedrock-runtime`'s `converse`, passing `additionalModelRequestFields={"thinking": {"type": "enabled", "budget_tokens": N}}`.
+
+Two invocation styles are exposed: `invoke_with_schema` (augments the prompt to request a JSON object and parses the first valid object out of the reply) used by `MoodInterpreter`, and `invoke_conversational` (free-text reply) used by `Recommender`. The LLM is a **hard dependency**: any transport failure, missing answer text, or unparseable JSON raises `BedrockServiceError` with a sanitized message — there is **no fallback** to mock or deterministic output.
+
+```python
+# services/bedrock_service.py
+from typing import Any
+from config import Config
+
+class BedrockServiceError(RuntimeError):
+    """Raised when a Bedrock invocation fails; message is already sanitized."""
+
+class BedrockService:
+    """Invokes a Bedrock base model via Converse with extended thinking."""
+
+    def __init__(self, config: Config, client: Any | None = None):
+        self._model_id = config.bedrock_model_id
+        self._reasoning_budget = config.bedrock_reasoning_budget_tokens
+        # defaults to a boto3 "bedrock-runtime" client for config.aws_region
+        ...
+
+    def invoke_with_schema(self, prompt: str, schema: dict[str, Any]) -> dict[str, Any]:
+        """Converse, then parse the reply into a dict matching `schema`.
+        Raises BedrockServiceError on failure or when no JSON object is present."""
+        ...
+
+    def invoke_conversational(self, prompt: str, session_id: str) -> str:
+        """Return the model's free-text response. Raises BedrockServiceError on failure."""
+        ...
+
+    def _converse(self, prompt: str) -> str:
+        """Call Converse with extended thinking; return the answer text."""
+        response = self._client.converse(
+            modelId=self._model_id,
+            messages=[{"role": "user", "content": [{"text": prompt}]}],
+            inferenceConfig={"maxTokens": self._reasoning_budget + ANSWER_TOKEN_HEADROOM},
+            additionalModelRequestFields={
+                "thinking": {"type": "enabled", "budget_tokens": self._reasoning_budget}
+            },
+        )
+        return self._extract_text(response)   # ignores thinking blocks; needs answer text
 ```
 
 ### MoodInterpreter & TimeParser (`agent/`)
@@ -433,7 +497,10 @@ class MoodInterpreter:
 
     def interpret(self, text: str) -> MoodInterpretation:
         """Map free-text mood to dimensions; flag clarification when unclear
-        (Req 1.2, 1.3)."""
+        (Req 1.2, 1.3). The LLM is a hard dependency: a Bedrock failure
+        propagates as BedrockServiceError rather than degrading to a canned
+        response. A clarification is returned only when the model itself reports
+        the mood uninterpretable (or omits required dimensions)."""
         ...
 ```
 
@@ -473,7 +540,7 @@ class TimeParser:
 
 ### Recommender (`agent/recommender.py`)
 
-Operates entirely over `Game_Records`: filter to owned platforms, rank by review, respect time budget, avoid repeats, build reasoning with a review summary (Req 5.3, 7).
+Operates entirely over `Game_Records`: filter to owned platforms, rank by review, respect time budget, avoid repeats, build reasoning with a review summary (Req 5.3, 7). Eligible-candidate selection is exposed publicly (`eligible_candidates`) so the orchestrator can derive alternatives from the same ranked set used to pick the primary.
 
 ```python
 # agent/recommender.py
@@ -497,24 +564,48 @@ class Recommender:
         owned_platforms: list[OwnedPlatform],
         user_id: str,
     ) -> Recommendation:
-        """One primary recommendation, playable + within budget + well-reviewed."""
-        recent = {r.game_title for r in self._memory.get_recent_recommendations(user_id, 5)}
-        owned = {p.name.casefold() for p in owned_platforms}
+        """One primary recommendation, playable + within budget + well-reviewed.
+        Returns an empty sentinel (blank game_title) when nothing matches."""
+        eligible = self.eligible_candidates(library, owned_platforms, time_budget_minutes, user_id)
+        if not eligible:
+            return self._no_recommendation()
+        primary_record = self._select_primary(eligible)            # top review score (Req 7.2)
+        rec = self._to_recommendation(primary_record)
+        rec.reasoning = self._build_reasoning(
+            primary_record, mood, time_budget_minutes, owned_platforms, user_id
+        )
+        return rec
 
+    def eligible_candidates(
+        self,
+        library: list[GameRecord],
+        owned_platforms: list[OwnedPlatform],
+        time_budget_minutes: int,
+        user_id: str,
+    ) -> list[GameRecord]:
+        """Filter the library to eligible candidates, ranked by review (Req 7.1, 7.2, 8.3).
+        Public so the orchestrator can derive alternatives from the same set."""
+        recent = {r.game_title for r in self._memory.get_recent_recommendations(user_id, 5)}
+        owned = self._owned_set(owned_platforms)
         eligible = [
             g for g in library
-            if g.game_title not in recent                      # no-repeat (Req 8.3)
+            if g.title not in recent                           # no-repeat (Req 8.3)
             and self._is_playable(g, owned)                    # owned platform (Req 5.3, 7.1)
             and g.estimated_playtime is not None
             and g.estimated_playtime <= time_budget_minutes    # time budget (Req 7.1)
         ]
         eligible.sort(key=self._review_score, reverse=True)    # rank by review (Req 7.2)
-        primary = self._select_primary(eligible, mood)
-        primary.reasoning = self._build_reasoning(primary, mood, time_budget_minutes, owned_platforms)
-        return primary
+        return eligible
 
-    def alternatives(self, context, owned_platforms, max_count: int = 3) -> list[Recommendation]:
-        """Up to 3 alternatives, each playable on an owned platform (Req 7.4)."""
+    def alternatives(
+        self,
+        eligible: list[GameRecord],
+        owned_platforms: list[OwnedPlatform],
+        exclude_title: str | None = None,
+        max_count: int = 3,
+    ) -> list[Recommendation]:
+        """Up to 3 alternatives, each playable on an owned platform, ranked by
+        review, excluding `exclude_title` (typically the primary) (Req 7.4)."""
         ...
 
     @staticmethod
@@ -530,15 +621,20 @@ class Recommender:
         """Rank key; missing review sorts below any reviewed record (Req 7.2)."""
         return g.community_review.score if g.community_review else -1.0
 
-    def _build_reasoning(self, g, mood, minutes, owned) -> str:
-        """Reasoning includes the community-review summary, or notes it is
-        unavailable (Req 7.3, 7.5)."""
-        ...
+    def _build_reasoning(self, record, mood, minutes, owned_platforms, user_id) -> str:
+        """Compose a deterministic factual core (which ALWAYS includes the
+        community-review summary, or notes it is unavailable — Req 7.3, 7.5,
+        plus the time budget and playable owned platforms) PLUS a model-generated
+        narrative. The LLM is a hard dependency: a Bedrock failure propagates as
+        BedrockServiceError rather than silently degrading to deterministic-only."""
+        base = self._deterministic_reasoning(record, mood, minutes, owned_platforms)
+        narrative = self._bedrock.invoke_conversational(self._reasoning_prompt(base), user_id)
+        return f"{base} {narrative.strip()}".strip()
 ```
 
 ### AgentOrchestrator (`agent/orchestrator.py`)
 
-Drives the conversation: mood → time → platform gate → recommendation → alternatives (Req 1, 6.5, 7).
+Drives the conversation: mood → time → platform gate → recommendation → alternatives (Req 1, 6.5, 7). After selecting the primary, it derives up to 3 alternatives from the same eligible set (`recommender.eligible_candidates(...)` then `recommender.alternatives(...)`, excluding the primary title) and persists both the primary and the alternatives in the session.
 
 ```python
 # agent/orchestrator.py
@@ -604,8 +700,19 @@ class AgentOrchestrator:
             owned_platforms=platforms,
             user_id=user_id,
         )
+        if not rec.game_title:                          # sentinel: no candidate matched
+            return AgentResponse(message=rec.reasoning)
+        # Derive alternatives from the same eligible, review-ranked set (Req 7.4).
+        eligible = self._recommender.eligible_candidates(
+            library, platforms, self.session.time_budget_minutes, user_id
+        )
+        alternatives = self._recommender.alternatives(
+            eligible, platforms, exclude_title=rec.game_title
+        )
         self.session.primary_recommendation = rec
-        return AgentResponse(message=rec.reasoning, recommendation=rec)
+        self.session.alternatives = alternatives
+        self._persist_session(user_id, rec)             # persists primary + alternatives (Req 8.1)
+        return AgentResponse(message=rec.reasoning, recommendation=rec, alternatives=alternatives)
 ```
 
 ### Streamlit UI (`ui/`)
@@ -764,11 +871,10 @@ def _render_history(memory, user_id):
 import streamlit as st
 
 def render_sidebar() -> str:
-    """Connect Xbox, connect Gmail + import (show count), switch views."""
+    """Connect Gmail + import (show count), switch views."""
     with st.sidebar:
         st.header("GameGusto")
         view = st.radio("View", ["chat", "library"], horizontal=True)
-        _render_xbox_connect()
         _render_gmail_connect_and_import()        # show imported count (Req 9.6)
     return view
 
@@ -793,7 +899,7 @@ def _render_gmail_connect_and_import():
 
 ### The Unified Contract: `Game_Record`
 
-One canonical record, produced by every source and read by every consumer. This replaces the previous `GameMetadata` / `GameHistoryEntry` / `ExtractedGameRecord` proliferation. **Finalized by the exploration task (Req 2).**
+One canonical record, produced by every source and read by every consumer. This replaces the previous `GameMetadata` / `GameHistoryEntry` / `ExtractedGameRecord` proliferation. **Finalized by the exploration task (Req 2); contract version 2.0.0.**
 
 ```python
 # models/game_record.py
@@ -801,7 +907,8 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Literal
 
-Source = Literal["xbox", "gmail", "manual", "enrichment"]
+# Data_Contract v2.0.0 — provenance values.
+Source = Literal["gmail", "manual", "enrichment"]
 
 @dataclass
 class CommunityReview:
@@ -825,7 +932,7 @@ class GameRecord:
     estimated_playtime: int | None = None                # minutes; enrichment (Req 5.1)
     community_review: CommunityReview | None = None      # enrichment (Req 5.1, 7.2)
     platform_availability: list[str] = field(default_factory=list)  # enrichment (Req 5.3)
-    external_ids: dict[str, str] = field(default_factory=dict)      # e.g. {"xbox": "..."}
+    external_ids: dict[str, str] = field(default_factory=dict)      # e.g. {"eshop": "..."}
 
     @property
     def dedup_key(self) -> str:
@@ -901,9 +1008,9 @@ class SessionData:
     user_feedback: str | None = None
 ```
 
-### AgentCore Memory Schema
+### DynamoDB Memory Schema
 
-A single store keyed by user, holding `Game_Records`, the `Platform_List`, and sessions.
+A single DynamoDB table keyed by user (`PK = USER#<user_id>`), holding `Game_Records`, the `Platform_List`, and sessions. Keyed documents live under `SK = DOC#<key>`; the session log is appended under `SK = EVENT#sessions#<ts>#<id>`. The logical shapes are:
 
 ```python
 # Per user: the canonical library (every source + manual UI write here)
@@ -955,11 +1062,11 @@ For Gmail-sourced records, only the contract fields (title, platform, purchase_d
 
 | Failure | Behavior | User message |
 |---|---|---|
-| AgentCore Memory unavailable | Operate statelessly for the session; no persistence/personalization (Req 10.2) | "I'm running without memory right now — recommendations won't be personalized." |
+| Memory (DynamoDB) unavailable | Operate statelessly for the session; no persistence/personalization (Req 10.2) | "I'm running without memory right now — recommendations won't be personalized." |
+| Bedrock LLM fails (hard dependency) | Mood interpretation / reasoning cannot proceed; raise `BedrockServiceError` (sanitized). No fallback (Req 10.1) | "The recommendation engine is temporarily unavailable. Please try again." |
 | Tavily unavailable | Recommend from existing records + input + platforms; mark availability/ratings unverified (Req 10.3) | "I couldn't verify platform availability and ratings — recommending from what I know." |
 | Tavily rate limit reached | Return empty enrichment/autocomplete rather than calling the API (Req 5.4) | Autocomplete silently stops; enrichment degrades as above. |
-| Xbox source fails | Skip Xbox; continue on Gmail + manual (Req 3.6, 10.4) | "Couldn't connect to Xbox. Your other games are unaffected." |
-| Gmail source fails / not connected | Skip the import; continue on Xbox + manual; manual always available (Req 3.6, 10.4) | "Couldn't read your Gmail purchases right now. The rest of the app still works." |
+| Gmail source fails / not connected | Skip the import; continue on manual; manual always available (Req 3.6, 10.4) | "Couldn't read your Gmail purchases right now. The rest of the app still works." |
 | Empty Platform_List | Block recommendation; prompt to add a platform (Req 6.5) | "Tell me which platforms you own before I recommend." |
 
 ### Error Sanitization
@@ -970,8 +1077,8 @@ class ErrorHandler:
     GENERIC_MESSAGES = {
         "memory_unavailable": "Personalization is temporarily limited. Recommendations still work.",
         "tavily_unavailable": "Game lookup is temporarily unavailable. Using available information.",
-        "xbox_unavailable": "Couldn't connect to Xbox. Your other games are unaffected.",
         "gmail_unavailable": "Couldn't read your Gmail purchases right now. The rest of the app still works.",
+        "llm_unavailable": "The recommendation engine is temporarily unavailable. Please try again.",
         "unknown": "Something went wrong. Let's try again.",
     }
 
@@ -989,26 +1096,26 @@ class ErrorHandler:
 gamegusto/
 ├── docs/
 │   └── data-contract.md        # exploration output + locked Game_Record contract (Req 2)
-├── ui/
+├── ui/                         # planned Streamlit UI (deferred)
 │   ├── app.py                  # entry point; theme + view switch
 │   ├── theme.py                # retro arcade theme / CSS
 │   ├── chat_view.py            # chat + recommendation card (Req 9.3)
 │   ├── library_view.py         # platforms, games, history, add/edit (Req 9.4, 9.5)
-│   └── sidebar.py              # connect Xbox/Gmail + import + view switch (Req 9.6)
+│   └── sidebar.py              # connect Gmail + import + view switch (Req 9.6)
 ├── agent/
-│   ├── orchestrator.py         # conversation flow + platform gating
+│   ├── orchestrator.py         # conversation flow + platform gating + alternatives
 │   ├── library_service.py      # source assembly: precedence, dedup, enrich, persist
 │   ├── recommender.py          # filter, rank, time budget, no-repeat, reasoning
-│   ├── mood_interpreter.py     # mood → dimensions
+│   ├── mood_interpreter.py     # mood → dimensions (via Bedrock)
 │   └── time_parser.py          # time → minutes
 ├── services/
-│   ├── bedrock_service.py      # AgentCore LLM client
-│   ├── memory_service.py       # Game_Records + Platform_List + sessions
+│   ├── bedrock_service.py      # Bedrock Converse + extended thinking (base model)
+│   ├── memory_service.py       # Game_Records + Platform_List + sessions (MemoryClient)
+│   ├── dynamodb_memory_client.py # DynamoDB single-table MemoryClient
 │   ├── tavily_service.py       # enrichment + autocomplete, rate-limited
 │   ├── error_handler.py        # sanitization
 │   └── sources/
 │       ├── base.py             # RecordSource protocol
-│       ├── xbox_source.py      # source='xbox'
 │       ├── gmail_source.py     # source='gmail' (read-only, known senders)
 │       └── manual_source.py    # source='manual'
 ├── models/
@@ -1017,6 +1124,8 @@ gamegusto/
 │   ├── recommendation.py       # Recommendation (display)
 │   └── session.py              # SessionState + SessionData
 ├── tests/                      # unit + property + integration + e2e
+├── bootstrap.py                # build_app(config): wires the whole graph
+├── cli.py                      # headless conversational entrypoint (current runnable app)
 ├── config.py                   # environment configuration
 ├── requirements.txt
 ├── requirements-dev.txt
@@ -1029,15 +1138,15 @@ All credentials load from environment variables via `config.py`; secrets are nev
 
 | Variable | Purpose | Required |
 |---|---|---|
-| `AWS_REGION` | AWS region for Bedrock AgentCore | Yes |
-| `BEDROCK_AGENT_ID` / `BEDROCK_AGENT_ALIAS_ID` | AgentCore agent + memory binding | Yes |
+| `AWS_REGION` | AWS region for Bedrock + DynamoDB | Yes |
+| `BEDROCK_MODEL_ID` | Bedrock base-model id or cross-Region inference-profile id (Claude Sonnet) for the Converse API | Yes |
+| `BEDROCK_REASONING_BUDGET_TOKENS` | Extended-thinking token budget for Converse | Optional (defaults applied) |
 | `TAVILY_API_KEY` | Tavily enrichment/autocomplete | Yes |
-| `XBOX_CLIENT_ID` / `XBOX_CLIENT_SECRET` | Xbox source OAuth client | Optional (Xbox) |
-| `GMAIL_CREDENTIALS_PATH` | Gmail OAuth client-secrets JSON | Optional (Gmail) |
-| `GMAIL_TOKEN_PATH` | Cached read-only Gmail token path | Optional (Gmail) |
-| `GMAIL_REDIRECT_URI` | OAuth redirect URI for Gmail consent | Optional (Gmail) |
+| `DYNAMODB_TABLE_NAME` | DynamoDB table backing the memory store | Yes |
+| `GMAIL_CREDENTIALS_PATH` | OAuth client-secrets JSON (used once by `scripts/gmail_authorize.py`) | Optional (Gmail) |
+| `GMAIL_TOKEN_PATH` | Cached read-only Gmail token path (what the runtime source needs) | Optional (Gmail) |
 
-Xbox and Gmail are **optional**: if their variables are unset, the corresponding source is not constructed and `LibraryService` simply skips it — every other source and feature keeps working (Req 3.6).
+Gmail is **optional**: if its variables are unset, the Gmail source is not constructed and `LibraryService` simply skips it — every other source and feature keeps working (Req 3.6).
 
 ## Testing Strategy
 
@@ -1056,10 +1165,10 @@ Layered per the project's testing-strategy steering: fast unit/property tests ev
 Map directly to the Correctness Properties below (P1–P21). Examples: dedup correctness, every recommendation playable on an owned platform, review-driven ranking monotonicity, time-budget constraint, no-repeat, rate-limit compliance, Game_Record/Platform_List round-trips, Gmail scope/privacy/known-sender, error sanitization.
 
 ### Integration Tests (`@pytest.mark.integration`)
-- **Xbox API:** OAuth + owned-title retrieval mapped to `GameRecord`.
+- **Bedrock Converse:** the base model returns parseable JSON (mood schema) and free-text reasoning with extended thinking enabled.
 - **Tavily API:** enrichment returns parseable genre/playtime/availability/review.
 - **Gmail API:** read-only OAuth + restricted query retrieves and parses representative purchase emails (needs a test mailbox).
-- **AgentCore Memory:** store/retrieve cycle for records, platform list, and sessions.
+- **DynamoDB memory:** store/retrieve cycle for records, platform list, and sessions (single-table keys; Decimal/float round-trip).
 
 ### End-to-End Tests (`@pytest.mark.e2e`)
 - Full mood → time → platform gate → recommendation → alternatives flow, with services mocked at the network edge.
@@ -1094,7 +1203,7 @@ Map directly to the Correctness Properties below (P1–P21). Examples: dedup cor
 
 ### Property 5: Dedup is precedence-aware and key-normalized
 
-*For any* set of Game_Records drawn from multiple sources with overlapping titles/platforms, the assembled library SHALL contain no two records with the same normalized dedup key (casefolded, whitespace-stripped title + platform), and for each colliding key the surviving record SHALL come from the higher-precedence source (Xbox > Gmail > manual). Every unique key from the inputs SHALL be present.
+*For any* set of Game_Records drawn from multiple sources with overlapping titles/platforms, the assembled library SHALL contain no two records with the same normalized dedup key (casefolded, whitespace-stripped title + platform), and for each colliding key the surviving record SHALL come from the higher-precedence source (Gmail > manual). Every unique key from the inputs SHALL be present.
 
 **Validates: Requirements 2.3, 3.1, 3.5**
 
@@ -1196,6 +1305,6 @@ Map directly to the Correctness Properties below (P1–P21). Examples: dedup cor
 
 ### Property 22: Error messages never expose technical details
 
-*For any* exception raised by an external service (AgentCore Memory, Tavily, Xbox, or Gmail), the message shown to the user SHALL not contain stack traces, API keys, endpoint URLs, or internal error codes.
+*For any* exception raised by an external service (the Bedrock model, memory (DynamoDB), Tavily, or Gmail), the message shown to the user SHALL not contain stack traces, API keys, endpoint URLs, or internal error codes.
 
 **Validates: Requirements 10.1, 10.4**

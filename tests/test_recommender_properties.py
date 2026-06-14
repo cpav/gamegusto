@@ -19,12 +19,14 @@ Encodes correctness properties 15–20 from ``design.md``:
   title in the last five sessions is never the primary.
 
 All Bedrock and memory interaction is stubbed; no network calls are made. The
-Bedrock stub always fails so reasoning falls back to the deterministic string,
-making the Property 18 assertions deterministic.
+Bedrock stub returns a fixed narrative, and the recommender composes its
+reasoning from a deterministic factual core (which carries the review summary)
+plus that narrative, so the Property 18 assertions are deterministic.
 """
 
 from __future__ import annotations
 
+import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
@@ -48,6 +50,19 @@ _TITLE_POOL = ["Hades", "Celeste", "Stardew", "Doom", "Tetris", "Hollow Knight"]
 _USER_ID = "user-1"
 
 
+class _StubBedrock(BedrockService):
+    """Bedrock stand-in whose conversational call returns canned text (no network)."""
+
+    NARRATIVE = "A great fit for tonight."
+
+    def __init__(self) -> None:
+        """Skip the real client setup; this stub never reaches a network."""
+
+    def invoke_conversational(self, prompt: str, session_id: str) -> str:
+        """Return a fixed narrative so reasoning is deterministic in tests."""
+        return self.NARRATIVE
+
+
 class _FailingBedrock(BedrockService):
     """Bedrock stand-in whose conversational call always fails (no network)."""
 
@@ -55,7 +70,7 @@ class _FailingBedrock(BedrockService):
         """Skip the real client setup; this stub never reaches a network."""
 
     def invoke_conversational(self, prompt: str, session_id: str) -> str:
-        """Always fail so reasoning degrades to the deterministic base text."""
+        """Always fail so the LLM-required reasoning path raises."""
         raise BedrockServiceError("service unavailable")
 
 
@@ -168,7 +183,7 @@ def _eligible(
 
 
 def _make_recommender(recent: list[Recommendation] | None = None) -> Recommender:
-    return Recommender(_FailingBedrock(), _RecentMemory(recent or []))
+    return Recommender(_StubBedrock(), _RecentMemory(recent or []))
 
 
 # --- properties ---------------------------------------------------------------
@@ -335,3 +350,28 @@ def test_no_repeat_from_recent_history(
     primary = _make_recommender(recent).recommend(mood, budget, library, owned, _USER_ID)
     if primary.game_title:
         assert primary.game_title not in set(recent_titles)
+
+
+def test_llm_failure_propagates_when_a_primary_is_produced() -> None:
+    """A Bedrock failure during reasoning raises rather than degrading (LLM required).
+
+    The recommender no longer falls back to deterministic-only reasoning on LLM
+    failure — the error surfaces so a misconfigured model is not masked.
+
+    **Validates: Requirements 7.2, 7.3**
+    """
+    mood = MoodDimensions(0.5, 0.5, 0.5, 0.5)
+    owned = [OwnedPlatform(name="PC")]
+    library = [
+        GameRecord(
+            title="Hades",
+            genre="Roguelike",
+            estimated_playtime=30,
+            community_review=CommunityReview(9.0, "Beloved.", 10),
+            platform_availability=["PC"],
+        )
+    ]
+    recommender = Recommender(_FailingBedrock(), _RecentMemory([]))
+
+    with pytest.raises(BedrockServiceError):
+        recommender.recommend(mood, 60, library, owned, _USER_ID)

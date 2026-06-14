@@ -16,28 +16,19 @@ import sys
 
 from google_auth_oauthlib.flow import InstalledAppFlow
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from config import load_env_file  # noqa: E402
+
 # Read-only scope only — the app never requests broader Gmail access (Req 4.1).
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 
 
-def _load_env(path: str = ".env") -> dict[str, str]:
-    """Read simple KEY=VALUE pairs from a .env file without printing values."""
-    env: dict[str, str] = {}
-    with open(path) as handle:
-        for raw in handle:
-            line = raw.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, _, value = line.partition("=")
-            env[key.strip()] = value.strip()
-    return env
-
-
 def main() -> None:
     """Run the consent flow and write the cached token to GMAIL_TOKEN_PATH."""
-    env = _load_env()
-    creds_path = env.get("GMAIL_CREDENTIALS_PATH", "")
-    token_path = env.get("GMAIL_TOKEN_PATH", "")
+    load_env_file()
+    creds_path = os.environ.get("GMAIL_CREDENTIALS_PATH", "")
+    token_path = os.environ.get("GMAIL_TOKEN_PATH", "")
 
     if not creds_path or not os.path.isfile(creds_path):
         print("ERROR: GMAIL_CREDENTIALS_PATH is unset or the file is missing.")

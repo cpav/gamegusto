@@ -20,7 +20,7 @@ from agent.mood_interpreter import MoodDimensions
 from models.game_record import GameRecord
 from models.platform import OwnedPlatform
 from models.recommendation import Recommendation
-from services.bedrock_service import BedrockService, BedrockServiceError
+from services.bedrock_service import BedrockService
 from services.memory_service import MemoryService
 
 #: Number of recent sessions whose primaries are excluded from new picks (Req 8.3).
@@ -58,7 +58,7 @@ class Recommender:
         explanatory ``reasoning``) when no candidate satisfies the constraints, so
         the orchestrator can communicate the no-match case without exceptions.
         """
-        eligible = self._eligible_candidates(library, owned_platforms, time_budget_minutes, user_id)
+        eligible = self.eligible_candidates(library, owned_platforms, time_budget_minutes, user_id)
         if not eligible:
             return self._no_recommendation()
         primary_record = self._select_primary(eligible)
@@ -99,14 +99,18 @@ class Recommender:
             results.append(recommendation)
         return results
 
-    def _eligible_candidates(
+    def eligible_candidates(
         self,
         library: list[GameRecord],
         owned_platforms: list[OwnedPlatform],
         time_budget_minutes: int,
         user_id: str,
     ) -> list[GameRecord]:
-        """Filter the library to eligible candidates, ranked by review (Req 7.1, 7.2, 8.3)."""
+        """Filter the library to eligible candidates, ranked by review (Req 7.1, 7.2, 8.3).
+
+        Public so callers (e.g. the orchestrator) can derive alternatives from the
+        same eligible, review-ranked set used to pick the primary.
+        """
         recent = {
             rec.game_title
             for rec in self._memory.get_recent_recommendations(user_id, _RECENT_SESSIONS)
@@ -139,24 +143,14 @@ class Recommender:
     ) -> str:
         """Build detailed primary reasoning including the community-review summary.
 
-        Always produces deterministic text covering the review summary (or its
-        absence, Req 7.3, 7.5), the time budget, and the playable owned platforms,
-        then optionally appends a friendly note from the agent. Any agent failure
-        degrades gracefully to the deterministic text alone.
+        Composes a deterministic factual core (the review summary or its absence,
+        the time budget, and the playable owned platforms — Req 7.3, 7.5) and a
+        model-generated narrative. The LLM is a hard dependency: a Bedrock failure
+        propagates as ``BedrockServiceError`` rather than silently degrading.
         """
         base = self._deterministic_reasoning(record, mood, minutes, owned_platforms)
-        extra = self._enhance_reasoning(base, user_id)
-        return f"{base} {extra}" if extra else base
-
-    def _enhance_reasoning(self, base: str, user_id: str) -> str | None:
-        """Optionally enrich reasoning via the agent; ``None`` when unavailable (Req 7.2)."""
-        try:
-            response = self._bedrock.invoke_conversational(self._reasoning_prompt(base), user_id)
-        except BedrockServiceError:
-            return None
-        if isinstance(response, str) and response.strip():
-            return response.strip()
-        return None
+        narrative = self._bedrock.invoke_conversational(self._reasoning_prompt(base), user_id)
+        return f"{base} {narrative.strip()}".strip()
 
     @staticmethod
     def _deterministic_reasoning(

@@ -3,9 +3,9 @@
 Validates connectivity and configuration for the services GameGusto depends on
 and prints a clear PASS / FAIL / SKIPPED report:
 
-* Required services (AWS / Bedrock, Tavily) report PASS or FAIL.
-* Optional services (Xbox, Gmail) report SKIPPED when their environment
-  variables are unset, otherwise PASS or FAIL.
+* Required services (AWS / Bedrock, Tavily, DynamoDB) report PASS or FAIL.
+* Optional services (Gmail) report SKIPPED when their environment variables
+  are unset, otherwise PASS or FAIL.
 
 The script never crashes on a service failure and never echoes secret values:
 configuration is referenced by variable name only, and failures are reduced to
@@ -28,7 +28,7 @@ from tavily import TavilyClient
 # (e.g. ``python scripts/check_access.py``) so ``config`` can be reused.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config import Config, ConfigError  # noqa: E402
+from config import Config, ConfigError, load_env_file  # noqa: E402
 
 # Short, bounded timeouts so the preflight check can never hang on a slow or
 # unreachable endpoint.
@@ -91,9 +91,9 @@ def check_aws(config: Config | None, config_error: str | None) -> CheckResult:
     try:
         sts = boto3.client("sts", region_name=config.aws_region, config=_BOTO_CONFIG)
         sts.get_caller_identity()
-        # Confirm the Bedrock agent runtime is reachable in the configured region.
+        # Confirm the Bedrock runtime is reachable in the configured region.
         boto3.client(
-            "bedrock-agent-runtime",
+            "bedrock-runtime",
             region_name=config.aws_region,
             config=_BOTO_CONFIG,
         )
@@ -126,52 +126,44 @@ def check_tavily(config: Config | None, config_error: str | None) -> CheckResult
     return CheckResult(service, Status.PASS, "API key accepted", required=True)
 
 
-def check_xbox(config: Config | None) -> CheckResult:
-    """Check optional Xbox credentials (skipped when unset)."""
-    service = "Xbox"
-    if config is not None:
-        enabled = config.xbox_enabled
-    else:
-        enabled = bool(os.environ.get("XBOX_CLIENT_ID") and os.environ.get("XBOX_CLIENT_SECRET"))
-    if not enabled:
-        return CheckResult(
-            service,
-            Status.SKIPPED,
-            "XBOX_CLIENT_ID / XBOX_CLIENT_SECRET not set",
-            required=False,
-        )
-    return CheckResult(
-        service,
-        Status.PASS,
-        "credentials configured (OAuth verified at runtime)",
-        required=False,
-    )
-
-
-def check_gmail(config: Config | None) -> CheckResult:
-    """Check optional Gmail configuration (skipped when unset)."""
-    service = "Gmail"
-    if config is not None:
-        enabled = config.gmail_enabled
-        creds_path = config.gmail_credentials_path
-    else:
-        creds_path = os.environ.get("GMAIL_CREDENTIALS_PATH") or None
-        enabled = bool(creds_path)
-    if not enabled:
-        return CheckResult(
-            service,
-            Status.SKIPPED,
-            "GMAIL_CREDENTIALS_PATH not set",
-            required=False,
-        )
-    if creds_path is not None and not os.path.isfile(creds_path):
+def check_dynamodb(config: Config | None, config_error: str | None) -> CheckResult:
+    """Check that the DynamoDB table is reachable and ACTIVE."""
+    service = "DynamoDB"
+    if config is None:
         return CheckResult(
             service,
             Status.FAIL,
-            "credentials file not found at GMAIL_CREDENTIALS_PATH",
+            f"configuration incomplete ({config_error})",
+            required=True,
+        )
+    try:
+        client = boto3.client("dynamodb", region_name=config.aws_region, config=_BOTO_CONFIG)
+        described = client.describe_table(TableName=config.dynamodb_table_name)
+        status = described["Table"]["TableStatus"]
+    except Exception as exc:  # noqa: BLE001 - any failure is reported, never raised
+        return CheckResult(service, Status.FAIL, _sanitize_failure(exc), required=True)
+    if status != "ACTIVE":
+        return CheckResult(service, Status.FAIL, f"table status is {status}", required=True)
+    return CheckResult(service, Status.PASS, f"table '{config.dynamodb_table_name}' ACTIVE", True)
+
+
+def check_gmail(config: Config | None) -> CheckResult:
+    """Check optional Gmail configuration (skipped when the token is unset)."""
+    service = "Gmail"
+    if config is not None:
+        token_path = config.gmail_token_path
+    else:
+        token_path = os.environ.get("GMAIL_TOKEN_PATH") or None
+    if not token_path:
+        return CheckResult(service, Status.SKIPPED, "GMAIL_TOKEN_PATH not set", required=False)
+    if not os.path.isfile(token_path):
+        return CheckResult(
+            service,
+            Status.FAIL,
+            "cached token not found at GMAIL_TOKEN_PATH (run scripts/gmail_authorize.py)",
             required=False,
         )
-    return CheckResult(service, Status.PASS, "credentials file present", required=False)
+    return CheckResult(service, Status.PASS, "cached token present", required=False)
 
 
 def _print_report(results: list[CheckResult]) -> None:
@@ -187,11 +179,12 @@ def _print_report(results: list[CheckResult]) -> None:
 
 def main() -> None:
     """Run all access checks, print the report, and set the exit code."""
+    load_env_file()
     config, config_error = _load_config()
     results = [
         check_aws(config, config_error),
         check_tavily(config, config_error),
-        check_xbox(config),
+        check_dynamodb(config, config_error),
         check_gmail(config),
     ]
     _print_report(results)

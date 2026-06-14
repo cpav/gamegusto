@@ -100,7 +100,7 @@ class _FakeMessages:
         self._captured_queries = captured_queries
         self._fetched_ids = fetched_ids
 
-    def list(self, userId: str, q: str) -> _Executable:
+    def list(self, userId: str, q: str, pageToken: str | None = None) -> _Executable:
         self._captured_queries.append(q)
         prefix = "from:"
         addr = q[len(prefix) :] if q.startswith(prefix) else None
@@ -109,6 +109,7 @@ class _FakeMessages:
             for mid, entry in self._mailbox.items()
             if addr is not None and entry["sender"] == addr
         ]
+        # Single page: no nextPageToken, so the source's pagination loop stops.
         return _Executable({"messages": ids})
 
     def get(self, userId: str, id: str, format: str) -> _Executable:
@@ -133,8 +134,21 @@ class _FakeService:
 
 
 def _confirmation_email(title: str, sender: str) -> dict[str, Any]:
-    """A minimal, parseable purchase-confirmation payload for ``sender``."""
-    body = f"Title: {title}\nThank you for your purchase."
+    """A minimal purchase-confirmation payload parseable by either retailer parser.
+
+    The body carries both a Nintendo-style Item section and a Microsoft-style
+    single-row order table for the same ``title``, so whichever parser the sender
+    maps to extracts exactly one record.
+    """
+    body = (
+        "Item\n1x\n"
+        f"{title}\n"
+        "** Order details\n"
+        "Item description | Quantity | Price\n"
+        f"| {title} | 1 | DKK 10\n"
+        "** Payment\n"
+        "Thank you for your purchase."
+    )
     return {
         "sender": sender,
         "raw": {
@@ -173,11 +187,7 @@ def _make_source_with_mailbox(
     captured_queries: list[str] = []
     fetched_ids: list[str] = []
     messages = _FakeMessages(mailbox, captured_queries, fetched_ids)
-    source = GmailSource(
-        credentials_path="creds.json",
-        token_path="token.json",
-        redirect_uri="http://localhost",
-    )
+    source = GmailSource(token_path="token.json")
     # Inject the fake resource directly so authenticate() (and the network) is
     # never touched.
     source._service = _FakeService(messages)
@@ -279,9 +289,17 @@ def _junk_payloads(draw: st.DrawFn) -> tuple[str, dict[str, Any]]:
         )
     )
 
-    # The real Title line comes FIRST so it is the match _extract_title returns,
-    # even if downstream junk happens to contain a "title:"-like line.
-    body = f"Title: {title}\n{draw(_junk)}\ntrailing {draw(_junk)}"
+    # The clean title appears both in a Nintendo Item section and a Microsoft
+    # order-table row, so either parser extracts exactly it; junk lives elsewhere.
+    body = (
+        "Item\n1x\n"
+        f"{title}\n"
+        "** Order details\n"
+        "Item description | Quantity | Price\n"
+        f"| {title} | 1 | DKK 10\n"
+        "** Payment\n"
+        f"{draw(_junk)}\ntrailing {draw(_junk)}"
+    )
 
     raw: dict[str, Any] = {
         "id": draw(_junk),
@@ -303,7 +321,7 @@ def _junk_payloads(draw: st.DrawFn) -> tuple[str, dict[str, Any]]:
     return title, raw
 
 
-_PARSERS: list[Callable[[dict], GameRecord | None]] = [
+_PARSERS: list[Callable[[dict], list[GameRecord]]] = [
     _parse_nintendo,
     _parse_microsoft_store,
 ]
@@ -313,7 +331,7 @@ _PARSERS: list[Callable[[dict], GameRecord | None]] = [
 @settings(deadline=None)
 def test_parsed_record_retains_only_contract_fields(
     payload: tuple[str, dict[str, Any]],
-    parser: Callable[[dict], GameRecord | None],
+    parser: Callable[[dict], list[GameRecord]],
 ) -> None:
     """No raw email content survives parsing; only contract fields remain.
 
@@ -326,9 +344,10 @@ def test_parsed_record_retains_only_contract_fields(
     """
     title, raw = payload
 
-    record = parser(raw)
+    records = parser(raw)
 
-    assert record is not None  # the payload always carries a parseable title
+    assert len(records) == 1  # the payload always carries exactly one parseable title
+    record = records[0]
     assert isinstance(record, GameRecord)
     assert record.source == "gmail"
 
@@ -352,10 +371,10 @@ def test_parsed_record_retains_only_contract_fields(
 
 @given(parser=st.sampled_from(_PARSERS), junk=_junk)
 def test_untitled_junk_payload_yields_no_record(
-    parser: Callable[[dict], GameRecord | None],
+    parser: Callable[[dict], list[GameRecord]],
     junk: str,
 ) -> None:
-    """A payload with no extractable title parses to ``None`` (nothing stored).
+    """A payload with no extractable title parses to ``[]`` (nothing stored).
 
     **Validates: Requirements 4.2**
     """
@@ -367,11 +386,12 @@ def test_untitled_junk_payload_yields_no_record(
             "body": {"data": _b64(junk)},
         },
     }
-    # Guard: ensure the junk body does not accidentally contain a usable title
-    # line or a non-empty subject the extractor could fall back to.
-    assume("title" not in junk.lower())
+    # Guard: ensure the junk body cannot satisfy either parser's title extraction
+    # (no standalone "item" line for Nintendo; no pipe row for Microsoft).
+    assume("item" not in junk.lower())
+    assume("|" not in junk)
 
-    assert parser(raw) is None
+    assert parser(raw) == []
 
 
 # ---------------------------------------------------------------------------
@@ -412,23 +432,11 @@ def test_no_scope_grants_more_than_readonly() -> None:
             assert marker not in scope
 
 
-@given(
-    credentials_path=st.text(max_size=40),
-    token_path=st.text(max_size=40),
-    redirect_uri=st.text(max_size=40),
-)
-def test_construction_never_broadens_scope(
-    credentials_path: str,
-    token_path: str,
-    redirect_uri: str,
-) -> None:
+@given(token_path=st.text(max_size=40))
+def test_construction_never_broadens_scope(token_path: str) -> None:
     """However the source is constructed, the requested scope stays read-only.
 
     **Validates: Requirements 4.1**
     """
-    source = GmailSource(
-        credentials_path=credentials_path,
-        token_path=token_path,
-        redirect_uri=redirect_uri,
-    )
+    source = GmailSource(token_path=token_path)
     assert source.SCOPES == [READONLY_SCOPE]

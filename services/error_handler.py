@@ -19,9 +19,11 @@ class ErrorHandler:
         "tavily_unavailable": (
             "Game lookup is temporarily unavailable. Using available information."
         ),
-        "xbox_unavailable": "Couldn't connect to Xbox. Your other games are unaffected.",
         "gmail_unavailable": (
             "Couldn't read your Gmail purchases right now. The rest of the app still works."
+        ),
+        "llm_unavailable": (
+            "The recommendation engine is temporarily unavailable. Please try again."
         ),
         "unknown": "Something went wrong. Let's try again.",
     }

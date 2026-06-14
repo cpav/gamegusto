@@ -89,7 +89,7 @@ def test_sanitized_message_never_leaks_and_is_always_safe(
     assert result == ErrorHandler.sanitize_error(ValueError("benign placeholder"), service)
 
 
-@given(service=st.sampled_from(["memory", "tavily", "xbox", "gmail"]))
+@given(service=st.sampled_from(["memory", "tavily", "gmail", "llm"]))
 def test_known_services_map_to_their_specific_message(service: str) -> None:
     """Known services resolve to their dedicated (non-fallback) safe message.
 

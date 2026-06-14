@@ -87,7 +87,7 @@ _game_records = st.builds(
     GameRecord,
     title=_nonempty_text,
     platforms=st.lists(_nonempty_text, max_size=3),
-    source=st.sampled_from(["xbox", "gmail", "manual", "enrichment"]),
+    source=st.sampled_from(["gmail", "manual", "enrichment"]),
     purchase_date=st.one_of(st.none(), st.dates()),
     genre=st.one_of(st.none(), _text),
     estimated_playtime=st.one_of(st.none(), st.integers(min_value=0, max_value=100_000)),
