@@ -16,12 +16,13 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config import Config, ConfigError  # noqa: E402
+from config import Config, ConfigError, load_env_file  # noqa: E402
 from services.bedrock_service import BedrockService, BedrockServiceError  # noqa: E402
 
 
 def main() -> None:
     """Invoke the model once and report whether it is live."""
+    load_env_file()
     try:
         config = Config.from_env()
     except ConfigError as exc:

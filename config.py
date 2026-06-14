@@ -19,6 +19,25 @@ class ConfigError(RuntimeError):
     """Raised when a required configuration value is missing or invalid."""
 
 
+def load_env_file(path: str = ".env") -> None:
+    """Populate ``os.environ`` from a ``.env`` file without overriding existing vars.
+
+    A convenience for the CLI and helper scripts so they work without manually
+    exporting the file. Lines are ``KEY=VALUE``; blanks and ``#`` comments are
+    ignored. Already-set environment variables always win, so this never clobbers
+    an explicitly provided value.
+    """
+    if not os.path.isfile(path):
+        return
+    with open(path) as handle:
+        for raw in handle:
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            os.environ.setdefault(key.strip(), value.strip())
+
+
 def _require(name: str) -> str:
     """Return a required environment variable or raise ``ConfigError``.
 
@@ -77,9 +96,7 @@ class Config:
     """Extended-thinking token budget passed to the Bedrock Converse API."""
 
     # Optional (feature-gated integrations).
-    gmail_credentials_path: str | None = None
     gmail_token_path: str | None = None
-    gmail_redirect_uri: str | None = None
 
     @classmethod
     def from_env(cls) -> Config:
@@ -92,15 +109,13 @@ class Config:
             bedrock_reasoning_budget_tokens=_optional_int(
                 "BEDROCK_REASONING_BUDGET_TOKENS", _DEFAULT_REASONING_BUDGET_TOKENS
             ),
-            gmail_credentials_path=_optional("GMAIL_CREDENTIALS_PATH"),
             gmail_token_path=_optional("GMAIL_TOKEN_PATH"),
-            gmail_redirect_uri=_optional("GMAIL_REDIRECT_URI"),
         )
 
     @property
     def gmail_enabled(self) -> bool:
-        """True when the Gmail credentials path is configured."""
-        return bool(self.gmail_credentials_path)
+        """True when a cached Gmail token is configured (what the source needs)."""
+        return bool(self.gmail_token_path)
 
     def __repr__(self) -> str:
         """Render the config with secret values masked."""

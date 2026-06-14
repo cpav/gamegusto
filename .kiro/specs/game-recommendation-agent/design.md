@@ -163,25 +163,26 @@ class GmailSource:
     # registry, so unrelated mail is never matched (Req 3.3, 4.3). Extensible.
     KNOWN_SENDERS: dict[str, str] = {
         "nintendo": "no-reply@accounts.nintendo.com",
-        "microsoft_store": "account-security-noreply@accountprotection.microsoft.com",
+        "microsoft_store": "microsoft-noreply@microsoft.com",
     }
 
     def __init__(
         self,
-        credentials_path: str,
         token_path: str,
-        redirect_uri: str,
         parser_registry: dict[str, EmailParser] | None = None,
     ):
-        self._credentials_path = credentials_path
+        # The source only needs the cached read-only token; the client-secrets
+        # file is used once by scripts/gmail_authorize.py to mint it.
         self._token_path = token_path
-        self._redirect_uri = redirect_uri
         self._parsers = parser_registry or self._default_parsers()
         self._service = None  # lazily-built googleapiclient resource
-        self._available = False
 
     def is_available(self) -> bool:
-        return self._available
+        # Lazily authenticate so the assembly's availability gate reflects real
+        # connectability rather than whether a fetch has already run.
+        if self._service is None:
+            self.authenticate()
+        return self._service is not None
 
     def authenticate(self) -> bool:
         """Run the read-only OAuth flow (gmail.readonly) and cache the token (Req 4.1)."""
@@ -1142,9 +1143,8 @@ All credentials load from environment variables via `config.py`; secrets are nev
 | `BEDROCK_REASONING_BUDGET_TOKENS` | Extended-thinking token budget for Converse | Optional (defaults applied) |
 | `TAVILY_API_KEY` | Tavily enrichment/autocomplete | Yes |
 | `DYNAMODB_TABLE_NAME` | DynamoDB table backing the memory store | Yes |
-| `GMAIL_CREDENTIALS_PATH` | Gmail OAuth client-secrets JSON | Optional (Gmail) |
-| `GMAIL_TOKEN_PATH` | Cached read-only Gmail token path | Optional (Gmail) |
-| `GMAIL_REDIRECT_URI` | OAuth redirect URI for Gmail consent | Optional (Gmail) |
+| `GMAIL_CREDENTIALS_PATH` | OAuth client-secrets JSON (used once by `scripts/gmail_authorize.py`) | Optional (Gmail) |
+| `GMAIL_TOKEN_PATH` | Cached read-only Gmail token path (what the runtime source needs) | Optional (Gmail) |
 
 Gmail is **optional**: if its variables are unset, the Gmail source is not constructed and `LibraryService` simply skips it — every other source and feature keeps working (Req 3.6).
 

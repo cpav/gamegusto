@@ -78,11 +78,7 @@ def build_app(config: Config, user_id: str = "default") -> AppContext:
 
 
 def _build_gmail_source(config: Config) -> GmailSource | None:
-    """Build the Gmail source when configured, else ``None`` (Req 3.6)."""
-    if not config.gmail_enabled or config.gmail_credentials_path is None:
+    """Build the Gmail source when a cached token is configured, else ``None`` (Req 3.6)."""
+    if not config.gmail_enabled or config.gmail_token_path is None:
         return None
-    return GmailSource(
-        credentials_path=config.gmail_credentials_path,
-        token_path=config.gmail_token_path or "",
-        redirect_uri=config.gmail_redirect_uri or "",
-    )
+    return GmailSource(token_path=config.gmail_token_path)

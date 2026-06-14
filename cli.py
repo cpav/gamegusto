@@ -27,7 +27,7 @@ from __future__ import annotations
 import sys
 
 from bootstrap import AppContext, build_app
-from config import Config, ConfigError
+from config import Config, ConfigError, load_env_file
 from models.game_record import GameRecord
 from models.platform import OwnedPlatform
 from models.recommendation import Recommendation
@@ -141,6 +141,7 @@ def _dispatch(ctx: AppContext, line: str) -> bool:
 
 def main() -> None:
     """Build the app from the environment and run the conversation loop."""
+    load_env_file()
     try:
         config = Config.from_env()
     except ConfigError as exc:

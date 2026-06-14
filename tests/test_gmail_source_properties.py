@@ -187,11 +187,7 @@ def _make_source_with_mailbox(
     captured_queries: list[str] = []
     fetched_ids: list[str] = []
     messages = _FakeMessages(mailbox, captured_queries, fetched_ids)
-    source = GmailSource(
-        credentials_path="creds.json",
-        token_path="token.json",
-        redirect_uri="http://localhost",
-    )
+    source = GmailSource(token_path="token.json")
     # Inject the fake resource directly so authenticate() (and the network) is
     # never touched.
     source._service = _FakeService(messages)
@@ -436,23 +432,11 @@ def test_no_scope_grants_more_than_readonly() -> None:
             assert marker not in scope
 
 
-@given(
-    credentials_path=st.text(max_size=40),
-    token_path=st.text(max_size=40),
-    redirect_uri=st.text(max_size=40),
-)
-def test_construction_never_broadens_scope(
-    credentials_path: str,
-    token_path: str,
-    redirect_uri: str,
-) -> None:
+@given(token_path=st.text(max_size=40))
+def test_construction_never_broadens_scope(token_path: str) -> None:
     """However the source is constructed, the requested scope stays read-only.
 
     **Validates: Requirements 4.1**
     """
-    source = GmailSource(
-        credentials_path=credentials_path,
-        token_path=token_path,
-        redirect_uri=redirect_uri,
-    )
+    source = GmailSource(token_path=token_path)
     assert source.SCOPES == [READONLY_SCOPE]

@@ -183,11 +183,7 @@ class TestSourceSkipping:
     def _unauthenticated_source(self, tmp_path) -> GmailSource:  # type: ignore[no-untyped-def]
         # Point at paths that do not exist so authentication cannot succeed and
         # no real Google client is ever built (no network).
-        return GmailSource(
-            credentials_path=str(tmp_path / "missing_credentials.json"),
-            token_path=str(tmp_path / "missing_token.json"),
-            redirect_uri="http://localhost",
-        )
+        return GmailSource(token_path=str(tmp_path / "missing_token.json"))
 
     def test_fetch_records_returns_empty_when_auth_unavailable(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
         source = self._unauthenticated_source(tmp_path)

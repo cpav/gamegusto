@@ -57,14 +57,10 @@ class GmailSource:
 
     def __init__(
         self,
-        credentials_path: str,
         token_path: str,
-        redirect_uri: str,
         parser_registry: dict[str, EmailParser] | None = None,
     ) -> None:
-        self._credentials_path = credentials_path
         self._token_path = token_path
-        self._redirect_uri = redirect_uri
         self._parsers = parser_registry or self._default_parsers()
         self._service: Any = None  # lazily-built googleapiclient resource
         self._last_error: str | None = None

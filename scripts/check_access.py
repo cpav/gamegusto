@@ -28,7 +28,7 @@ from tavily import TavilyClient
 # (e.g. ``python scripts/check_access.py``) so ``config`` can be reused.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config import Config, ConfigError  # noqa: E402
+from config import Config, ConfigError, load_env_file  # noqa: E402
 
 # Short, bounded timeouts so the preflight check can never hang on a slow or
 # unreachable endpoint.
@@ -148,29 +148,22 @@ def check_dynamodb(config: Config | None, config_error: str | None) -> CheckResu
 
 
 def check_gmail(config: Config | None) -> CheckResult:
-    """Check optional Gmail configuration (skipped when unset)."""
+    """Check optional Gmail configuration (skipped when the token is unset)."""
     service = "Gmail"
     if config is not None:
-        enabled = config.gmail_enabled
-        creds_path = config.gmail_credentials_path
+        token_path = config.gmail_token_path
     else:
-        creds_path = os.environ.get("GMAIL_CREDENTIALS_PATH") or None
-        enabled = bool(creds_path)
-    if not enabled:
-        return CheckResult(
-            service,
-            Status.SKIPPED,
-            "GMAIL_CREDENTIALS_PATH not set",
-            required=False,
-        )
-    if creds_path is not None and not os.path.isfile(creds_path):
+        token_path = os.environ.get("GMAIL_TOKEN_PATH") or None
+    if not token_path:
+        return CheckResult(service, Status.SKIPPED, "GMAIL_TOKEN_PATH not set", required=False)
+    if not os.path.isfile(token_path):
         return CheckResult(
             service,
             Status.FAIL,
-            "credentials file not found at GMAIL_CREDENTIALS_PATH",
+            "cached token not found at GMAIL_TOKEN_PATH (run scripts/gmail_authorize.py)",
             required=False,
         )
-    return CheckResult(service, Status.PASS, "credentials file present", required=False)
+    return CheckResult(service, Status.PASS, "cached token present", required=False)
 
 
 def _print_report(results: list[CheckResult]) -> None:
@@ -186,6 +179,7 @@ def _print_report(results: list[CheckResult]) -> None:
 
 def main() -> None:
     """Run all access checks, print the report, and set the exit code."""
+    load_env_file()
     config, config_error = _load_config()
     results = [
         check_aws(config, config_error),
