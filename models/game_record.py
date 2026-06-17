@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Literal
+from typing import Any, Literal
 
 CONTRACT_VERSION = "2.0.0"
 
@@ -29,6 +29,25 @@ class CommunityReview:
 
     source_count: int
     """Number of aggregated sources backing the score (a confidence signal)."""
+
+    def as_dict(self) -> dict[str, Any]:
+        """Serialize to the persisted/contract shape (single source of truth)."""
+        return {
+            "score": self.score,
+            "sentiment_summary": self.sentiment_summary,
+            "source_count": self.source_count,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> CommunityReview | None:
+        """Rebuild from a persisted dict, or ``None`` when absent."""
+        if not data:
+            return None
+        return cls(
+            score=data["score"],
+            sentiment_summary=data["sentiment_summary"],
+            source_count=data["source_count"],
+        )
 
 
 @dataclass

@@ -1,8 +1,8 @@
-"""Persistent store backed by AWS Bedrock AgentCore Memory.
+"""Persistent store backed by a DynamoDB memory client.
 
 The single store for the canonical ``GameRecord`` library, the user's
 ``Platform_List``, and completed sessions (Req 6, 8, 10.2). It is the only
-component that talks to the AgentCore memory client, which is injected via the
+component that talks to the memory client, which is injected via the
 constructor so the service stays testable.
 
 Two invariants shape this module:
@@ -18,7 +18,6 @@ Two invariants shape this module:
 
 from __future__ import annotations
 
-from dataclasses import asdict
 from datetime import date
 from typing import Any, Protocol
 
@@ -34,7 +33,7 @@ class MemoryClient(Protocol):
 
     Keyed documents (records, platform list) use ``get_value``/``put_value``;
     the append-only session log uses ``append_event``/``list_events``. The
-    concrete AgentCore client is injected at construction.
+    concrete DynamoDB client is injected at construction.
     """
 
     def get_value(self, user_id: str, key: str) -> dict[str, Any] | None:
@@ -55,15 +54,15 @@ class MemoryClient(Protocol):
 
 
 class MemoryService:
-    """Stores Game_Records, the Platform_List, and sessions in AgentCore Memory."""
+    """Stores Game_Records, the Platform_List, and sessions in DynamoDB."""
 
     RECORDS_KEY = "records"
     PLATFORMS_KEY = "platforms"
     SESSIONS_KEY = "sessions"
 
-    def __init__(self, agentcore_client: MemoryClient) -> None:
-        """Build the service around an injected AgentCore memory ``agentcore_client``."""
-        self._client = agentcore_client
+    def __init__(self, client: MemoryClient) -> None:
+        """Build the service around an injected memory ``client`` (DynamoDB-backed)."""
+        self._client = client
         self._available = True
         self._last_error: str | None = None
 
@@ -234,7 +233,9 @@ class MemoryService:
             "purchase_date": record.purchase_date.isoformat() if record.purchase_date else None,
             "genre": record.genre,
             "estimated_playtime": record.estimated_playtime,
-            "community_review": MemoryService._review_to_dict(record.community_review),
+            "community_review": record.community_review.as_dict()
+            if record.community_review
+            else None,
             "platform_availability": list(record.platform_availability),
             "external_ids": dict(record.external_ids),
         }
@@ -250,31 +251,9 @@ class MemoryService:
             purchase_date=date.fromisoformat(raw_date) if raw_date else None,
             genre=data.get("genre"),
             estimated_playtime=data.get("estimated_playtime"),
-            community_review=MemoryService._review_from_dict(data.get("community_review")),
+            community_review=CommunityReview.from_dict(data.get("community_review")),
             platform_availability=list(data.get("platform_availability", [])),
             external_ids=dict(data.get("external_ids", {})),
-        )
-
-    @staticmethod
-    def _review_to_dict(review: CommunityReview | None) -> dict[str, Any] | None:
-        """Serialize a community review, or ``None`` when absent."""
-        if review is None:
-            return None
-        return {
-            "score": review.score,
-            "sentiment_summary": review.sentiment_summary,
-            "source_count": review.source_count,
-        }
-
-    @staticmethod
-    def _review_from_dict(data: dict[str, Any] | None) -> CommunityReview | None:
-        """Rebuild a community review, or ``None`` when absent."""
-        if not data:
-            return None
-        return CommunityReview(
-            score=data["score"],
-            sentiment_summary=data["sentiment_summary"],
-            source_count=data["source_count"],
         )
 
     @staticmethod
@@ -282,12 +261,8 @@ class MemoryService:
         """Serialize a recommendation for session persistence (Req 8.1)."""
         return {
             "game_title": rec.game_title,
-            "genre": rec.genre,
-            "estimated_playtime": rec.estimated_playtime,
             "reasoning": rec.reasoning,
-            "brief_reasoning": rec.brief_reasoning,
-            "platform_availability": list(rec.platform_availability),
-            "community_review": MemoryService._review_to_dict(rec.community_review),
+            "estimated_playtime": rec.estimated_playtime,
         }
 
     @staticmethod
@@ -295,12 +270,8 @@ class MemoryService:
         """Rebuild a recommendation from its persisted representation (Req 8.2)."""
         return Recommendation(
             game_title=data["game_title"],
-            genre=data.get("genre"),
-            estimated_playtime=data.get("estimated_playtime"),
             reasoning=data.get("reasoning", ""),
-            brief_reasoning=data.get("brief_reasoning", ""),
-            platform_availability=list(data.get("platform_availability", [])),
-            community_review=MemoryService._review_from_dict(data.get("community_review")),
+            estimated_playtime=data.get("estimated_playtime"),
         )
 
     @staticmethod
@@ -308,11 +279,10 @@ class MemoryService:
         """Serialize a completed session to the persisted schema (Req 8.1)."""
         return {
             "user_id": session.user_id,
-            "mood_dimensions": asdict(session.mood),
+            "mood": session.mood,
             "time_budget_minutes": session.time_budget_minutes,
             "recommendation": MemoryService._recommendation_to_dict(session.recommendation),
             "alternatives": [
                 MemoryService._recommendation_to_dict(alt) for alt in session.alternatives
             ],
-            "user_feedback": session.user_feedback,
         }

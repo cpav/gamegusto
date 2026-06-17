@@ -2,16 +2,16 @@
 
 Encodes two correctness properties from ``design.md``:
 
-* **Property 5** — Dedup is precedence-aware and key-normalized
+* **Property 1** — Dedup is precedence-aware and key-normalized
   (Validates: Requirements 2.3, 3.1, 3.5)
-* **Property 6** — Source unavailability does not break assembly
+* **Property 2** — Source unavailability does not break assembly
   (Validates: Requirements 3.6, 10.4)
 
 Everything is exercised against in-process fakes: ``FakeSource`` implements the
 ``RecordSource`` protocol, ``FakeMemory`` subclasses :class:`MemoryService` with
-its two record methods overridden, and ``FakeTavily`` subclasses
-:class:`TavilyService` with identity enrichment. No network, AWS, or Tavily call
-is ever made, so dedup/precedence is observed without enrichment noise.
+its two record methods overridden, and ``IdentityEnricher`` returns records
+untouched. No network, AWS, Tavily, or Bedrock call is ever made, so
+dedup/precedence is observed without enrichment noise.
 """
 
 from __future__ import annotations
@@ -23,7 +23,6 @@ from agent.library_service import LibraryService
 from models.game_record import GameRecord
 from services.memory_service import MemoryService
 from services.sources.base import RecordSource
-from services.tavily_service import TavilyService
 
 USER_ID = "test-user"
 
@@ -61,11 +60,8 @@ class FakeMemory(MemoryService):
         return True
 
 
-class FakeTavily(TavilyService):
-    """Identity enrichment so dedup/precedence is tested without enrichment noise."""
-
-    def __init__(self) -> None:  # bypass real-client construction
-        pass
+class IdentityEnricher:
+    """Returns records untouched so dedup/precedence is tested without enrichment noise."""
 
     def enrich(self, record: GameRecord) -> GameRecord:
         return record
@@ -162,7 +158,7 @@ def _expected_merged(
     return _dedup_first_wins(stream)
 
 
-# --- Property 5: Dedup is precedence-aware and key-normalized --------------
+# --- Property 1: Dedup is precedence-aware and key-normalized --------------
 
 
 @settings(deadline=None)
@@ -173,7 +169,7 @@ def _expected_merged(
 def test_dedup_is_precedence_aware_and_key_normalized(
     existing: list[GameRecord], source_records: list[list[GameRecord]]
 ) -> None:
-    """Property 5: one record per normalized key, the earliest-precedence winner.
+    """Property 1: one record per normalized key, the earliest-precedence winner.
 
     Precedence: existing memory records win over any source; among sources,
     earlier in the list wins; within a source, earlier records win.
@@ -184,7 +180,7 @@ def test_dedup_is_precedence_aware_and_key_normalized(
     sources: list[RecordSource] = [
         FakeSource(f"source-{i}", recs, True) for i, recs in enumerate(source_records)
     ]
-    service = LibraryService(sources=sources, tavily=FakeTavily(), memory=memory)
+    service = LibraryService(sources=sources, enricher=IdentityEnricher(), memory=memory)  # type: ignore[arg-type]
 
     result = service.refresh(USER_ID)
 
@@ -206,7 +202,7 @@ def test_dedup_is_precedence_aware_and_key_normalized(
     assert memory.stored == result
 
 
-# --- Property 6: Source unavailability does not break assembly -------------
+# --- Property 2: Source unavailability does not break assembly -------------
 
 
 @settings(deadline=None)
@@ -217,7 +213,7 @@ def test_dedup_is_precedence_aware_and_key_normalized(
 def test_source_unavailability_does_not_break_assembly(
     existing: list[GameRecord], specs: list[tuple[list[GameRecord], bool]]
 ) -> None:
-    """Property 6: unavailable sources are skipped; assembly still completes.
+    """Property 2: unavailable sources are skipped; assembly still completes.
 
     The result equals what only the available sources would yield (deduped,
     precedence-aware), and unavailable sources contribute no records.
@@ -228,7 +224,7 @@ def test_source_unavailability_does_not_break_assembly(
     sources: list[RecordSource] = [
         FakeSource(f"source-{i}", recs, available) for i, (recs, available) in enumerate(specs)
     ]
-    service = LibraryService(sources=sources, tavily=FakeTavily(), memory=memory)
+    service = LibraryService(sources=sources, enricher=IdentityEnricher(), memory=memory)  # type: ignore[arg-type]
 
     result = service.refresh(USER_ID)
 
@@ -257,7 +253,7 @@ def test_source_unavailability_does_not_break_assembly(
 def test_all_sources_unavailable_returns_existing_memory(
     existing: list[GameRecord], source_records: list[list[GameRecord]]
 ) -> None:
-    """Property 6: with every source unavailable, only existing memory remains.
+    """Property 2: with every source unavailable, only existing memory remains.
 
     **Validates: Requirements 3.6, 10.4**
     """
@@ -265,7 +261,7 @@ def test_all_sources_unavailable_returns_existing_memory(
     sources: list[RecordSource] = [
         FakeSource(f"source-{i}", recs, False) for i, recs in enumerate(source_records)
     ]
-    service = LibraryService(sources=sources, tavily=FakeTavily(), memory=memory)
+    service = LibraryService(sources=sources, enricher=IdentityEnricher(), memory=memory)  # type: ignore[arg-type]
 
     result = service.refresh(USER_ID)
 

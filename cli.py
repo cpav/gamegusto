@@ -1,9 +1,14 @@
 """Headless conversation CLI for GameGusto (no UI).
 
 Runs a real conversation with the Bedrock-backed agent against the live
-DynamoDB-backed library. Fill the library from Gmail purchase emails and by hand,
-manage owned platforms, then chat: describe your mood and available time to get a
-recommendation with reasoning and alternatives.
+DynamoDB-backed library. The agent decides the flow: just talk to it — describe
+what you feel like playing, how much time you have, the genre or vibe you want —
+and it will check your platforms and library, look things up as needed, and
+recommend a game with reasoning and alternatives. Follow-ups like "I already
+played it" or "something shorter" continue the same conversation.
+
+The slash commands below are convenience shortcuts for managing data directly;
+everything they do is also available to the agent through its tools.
 
 Run inside the venv with AWS credentials, ``BEDROCK_MODEL_ID``, and
 ``DYNAMODB_TABLE_NAME`` configured (see .env.example):
@@ -30,33 +35,21 @@ from bootstrap import AppContext, build_app
 from config import Config, ConfigError, load_env_file
 from models.game_record import GameRecord
 from models.platform import OwnedPlatform
-from models.recommendation import Recommendation
-from models.session import SessionState
-
-
-def _print_recommendation(rec: Recommendation, alternatives: list[Recommendation] | None) -> None:
-    """Render a primary recommendation and any alternatives."""
-    review = rec.community_review
-    review_line = f"{review.score:.1f}/10 — {review.sentiment_summary}" if review else "n/a"
-    print(f"\n  >> {rec.game_title}  [{rec.genre} · ~{rec.estimated_playtime} min]")
-    print(f"     review: {review_line}")
-    print(f"     play on: {', '.join(rec.platform_availability) or 'unknown'}")
-    if alternatives:
-        print("     alternatives:")
-        for alt in alternatives:
-            print(f"       - {alt.game_title} ({alt.brief_reasoning})")
+from services.bedrock_service import BedrockServiceError
 
 
 def _handle_conversation(ctx: AppContext, text: str) -> None:
     """Send free text to the agent and print its response."""
-    response = ctx.orchestrator.process_message(text)
-    print(f"\nagent: {response.message}")
-    if response.is_stateless_mode:
+    try:
+        reply = ctx.runtime.send(text)
+    except BedrockServiceError as exc:
+        print(f"\nagent: {exc}")
+        return
+    print(f"\nagent: {reply.message}")
+    if reply.is_stateless_mode:
         print("  (memory unavailable — personalization is limited this session)")
-    if response.needs_platforms:
-        print("  Tip: add a platform with '/platform add <name>'.")
-    if response.recommendation and response.recommendation.game_title:
-        _print_recommendation(response.recommendation, response.alternatives)
+    if reply.tool_calls:
+        print(f"  [used: {', '.join(reply.tool_calls)}]")
 
 
 def _handle_platform(ctx: AppContext, args: str) -> None:
@@ -122,8 +115,8 @@ def _dispatch(ctx: AppContext, line: str) -> bool:
     if line == "/help":
         print(__doc__)
     elif line == "/reset":
-        ctx.orchestrator.session = SessionState(user_id=ctx.user_id)
-        print("New conversation. How are you feeling?")
+        ctx.runtime.reset()
+        print("New conversation. What are you in the mood to play?")
     elif line.startswith("/platform"):
         _handle_platform(ctx, line[len("/platform") :].strip())
     elif line.startswith("/add"):
@@ -150,7 +143,7 @@ def main() -> None:
 
     ctx = build_app(config)
     print("GameGusto (headless). Type /help for commands, /quit to exit.")
-    print("Tell me how you're feeling to get a recommendation.\n")
+    print("Tell me what you're in the mood to play.\n")
 
     while True:
         try:

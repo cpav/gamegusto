@@ -4,7 +4,8 @@ Coordinates the record sources into a single deduplicated, enriched library.
 ``refresh`` walks the injected sources in precedence order (Gmail -> manual,
 ordered by the caller), merges their records with the user's existing
 stored library, dedups by :attr:`GameRecord.dedup_key` with earlier sources
-winning, enriches cache-first via Tavily, and persists the result to memory.
+winning, enriches cache-first via the LLM-assisted enricher, and persists the
+result to memory.
 
 The service depends only on the :class:`RecordSource` protocol, so adding or
 removing a source never changes this layer (Req 3.1). Unavailable sources are
@@ -14,10 +15,10 @@ raises by contract, so no defensive try/except is needed here.
 
 from __future__ import annotations
 
+from agent.enricher import Enricher
 from models.game_record import GameRecord
 from services.memory_service import MemoryService
 from services.sources.base import RecordSource
-from services.tavily_service import TavilyService
 
 
 class LibraryService:
@@ -26,12 +27,12 @@ class LibraryService:
     def __init__(
         self,
         sources: list[RecordSource],
-        tavily: TavilyService,
+        enricher: Enricher,
         memory: MemoryService,
     ) -> None:
-        """Build the service from sources (in precedence order), Tavily, and memory."""
+        """Build the service from sources (in precedence order), the enricher, and memory."""
         self._sources = sources
-        self._tavily = tavily
+        self._enricher = enricher
         self._memory = memory
 
     def refresh(self, user_id: str) -> list[GameRecord]:
@@ -57,7 +58,5 @@ class LibraryService:
         return merged
 
     def _enrich(self, record: GameRecord) -> GameRecord:
-        """Enrich ``record`` via Tavily unless it is already enriched (Req 5.1, 5.2)."""
-        if record.is_enriched():
-            return record
-        return self._tavily.enrich(record)
+        """Enrich ``record`` via the LLM-assisted enricher (cache-first, Req 5.1, 5.2)."""
+        return self._enricher.enrich(record)

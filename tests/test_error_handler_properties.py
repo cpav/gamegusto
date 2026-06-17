@@ -1,6 +1,6 @@
 """Property-based tests for :class:`ErrorHandler` sanitization (task 3.2).
 
-Encodes Property 22 from ``design.md``: for any exception and any service name,
+Encodes Property 14 from ``design.md``: for any exception and any service name,
 the sanitized message must never leak technical details and must always be one
 of the finite set of known-safe generic messages.
 """
@@ -12,7 +12,7 @@ from hypothesis import strategies as st
 
 from services.error_handler import ErrorHandler
 
-# A finite, known-safe set of outputs. Property 22 requires every sanitized
+# A finite, known-safe set of outputs. Property 14 requires every sanitized
 # message to be drawn from exactly this set.
 SAFE_MESSAGES = frozenset(ErrorHandler.GENERIC_MESSAGES.values())
 
@@ -64,7 +64,7 @@ def _exceptions(draw: st.DrawFn) -> tuple[Exception, str]:
 def test_sanitized_message_never_leaks_and_is_always_safe(
     exc_and_message: tuple[Exception, str], service: str
 ) -> None:
-    """Property 22: sanitized output leaks no detail and is always a safe message.
+    """Property 14: sanitized output leaks no detail and is always a safe message.
 
     **Validates: Requirements 10.1, 10.4**
     """

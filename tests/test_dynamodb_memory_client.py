@@ -168,19 +168,13 @@ def test_memory_service_sessions_round_trip_over_dynamodb() -> None:
             USER_ID,
             SessionData(
                 user_id=USER_ID,
-                mood=_mood(),
+                mood="relaxed",
                 time_budget_minutes=60,
                 recommendation=Recommendation(
-                    game_title=title, genre="Action", estimated_playtime=30, reasoning="r"
+                    game_title=title, reasoning="r", estimated_playtime=30
                 ),
             ),
         )
 
     recent = memory.get_recent_recommendations(USER_ID, sessions=2)
     assert [r.game_title for r in recent] == ["Tunic", "Celeste"]
-
-
-def _mood() -> Any:
-    from agent.mood_interpreter import MoodDimensions
-
-    return MoodDimensions(0.5, 0.5, 0.5, 0.5)

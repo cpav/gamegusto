@@ -1,32 +1,21 @@
-"""Display-facing recommendation model.
+"""Recommendation record persisted with a session.
 
-A ``Recommendation`` is what the UI renders and the orchestrator stores; it is
-derived from a canonical :class:`~models.game_record.GameRecord` by the
-Recommender. The record uses ``title`` internally, while this display surface
-exposes ``game_title`` (Req 7.1).
+A ``Recommendation`` is what the agent persists via the ``save_recommendation``
+tool and what the recommendation history reads back. The agent produces its
+reasoning as free text, so this carries just the title, that reasoning, and the
+playtime it fit to; ``game_title`` mirrors a ``GameRecord.title`` (Req 7.1, 8.1).
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-
-from models.game_record import CommunityReview
+from dataclasses import dataclass
 
 
 @dataclass
 class Recommendation:
-    """A single recommendation rendered in the chat view (Req 7.1, 7.3, 7.4)."""
+    """A recommendation persisted for history and no-repeat logic (Req 7.1, 8.1)."""
 
     game_title: str
-    genre: str | None
-    estimated_playtime: int | None
-    """Estimated playtime in minutes."""
-
     reasoning: str
-    """Detailed reasoning for the primary recommendation (Req 7.3)."""
-
-    brief_reasoning: str = ""
-    """Short reasoning used for alternatives (Req 7.4)."""
-
-    platform_availability: list[str] = field(default_factory=list)
-    community_review: CommunityReview | None = None
+    estimated_playtime: int | None = None
+    """Estimated playtime in minutes, when known."""

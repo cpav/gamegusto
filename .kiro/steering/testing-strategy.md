@@ -9,9 +9,9 @@ Testing approach for this project, layered to match the architecture. The aim is
 ## Tooling
 
 - **Test runner:** `pytest`
-- **Property-based testing:** `hypothesis` — used to validate the correctness properties (P1–P20) defined in `design.md`.
+- **Property-based testing:** `hypothesis` — used to validate the correctness properties (P1–P22) defined in `design.md`.
 - **Coverage:** `pytest-cov`.
-- Mock external services (Bedrock/AgentCore, Tavily, Xbox Live) in unit/integration layers; reserve real network calls for explicitly-marked tests.
+- Mock external services (Bedrock, DynamoDB, Tavily, Gmail) in unit/integration layers; reserve real network calls for explicitly-marked tests.
 
 ## Test layers — when to use each
 
@@ -21,18 +21,18 @@ Testing approach for this project, layered to match the architecture. The aim is
 - Fast, no network, no AWS — mock all service clients.
 
 ### Property-based tests (for the correctness properties)
-- Each property in `design.md` (P1–P20) gets a Hypothesis test, mapped via the test sub-tasks in `tasks.md`.
+- Each property in `design.md` (P1–P22) gets a Hypothesis test, mapped via the test sub-tasks in `tasks.md`.
 - Use these for invariants: parsing round-trips, "every recommendation is playable on an owned platform," ranking monotonicity, CRUD round-trips, rate-limit compliance, error-message sanitization.
 
 ### Integration tests (at service boundaries)
-- Write integration tests where a component coordinates with a real external contract: Tavily search/availability/review parsing, Xbox OAuth + Graph retrieval, AgentCore memory store/retrieve.
+- Write integration tests where a component coordinates with a real external contract: Bedrock Converse (tool-use + extended thinking), Tavily search/availability/review parsing, read-only Gmail OAuth + message retrieval, DynamoDB memory store/retrieve.
 - Mark them with `@pytest.mark.integration`. They may hit real services and require credentials, so they are **not** part of the default fast run.
 - Run integration tests before opening a PR that touches a service client or its parsing logic.
 
 ### End-to-end tests (for full user journeys)
-- Exercise the complete conversational flow: mood → time → platform check → recommendation → alternatives, with services mocked at the network edge.
+- Exercise the complete agent-driven conversation: a free-text request drives the tool-use loop (intake → tool calls for platforms/library/enrichment → recommendation → follow-ups such as "I already played it" or "something shorter"), with services mocked at the network edge.
 - Mark with `@pytest.mark.e2e`.
-- Required before merging changes to the orchestrator, the recommendation pipeline, or the UI wiring — i.e. anything that changes the user-visible flow.
+- Required before merging changes to the agent runtime / tool registry, the recommendation logic, or the UI wiring — i.e. anything that changes the user-visible flow.
 
 ## Coverage policy
 

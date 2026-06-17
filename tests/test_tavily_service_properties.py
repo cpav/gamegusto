@@ -2,14 +2,14 @@
 
 Encodes two correctness properties from ``design.md``:
 
-* **Property 7 -- Autocomplete activation threshold** (Req 3.4): a query shorter
+* **Property 3 -- Autocomplete activation threshold** (Req 3.4): a query shorter
   than 3 characters never triggers a Tavily request and yields ``[]``; a query of
   3+ characters triggers exactly one request and surfaces the extracted titles.
-* **Property 21 -- Tavily rate-limit compliance** (Req 5.4): across any sequence
-  of enrich/autocomplete calls within a single minute, the number of real API
+* **Property 13 -- Tavily rate-limit compliance** (Req 5.4): across any sequence
+  of web-search/autocomplete calls within a single minute, the number of real API
   calls never exceeds the free-tier cap (60 RPM); excess calls degrade gracefully
-  (return ``[]`` / the record unchanged) without hitting the API, and the budget
-  is restored once the minute window rolls over.
+  (return ``[]``) without hitting the API, and the budget is restored once the
+  minute window rolls over.
 
 A fake search client is injected so no test ever touches the real Tavily API.
 Time is driven by a fake clock patched onto the service module so the sliding
@@ -24,7 +24,6 @@ from unittest import mock
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from models.game_record import GameRecord
 from services import tavily_service
 from services.tavily_service import TavilyService
 
@@ -76,7 +75,7 @@ def _make_service(fake: FakeSearchClient) -> TavilyService:
 
 
 # ---------------------------------------------------------------------------
-# Property 7: Autocomplete activation threshold (Req 3.4)
+# Property 3: Autocomplete activation threshold (Req 3.4)
 # ---------------------------------------------------------------------------
 
 
@@ -143,10 +142,10 @@ def test_autocomplete_boundary_lengths_at_or_above(length: int) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Property 21: Tavily rate-limit compliance (Req 5.4)
+# Property 13: Tavily rate-limit compliance (Req 5.4)
 # ---------------------------------------------------------------------------
 
-_OPS = st.lists(st.sampled_from(["auto", "enrich"]), max_size=150)
+_OPS = st.lists(st.sampled_from(["auto", "web"]), max_size=150)
 
 
 @given(ops=_OPS)
@@ -155,9 +154,8 @@ def test_rate_limit_never_exceeds_free_tier_within_window(ops: list[str]) -> Non
     """No sequence of calls in one minute exceeds the free-tier cap of 60.
 
     Within a single (frozen) minute the real API call count equals
-    ``min(number_of_calls, 60)``; every call beyond the cap degrades to ``[]`` /
-    the record unchanged without invoking the API. Advancing past the window
-    restores the budget.
+    ``min(number_of_calls, 60)``; every call beyond the cap degrades to ``[]``
+    without invoking the API. Advancing past the window restores the budget.
 
     **Validates: Requirements 5.4**
     """
@@ -172,7 +170,7 @@ def test_rate_limit_never_exceeds_free_tier_within_window(ops: list[str]) -> Non
             if op == "auto":
                 service.autocomplete("zelda")
             else:
-                service.enrich(GameRecord(title="Some Game"))
+                service.web_search("some game")
 
         # The cap is never exceeded, and within one window we make exactly as
         # many real calls as are permitted.
@@ -202,8 +200,8 @@ def test_rate_limit_never_exceeds_free_tier_within_window(ops: list[str]) -> Non
 def test_calls_beyond_cap_degrade_without_api(extra_calls: int) -> None:
     """After the cap is reached, further calls degrade and never hit the API.
 
-    autocomplete returns ``[]`` and enrich returns the record unchanged, all
-    without incrementing the real API call count.
+    Both autocomplete and web_search return ``[]`` without incrementing the real
+    API call count.
 
     **Validates: Requirements 5.4**
     """
@@ -222,11 +220,7 @@ def test_calls_beyond_cap_degrade_without_api(extra_calls: int) -> None:
         # Every extra call within the same minute degrades gracefully.
         for _ in range(extra_calls):
             assert service.autocomplete("celeste") == []
-
-            record = GameRecord(title="Stardew Valley")
-            returned = service.enrich(record)
-            assert returned is record  # unchanged, not re-fetched
-            assert not record.is_enriched()
+            assert service.web_search("stardew valley") == []
 
         # No degraded call ever reached the API.
         assert fake.call_count == cap
