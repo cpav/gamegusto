@@ -25,4 +25,3 @@ class SessionData:
     time_budget_minutes: int
     recommendation: Recommendation
     alternatives: list[Recommendation] = field(default_factory=list)
-    user_feedback: str | None = None

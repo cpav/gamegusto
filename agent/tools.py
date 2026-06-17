@@ -17,6 +17,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from agent.enricher import Enricher
 from agent.library_service import LibraryService
 from agent.platform_match import owned_intersects, platforms_match
 from models.game_record import GameRecord
@@ -55,12 +56,14 @@ class ToolRegistry:
         memory: MemoryService,
         library: LibraryService,
         tavily: TavilyService,
+        enricher: Enricher,
         user_id: str,
     ) -> None:
         """Build the registry around the shared service graph for ``user_id``."""
         self._memory = memory
         self._library = library
         self._tavily = tavily
+        self._enricher = enricher
         self._user_id = user_id
         self._handlers: dict[str, ToolHandler] = {
             "get_owned_platforms": self._get_owned_platforms,
@@ -146,14 +149,16 @@ class ToolRegistry:
         title = str(tool_input.get("title", "")).strip()
         if not title:
             return {"ok": False, "error": "title is required"}
-        record = self._find_record(title)
+        # Load the library once and persist it once (no re-read via upsert_record).
+        records = self._memory.get_records(self._user_id)
+        record = _find(records, title)
         if record is None:
             return {"ok": False, "error": f"no game titled {title!r} in the library"}
         if "estimated_playtime" in tool_input:
             record.estimated_playtime = _opt_int(tool_input.get("estimated_playtime"))
         if "genre" in tool_input:
             record.genre = _opt_str(tool_input.get("genre"))
-        ok = self._memory.upsert_record(self._user_id, record)
+        ok = self._memory.store_records(self._user_id, records)
         return {"ok": ok, "game": _record_to_dict(record)}
 
     def _import_gmail(self, _: dict[str, Any]) -> dict[str, Any]:
@@ -166,12 +171,13 @@ class ToolRegistry:
         title = str(tool_input.get("title", "")).strip()
         if not title:
             return {"ok": False, "error": "title is required"}
-        record = self._find_record(title)
+        records = self._memory.get_records(self._user_id)
+        record = _find(records, title)
         if record is None:
             return {"ok": False, "error": f"no game titled {title!r} in the library"}
-        enriched = self._tavily.enrich(record)
-        self._memory.upsert_record(self._user_id, enriched)
-        return {"ok": True, "game": _record_to_dict(enriched)}
+        self._enricher.enrich(record)  # mutates the record in place, cache-first
+        ok = self._memory.store_records(self._user_id, records)
+        return {"ok": ok, "game": _record_to_dict(record)}
 
     def _web_search(self, tool_input: dict[str, Any]) -> dict[str, Any]:
         query = str(tool_input.get("query", "")).strip()
@@ -192,12 +198,11 @@ class ToolRegistry:
             return {"ok": False, "error": "game_title is required"}
         recommendation = Recommendation(
             game_title=title,
-            genre=None,
-            estimated_playtime=_opt_int(tool_input.get("time_budget_minutes")),
             reasoning=str(tool_input.get("reasoning", "")),
+            estimated_playtime=_opt_int(tool_input.get("time_budget_minutes")),
         )
         alternatives = [
-            Recommendation(game_title=str(t), genre=None, estimated_playtime=None, reasoning="")
+            Recommendation(game_title=str(t), reasoning="")
             for t in tool_input.get("alternatives", [])
             if str(t).strip()
         ]
@@ -211,15 +216,14 @@ class ToolRegistry:
         ok = self._memory.store_session(self._user_id, session)
         return {"ok": ok}
 
-    # --- internal ---
 
-    def _find_record(self, title: str) -> GameRecord | None:
-        """Return the stored record whose title matches ``title`` (case-insensitive)."""
-        needle = title.strip().casefold()
-        for record in self._memory.get_records(self._user_id):
-            if record.title.strip().casefold() == needle:
-                return record
-        return None
+def _find(records: list[GameRecord], title: str) -> GameRecord | None:
+    """Return the record whose title matches ``title`` (case-insensitive), else None."""
+    needle = title.strip().casefold()
+    for record in records:
+        if record.title.strip().casefold() == needle:
+            return record
+    return None
 
 
 def _record_on_platform(record: GameRecord, platform: str) -> bool:
@@ -239,15 +243,7 @@ def _record_to_dict(record: GameRecord) -> dict[str, Any]:
         "genre": record.genre,
         "estimated_playtime": record.estimated_playtime,
         "platform_availability": list(record.platform_availability),
-        "community_review": (
-            {
-                "score": review.score,
-                "sentiment_summary": review.sentiment_summary,
-                "source_count": review.source_count,
-            }
-            if review is not None
-            else None
-        ),
+        "community_review": review.as_dict() if review is not None else None,
     }
 
 

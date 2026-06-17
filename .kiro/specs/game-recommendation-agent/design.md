@@ -4,7 +4,7 @@
 
 GameGusto is a Python application that recommends the next video game to play based on the user's mood, available time, taste, and the platforms they own. A **tool-using agent** — a Claude Sonnet base model on Amazon Bedrock driven through the Converse API tool-use loop — is the reasoning core: it interprets the user's request, decides which tools to call (manage platforms, read/update the library, import from sources, enrich, web search, recall recent picks, persist sessions), asks for missing information only when needed, and **selects the recommendation itself** so the result honors the user's stated taste and genre. It returns one strong recommendation with clear reasoning plus up to three alternatives, and handles follow-ups ("I already played it", "something shorter") as turns in the same conversation.
 
-The library is assembled from interchangeable **record sources** — read-only Gmail purchase-confirmation emails (valuable for Nintendo, which has no history API) and manual UI entry — all normalized into a **single canonical `Game_Record`**. Every record is enriched via Tavily (genre, playtime, platform availability, community review) and persisted in a DynamoDB-backed store so recommendations favor well-regarded titles playable on owned hardware and improve across sessions.
+The library is assembled from interchangeable **record sources** — read-only Gmail purchase-confirmation emails (valuable for Nintendo, which has no history API) and manual UI entry — all normalized into a **single canonical `Game_Record`**. Every record is enriched by an **LLM-assisted enricher** (the Bedrock model classifies genre, playtime, platform availability, and community review from Tavily web results) and persisted in a DynamoDB-backed store so recommendations favor well-regarded titles playable on owned hardware and improve across sessions.
 
 The application is wired by a top-level `bootstrap.build_app(config)` that constructs the whole graph (Bedrock, Tavily, DynamoDB-backed memory, record sources, library assembly, the tool registry, and the agent runtime). A headless conversational CLI (`cli.py`) is the current runnable entrypoint; the Streamlit UI described later is the planned interface. The UI is designed as a retro arcade machine offering two views: a conversational **chat** view and a **library/dashboard** view for managing platforms and games.
 
@@ -64,7 +64,7 @@ Dependencies point one direction only: `ui → agent → services → models`. L
 
 - **models** — the `Game_Record` contract and supporting dataclasses.
 - **services** — external boundaries: `BedrockService`, `MemoryService` (backed by `DynamoDBMemoryClient`), `TavilyService`, and the record sources (`GmailSource`, `ManualSource`).
-- **agent** — `LibraryService`, `platform_match` (family-aware matching), `ToolRegistry`, and `AgentRuntime`.
+- **agent** — `LibraryService`, `Enricher` (LLM-assisted enrichment), `platform_match` (family-aware matching), `ToolRegistry`, and `AgentRuntime`.
 - **ui** — chat view, library/dashboard view, theme.
 
 The whole graph is assembled by `bootstrap.build_app(config)`: it constructs the Bedrock service, Tavily service, the DynamoDB-backed `MemoryService`, the record sources in precedence order (Gmail then manual), `LibraryService`, the `ToolRegistry`, and the `AgentRuntime`. The headless `cli.py` is the current runnable entrypoint; the Streamlit UI is built on the same wiring and is deferred.
@@ -90,7 +90,7 @@ bounded by a per-turn cap on tool-call rounds so it always terminates.
 
 1. Run sources in order **Gmail → manual**; each returns `list[Game_Record]` (Req 3.1).
 2. Deduplicate the combined stream against existing records by **normalized dedup key** (title + platform); earlier sources win (Req 3.5).
-3. Enrich any record missing metadata via Tavily, cache-first from memory (Req 5.1, 5.2).
+3. Enrich any record missing metadata via the LLM-assisted `Enricher` (Tavily web search → Bedrock classification), cache-first (Req 5.1, 5.2).
 4. Persist the deduplicated, enriched records to the DynamoDB-backed store (Req 3.5, 8.1).
 5. A source that is unavailable or unconfigured is skipped; the remaining sources still run and manual entry is always available (Req 3.6, 10.4).
 
@@ -246,20 +246,20 @@ Orchestrates source assembly: precedence, dedup, enrichment, persistence (Req 3.
 
 ```python
 # agent/library_service.py
+from agent.enricher import Enricher
 from models.game_record import GameRecord
 from services.sources.base import RecordSource
-from services.tavily_service import TavilyService
 from services.memory_service import MemoryService
 
 class LibraryService:
     def __init__(
         self,
         sources: list[RecordSource],      # in precedence order: Gmail, manual
-        tavily: TavilyService,
+        enricher: Enricher,
         memory: MemoryService,
     ):
         self._sources = sources
-        self._tavily = tavily
+        self._enricher = enricher
         self._memory = memory
 
     def refresh(self, user_id: str) -> list[GameRecord]:
@@ -275,27 +275,49 @@ class LibraryService:
                 if record.dedup_key in seen:           # earlier source wins (Req 3.5)
                     continue
                 seen.add(record.dedup_key)
-                merged.append(self._enrich(record))
+                merged.append(self._enricher.enrich(record))  # cache-first (Req 5.1, 5.2)
 
         self._memory.store_records(user_id, merged)    # (Req 3.5, 8.1)
         return merged
+```
 
-    def _enrich(self, record: GameRecord) -> GameRecord:
-        """Cache-first enrichment via Tavily (Req 5.1, 5.2)."""
+### Enricher (`agent/enricher.py`)
+
+LLM-assisted enrichment. For a record missing metadata it runs a Tavily web
+search and asks the Bedrock model to classify it (using the snippets plus its own
+knowledge) into structured fields — `genre`, main-story `estimated_playtime`,
+`platform_availability`, and `community_review`. This replaces brittle keyword
+matching (e.g. Metal Slug → "Run-and-gun shooter", not "Puzzle"). Enrichment is
+**cache-first** and **degrades gracefully**: if Tavily yields nothing, or the
+model call fails, or the reply is not parseable JSON, the record is returned
+unchanged rather than blocking library assembly (Req 5.5, 10.3).
+
+```python
+# agent/enricher.py
+class Enricher:
+    def __init__(self, bedrock: BedrockService, tavily: TavilyService): ...
+
+    def enrich(self, record: GameRecord) -> GameRecord:
         if record.is_enriched():
-            return record
-        return self._tavily.enrich(record)
+            return record                                  # cache-first
+        snippets = self._tavily.web_search(f"{record.title} video game genre length platforms review")
+        if not snippets:
+            return record                                  # Tavily down/empty → degrade
+        try:
+            data = self._classify(record.title, snippets)  # Bedrock → JSON, parsed
+        except (BedrockServiceError, ValueError):
+            return record                                  # model/parse failure → degrade
+        return self._apply(record, data)                  # fill only unset fields
 ```
 
 ### TavilyService (`services/tavily_service.py`)
 
-Enriches any `Game_Record` and powers autocomplete; rate-limited to the free tier; cache-first (Req 5.1, 5.4).
+Web search and manual-entry autocomplete; rate-limited to the free tier; degrades to `[]` on any failure (Req 3.4, 5.4, 5.5, 10.3). Interpreting results into structured fields is the `Enricher`'s job, not this service's.
 
 ```python
 # services/tavily_service.py
 import time
 from dataclasses import dataclass
-from models.game_record import GameRecord, CommunityReview
 
 @dataclass
 class RateLimitState:
@@ -305,27 +327,16 @@ class RateLimitState:
 class TavilyService:
     FREE_TIER_RPM = 60
 
-    def __init__(self, api_key: str):
-        self._api_key = api_key
-        self._rate = RateLimitState()
-        self._available = True
+    def __init__(self, api_key: str, client=None): ...
 
-    def enrich(self, record: GameRecord) -> GameRecord:
-        """Populate genre, estimated_playtime, platform availability, and
-        community_review for a record, regardless of its source (Req 5.1).
-        Missing fields are left unset and the record marked incomplete (Req 5.5)."""
-        if not self._check_rate_limit():
-            return record  # degrade: leave as-is (Req 5.4, 10.3)
-        try:
-            data = self._search(f"{record.title} video game genre playtime platforms review")
-            return self._apply(record, data)
-        except TavilyAPIError:
-            self._available = False
-            return record
+    def web_search(self, query: str) -> list[dict[str, str]]:
+        """Raw {title, content, url} snippets for the enricher and the web_search tool.
+        Rate-limit miss or any failure degrades to [] (Req 5.4, 10.3)."""
+        ...
 
     def autocomplete(self, query: str) -> list[str]:
         """Suggestions for manual entry; only after >= 3 characters (Req 3.4)."""
-        if len(query) < 3 or not self._check_rate_limit():
+        if len(query) < 3 or not self._available or not self._check_rate_limit():
             return []
         return self._extract_titles(self._search(f"{query} video game"))
 
@@ -338,10 +349,6 @@ class TavilyService:
             return False
         self._rate.requests_this_minute += 1
         return True
-
-    @property
-    def is_available(self) -> bool:
-        return self._available
 ```
 
 ### MemoryService (`services/memory_service.py`)
@@ -493,7 +500,7 @@ Each tool is a thin function plus a Converse `toolSpec` (JSON schema) wrapping a
 | `add_manual_game` | title, platform, optional playtime/genre | `MemoryService.upsert_record` |
 | `set_game_fields` | title, optional playtime/genre | `MemoryService.upsert_record` (manual playtime fill) |
 | `import_gmail` | – | `LibraryService.refresh` (returns imported delta) |
-| `enrich_game` | title | `TavilyService.enrich` + persist |
+| `enrich_game` | title | `Enricher.enrich` (LLM over Tavily) + persist |
 | `web_search` | query | `TavilyService.web_search` |
 | `get_recent_recommendations` | optional n | `MemoryService.get_recent_recommendations` |
 | `save_recommendation` | game_title, reasoning, optional mood/time/alternatives | `MemoryService.store_session` |
@@ -502,7 +509,7 @@ Each tool is a thin function plus a Converse `toolSpec` (JSON schema) wrapping a
 # agent/tools.py
 class ToolRegistry:
     def __init__(self, memory: MemoryService, library: LibraryService,
-                 tavily: TavilyService, user_id: str): ...
+                 tavily: TavilyService, enricher: Enricher, user_id: str): ...
 
     def specs(self) -> list[dict]:
         """The Converse toolSpec list advertised to the model."""
@@ -804,19 +811,16 @@ class OwnedPlatform:
 
 ```python
 # models/recommendation.py
-from dataclasses import dataclass, field
-from models.game_record import CommunityReview
+from dataclasses import dataclass
 
 @dataclass
 class Recommendation:
-    """Display-facing recommendation derived from a GameRecord."""
+    """Persisted with a session for history + no-repeat. The agent produces its
+    reasoning as free text, so this carries only the title, that reasoning, and
+    the playtime it fit to (game_title mirrors a GameRecord.title)."""
     game_title: str
-    genre: str | None
-    estimated_playtime: int | None             # minutes
-    reasoning: str                             # detailed reasoning (primary)
-    brief_reasoning: str = ""                  # short reasoning (alternatives)
-    platform_availability: list[str] = field(default_factory=list)
-    community_review: CommunityReview | None = None
+    reasoning: str
+    estimated_playtime: int | None = None      # minutes, when known
 ```
 
 ```python
@@ -836,7 +840,6 @@ class SessionData:
     time_budget_minutes: int
     recommendation: Recommendation
     alternatives: list[Recommendation] = field(default_factory=list)
-    user_feedback: str | None = None
 ```
 
 ### DynamoDB Memory Schema
@@ -878,9 +881,8 @@ A single DynamoDB table keyed by user (`PK = USER#<user_id>`), holding `Game_Rec
     "timestamp": "ISO-8601",
     "mood": "relaxed, in the mood for a chill solo RPG",
     "time_budget_minutes": 90,
-    "recommendation": { "game_title": "Hades", "...": "..." },
-    "alternatives": [],
-    "user_feedback": "loved it"
+    "recommendation": {"game_title": "Hades", "reasoning": "...", "estimated_playtime": 40},
+    "alternatives": [{"game_title": "Celeste", "reasoning": "", "estimated_playtime": null}]
 }
 ```
 
@@ -936,12 +938,13 @@ gamegusto/
 │   ├── runtime.py              # AgentRuntime: Converse tool-use loop + system prompt
 │   ├── tools.py                # ToolRegistry: tool specs + dispatch wrapping services
 │   ├── platform_match.py       # family-aware platform matching (Xbox ~ Xbox Series X)
+│   ├── enricher.py             # LLM-assisted enrichment (Bedrock over Tavily results)
 │   └── library_service.py      # source assembly: precedence, dedup, enrich, persist
 ├── services/
 │   ├── bedrock_service.py      # Bedrock Converse: converse_tools (loop) + invoke_conversational
 │   ├── memory_service.py       # Game_Records + Platform_List + sessions (MemoryClient)
 │   ├── dynamodb_memory_client.py # DynamoDB single-table MemoryClient
-│   ├── tavily_service.py       # enrichment + autocomplete, rate-limited
+│   ├── tavily_service.py       # web search + autocomplete, rate-limited
 │   ├── error_handler.py        # sanitization
 │   └── sources/
 │       ├── base.py             # RecordSource protocol

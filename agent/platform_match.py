@@ -10,17 +10,22 @@ known families (the Platform_List is free-text and extensible, Req 6.4).
 
 from __future__ import annotations
 
-# Substring keyword -> canonical family. Order does not matter: a name maps to a
-# family if any keyword is contained in its case-folded form.
+# Substring keyword -> canonical family, scanned in order (first match wins).
+# Handheld families (PSP, PS Vita) are checked before the generic "playstation"
+# token and kept distinct, so owning a PSP does not falsely match a PS4/PS5-only
+# title (a PSP can't run PS5 games).
 _FAMILY_KEYWORDS: tuple[tuple[str, str], ...] = (
     ("nintendo", "nintendo"),
     ("switch", "nintendo"),
+    ("playstation portable", "psp"),
+    ("psp", "psp"),
+    ("playstation vita", "psvita"),
+    ("ps vita", "psvita"),
+    ("vita", "psvita"),
     ("playstation", "playstation"),
     ("ps5", "playstation"),
     ("ps4", "playstation"),
     ("ps3", "playstation"),
-    ("psp", "playstation"),
-    ("vita", "playstation"),
     ("xbox", "xbox"),
     ("steam", "pc"),
     ("windows", "pc"),

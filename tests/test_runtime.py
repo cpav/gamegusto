@@ -10,6 +10,7 @@ from __future__ import annotations
 import copy
 from typing import Any
 
+from agent.enricher import Enricher
 from agent.library_service import LibraryService
 from agent.runtime import _ITERATION_LIMIT_MESSAGE, AgentReply, AgentRuntime
 from agent.tools import ToolRegistry
@@ -83,8 +84,9 @@ def _tool_call(use: ToolUse, preface: str = "") -> ConverseResult:
 def _runtime(bedrock: Any) -> tuple[AgentRuntime, MemoryService]:
     memory = MemoryService(_InMemoryClient())
     tavily = TavilyService(api_key="x", client=_NoopTavilyClient())
-    library = LibraryService([ManualSource(memory, USER_ID)], tavily, memory)
-    tools = ToolRegistry(memory, library, tavily, USER_ID)
+    enricher = Enricher(bedrock, tavily)
+    library = LibraryService([ManualSource(memory, USER_ID)], enricher, memory)
+    tools = ToolRegistry(memory, library, tavily, enricher, USER_ID)
     return AgentRuntime(bedrock, tools, memory), memory
 
 
@@ -150,8 +152,9 @@ def test_stateless_flag_reflects_memory_health() -> None:
     bedrock = _ScriptedBedrock([_final("hi")])
     tavily = TavilyService(api_key="x", client=_NoopTavilyClient())
     memory = MemoryService(_InMemoryClient())
-    library = LibraryService([ManualSource(memory, USER_ID)], tavily, memory)
-    tools = ToolRegistry(memory, library, tavily, USER_ID)
+    enricher = Enricher(bedrock, tavily)  # type: ignore[arg-type]
+    library = LibraryService([ManualSource(memory, USER_ID)], enricher, memory)
+    tools = ToolRegistry(memory, library, tavily, enricher, USER_ID)
     runtime = AgentRuntime(bedrock, tools, _StatelessMemory())  # type: ignore[arg-type]
 
     reply = runtime.send("hi")

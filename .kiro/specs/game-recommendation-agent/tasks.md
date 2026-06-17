@@ -168,6 +168,9 @@ Every source produces and every consumer reads the single canonical `GameRecord`
   - [x] 12.7 Align `.kiro` docs and steering
     - Update requirements (Req 1, 7, new Req 11), design (architecture, components, properties P1–P14), and steering (drop Xbox/AgentCore; region `eu-north-1`)
     - _Requirements: 2.x_
+  - [x] 12.8 LLM-assisted enrichment + platform refinements
+    - `agent/enricher.py`: Tavily web search → Bedrock structured classification (genre, completion playtime, availability, review), cache-first + graceful degradation; strip the dead keyword machinery from `TavilyService` (now web_search + autocomplete only). Microsoft Store records labelled `Xbox Series X/S`; PSP given its own platform family in `platform_match`. Re-scraped the live `default` library (Metal Slug → "Run-and-gun shooter"). Owned platforms set to Nintendo Switch, Nintendo Switch 2, Xbox Series X/S, PC, PSP.
+    - _Requirements: 5.1, 5.3, 5.5, 6.1, 6.4, 7.6, 10.3_
 
 ## Notes
 

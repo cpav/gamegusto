@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from agent.enricher import Enricher
 from agent.library_service import LibraryService
 from agent.runtime import AgentRuntime
 from agent.tools import ToolRegistry
@@ -53,8 +54,11 @@ def build_app(config: Config, user_id: str = "default") -> AppContext:
         sources.append(gmail)  # Gmail takes precedence over manual entries
     sources.append(ManualSource(memory, user_id))
 
-    library = LibraryService(sources=sources, tavily=tavily, memory=memory)
-    tools = ToolRegistry(memory=memory, library=library, tavily=tavily, user_id=user_id)
+    enricher = Enricher(bedrock, tavily)
+    library = LibraryService(sources=sources, enricher=enricher, memory=memory)
+    tools = ToolRegistry(
+        memory=memory, library=library, tavily=tavily, enricher=enricher, user_id=user_id
+    )
     runtime = AgentRuntime(bedrock=bedrock, tools=tools, memory=memory)
 
     return AppContext(

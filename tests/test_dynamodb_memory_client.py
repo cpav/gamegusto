@@ -171,7 +171,7 @@ def test_memory_service_sessions_round_trip_over_dynamodb() -> None:
                 mood="relaxed",
                 time_budget_minutes=60,
                 recommendation=Recommendation(
-                    game_title=title, genre="Action", estimated_playtime=30, reasoning="r"
+                    game_title=title, reasoning="r", estimated_playtime=30
                 ),
             ),
         )

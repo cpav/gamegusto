@@ -24,11 +24,21 @@ from agent.platform_match import owned_intersects, platform_family, platforms_ma
         ("Steam", "pc"),
         ("Windows", "pc"),
         ("PC", "pc"),
+        ("PSP", "psp"),
+        ("PlayStation Portable", "psp"),
+        ("PS Vita", "psvita"),
         ("Stadia", None),
     ],
 )
 def test_platform_family(name: str, family: str | None) -> None:
     assert platform_family(name) == family
+
+
+def test_psp_is_distinct_from_playstation_consoles() -> None:
+    # A PSP can't run PS4/PS5 titles, so it must not match those availabilities.
+    assert platform_family("PSP") != platform_family("PlayStation 5")
+    assert platforms_match("PSP", "PlayStation 5") is False
+    assert platforms_match("PSP", "PSP") is True
 
 
 @pytest.mark.parametrize(

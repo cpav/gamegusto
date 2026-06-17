@@ -95,7 +95,7 @@ returns one `GameRecord` per item.
 | Information present in email | Where it appears | Decision | Mapped to contract | Rationale |
 |---|---|---|---|---|
 | Purchased item title(s) | Body "Order details" pipe-delimited table: `\| <title> \| <qty> \| <price> \|` | **Include** | `title` (one record per row) | Required key material. Header and publisher ("By: …") rows are skipped. |
-| Platform / device | Body tokens ("Xbox", "Windows"/"PC") when present | **Include** | `platforms` (parsed; default `["Xbox"]`) | Establishes ownership platform; precise platform comes from enrichment. |
+| Platform / device | Body tokens ("Xbox", "Windows"/"PC") when present | **Include** | `platforms` (Xbox token → `"Xbox Series X/S"`, Windows/PC → `"PC"`; default `["Xbox Series X/S"]`) | Establishes the owned console; family-aware matching covers older "Xbox One"/bare "Xbox" availability. |
 | Purchase/order date | Email `Date` header | **Include** | `purchase_date` | Req 3.2. |
 | Order number, price, publisher, account ids | Body | **Exclude** | — | Order metadata / PII; not contract fields. |
 
@@ -115,23 +115,30 @@ Tavily-populated fields carry `source = "enrichment"` when a record originates
 purely from enrichment; when enriching an existing source record, enrichment
 fills the optional fields without changing the record's original `source`.
 
-Tavily returns a search envelope; we derive structured enrichment from it:
+Tavily returns a search envelope. We do **not** keyword-parse it directly;
+instead `agent.enricher.Enricher` feeds the `answer` + `results[].content`
+snippets to the Bedrock model, which (using its own knowledge of the title plus
+the snippets) returns a structured JSON classification — `genre`,
+`estimated_playtime_minutes` (main-story completion time), `platform_availability`,
+and `community_review {score, summary}`. This reliably classifies titles that
+keyword matching mislabels (e.g. Metal Slug as a run-and-gun shooter, not
+"Puzzle"). The Tavily fields below are the raw inputs to that step:
 
 | Exposed field | Type (raw) | Description | Decision | Mapped to contract | Rationale |
 |---|---|---|---|---|---|
 | `query` | string | Echo of the search query | **Exclude** | — | Diagnostic only. |
-| `answer` | string | LLM-synthesized answer | **Include (parsed)** | feeds `genre`, `estimated_playtime`, `community_review.sentiment_summary` | Primary structured-extraction source for enrichment fields. |
+| `answer` | string | LLM-synthesized answer | **Include (to LLM)** | feeds the model's `genre`, `estimated_playtime`, `community_review` classification | Primary snippet fed to the enrichment model. |
 | `results[].title` | string | Result page title | **Include (parsed)** | autocomplete suggestions; cross-check | Used for manual-entry autocomplete (Req 3.4) and to corroborate the game title. |
 | `results[].url` | string | Source URL | **Exclude** | — | Provenance only; not a contract field. |
 | `results[].content` | string | Snippet text | **Include (parsed)** | `community_review.sentiment_summary`, `platform_availability` | Mined for platform availability and review sentiment. |
 | `results[].score` | float | Tavily relevance score | **Exclude** | — | Search relevance, not a game review score. Must not be confused with `community_review.score`. |
 | `images` | list | Optional images | **Exclude** | — | Presentation-only. |
 | `response_time` | float | API latency | **Exclude** | — | Diagnostic only. |
-| — (derived) genre | — | Parsed from `answer`/`content` | **Include** | `genre` | Req 5.1. |
-| — (derived) estimated playtime | — | Parsed to minutes | **Include** | `estimated_playtime` (int, minutes) | Req 5.1; normalized to minutes to match the time budget. |
-| — (derived) platform availability | — | Parsed list of platforms | **Include** | `platform_availability` | Req 5.3 — drives the playable-on-owned-platform filter. |
-| — (derived) review score | — | Normalized 0.0–10.0 | **Include** | `community_review.score` | Req 7.2 ranking. |
-| — (derived) review source count | — | Count of aggregated sources | **Include** | `community_review.source_count` | Confidence signal. |
+| — (LLM) genre | — | Model-classified from snippets + own knowledge | **Include** | `genre` | Req 5.1. |
+| — (LLM) estimated playtime | — | Model-estimated main-story completion, in minutes | **Include** | `estimated_playtime` (int, minutes) | Req 5.1. Completion time, not a session length — the agent reasons about session fit. |
+| — (LLM) platform availability | — | Model-listed platforms | **Include** | `platform_availability` | Req 5.3 — drives the family-aware playable filter. |
+| — (LLM) review score | — | Model-normalized 0.0–10.0 | **Include** | `community_review.score` | Req 7.2 ranking. |
+| — (derived) review source count | — | Count of snippets fed to the model | **Include** | `community_review.source_count` | Confidence signal. |
 
 **Tavily notes**
 

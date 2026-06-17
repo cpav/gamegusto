@@ -9,9 +9,9 @@ Encodes two correctness properties from ``design.md``:
 
 Everything is exercised against in-process fakes: ``FakeSource`` implements the
 ``RecordSource`` protocol, ``FakeMemory`` subclasses :class:`MemoryService` with
-its two record methods overridden, and ``FakeTavily`` subclasses
-:class:`TavilyService` with identity enrichment. No network, AWS, or Tavily call
-is ever made, so dedup/precedence is observed without enrichment noise.
+its two record methods overridden, and ``IdentityEnricher`` returns records
+untouched. No network, AWS, Tavily, or Bedrock call is ever made, so
+dedup/precedence is observed without enrichment noise.
 """
 
 from __future__ import annotations
@@ -23,7 +23,6 @@ from agent.library_service import LibraryService
 from models.game_record import GameRecord
 from services.memory_service import MemoryService
 from services.sources.base import RecordSource
-from services.tavily_service import TavilyService
 
 USER_ID = "test-user"
 
@@ -61,11 +60,8 @@ class FakeMemory(MemoryService):
         return True
 
 
-class FakeTavily(TavilyService):
-    """Identity enrichment so dedup/precedence is tested without enrichment noise."""
-
-    def __init__(self) -> None:  # bypass real-client construction
-        pass
+class IdentityEnricher:
+    """Returns records untouched so dedup/precedence is tested without enrichment noise."""
 
     def enrich(self, record: GameRecord) -> GameRecord:
         return record
@@ -184,7 +180,7 @@ def test_dedup_is_precedence_aware_and_key_normalized(
     sources: list[RecordSource] = [
         FakeSource(f"source-{i}", recs, True) for i, recs in enumerate(source_records)
     ]
-    service = LibraryService(sources=sources, tavily=FakeTavily(), memory=memory)
+    service = LibraryService(sources=sources, enricher=IdentityEnricher(), memory=memory)  # type: ignore[arg-type]
 
     result = service.refresh(USER_ID)
 
@@ -228,7 +224,7 @@ def test_source_unavailability_does_not_break_assembly(
     sources: list[RecordSource] = [
         FakeSource(f"source-{i}", recs, available) for i, (recs, available) in enumerate(specs)
     ]
-    service = LibraryService(sources=sources, tavily=FakeTavily(), memory=memory)
+    service = LibraryService(sources=sources, enricher=IdentityEnricher(), memory=memory)  # type: ignore[arg-type]
 
     result = service.refresh(USER_ID)
 
@@ -265,7 +261,7 @@ def test_all_sources_unavailable_returns_existing_memory(
     sources: list[RecordSource] = [
         FakeSource(f"source-{i}", recs, False) for i, recs in enumerate(source_records)
     ]
-    service = LibraryService(sources=sources, tavily=FakeTavily(), memory=memory)
+    service = LibraryService(sources=sources, enricher=IdentityEnricher(), memory=memory)  # type: ignore[arg-type]
 
     result = service.refresh(USER_ID)
 

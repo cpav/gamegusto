@@ -294,14 +294,20 @@ def _extract_microsoft_titles(body: str) -> list[str]:
 
 
 def _extract_microsoft_platforms(text: str) -> list[str]:
-    """Parse owned platform(s) from a Microsoft Store email's text."""
+    """Parse owned platform(s) from a Microsoft Store email's text.
+
+    Microsoft Store purchases are owned on the user's Xbox Series X/S console
+    (and on PC for Play Anywhere titles). The Xbox label is reported as
+    "Xbox Series X/S"; family-aware matching still covers older "Xbox One" /
+    bare "Xbox" availability strings from enrichment.
+    """
     lowered = text.lower()
     platforms: list[str] = []
     if "xbox" in lowered:
-        platforms.append("Xbox")
+        platforms.append("Xbox Series X/S")
     if "windows" in lowered or "pc" in lowered:
-        platforms.append("Windows")
-    return platforms or ["Xbox"]
+        platforms.append("PC")
+    return platforms or ["Xbox Series X/S"]
 
 
 def _parse_purchase_date(date_header: str | None) -> date | None:

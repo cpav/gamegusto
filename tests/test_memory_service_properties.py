@@ -84,12 +84,8 @@ _platforms = st.builds(OwnedPlatform, name=_text)
 _recommendations = st.builds(
     Recommendation,
     game_title=_nonempty_text,
-    genre=st.one_of(st.none(), _text),
-    estimated_playtime=st.one_of(st.none(), st.integers(min_value=0, max_value=100_000)),
     reasoning=_text,
-    brief_reasoning=_text,
-    platform_availability=st.lists(_nonempty_text, max_size=3),
-    community_review=st.one_of(st.none(), _community_reviews),
+    estimated_playtime=st.one_of(st.none(), st.integers(min_value=0, max_value=100_000)),
 )
 
 _sessions = st.builds(
@@ -99,7 +95,6 @@ _sessions = st.builds(
     time_budget_minutes=st.integers(min_value=0, max_value=100_000),
     recommendation=_recommendations,
     alternatives=st.lists(_recommendations, max_size=3),
-    user_feedback=st.one_of(st.none(), _text),
 )
 
 _CONTRACT_FIELDS = frozenset(

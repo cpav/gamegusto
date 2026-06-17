@@ -233,7 +233,9 @@ class MemoryService:
             "purchase_date": record.purchase_date.isoformat() if record.purchase_date else None,
             "genre": record.genre,
             "estimated_playtime": record.estimated_playtime,
-            "community_review": MemoryService._review_to_dict(record.community_review),
+            "community_review": record.community_review.as_dict()
+            if record.community_review
+            else None,
             "platform_availability": list(record.platform_availability),
             "external_ids": dict(record.external_ids),
         }
@@ -249,31 +251,9 @@ class MemoryService:
             purchase_date=date.fromisoformat(raw_date) if raw_date else None,
             genre=data.get("genre"),
             estimated_playtime=data.get("estimated_playtime"),
-            community_review=MemoryService._review_from_dict(data.get("community_review")),
+            community_review=CommunityReview.from_dict(data.get("community_review")),
             platform_availability=list(data.get("platform_availability", [])),
             external_ids=dict(data.get("external_ids", {})),
-        )
-
-    @staticmethod
-    def _review_to_dict(review: CommunityReview | None) -> dict[str, Any] | None:
-        """Serialize a community review, or ``None`` when absent."""
-        if review is None:
-            return None
-        return {
-            "score": review.score,
-            "sentiment_summary": review.sentiment_summary,
-            "source_count": review.source_count,
-        }
-
-    @staticmethod
-    def _review_from_dict(data: dict[str, Any] | None) -> CommunityReview | None:
-        """Rebuild a community review, or ``None`` when absent."""
-        if not data:
-            return None
-        return CommunityReview(
-            score=data["score"],
-            sentiment_summary=data["sentiment_summary"],
-            source_count=data["source_count"],
         )
 
     @staticmethod
@@ -281,12 +261,8 @@ class MemoryService:
         """Serialize a recommendation for session persistence (Req 8.1)."""
         return {
             "game_title": rec.game_title,
-            "genre": rec.genre,
-            "estimated_playtime": rec.estimated_playtime,
             "reasoning": rec.reasoning,
-            "brief_reasoning": rec.brief_reasoning,
-            "platform_availability": list(rec.platform_availability),
-            "community_review": MemoryService._review_to_dict(rec.community_review),
+            "estimated_playtime": rec.estimated_playtime,
         }
 
     @staticmethod
@@ -294,12 +270,8 @@ class MemoryService:
         """Rebuild a recommendation from its persisted representation (Req 8.2)."""
         return Recommendation(
             game_title=data["game_title"],
-            genre=data.get("genre"),
-            estimated_playtime=data.get("estimated_playtime"),
             reasoning=data.get("reasoning", ""),
-            brief_reasoning=data.get("brief_reasoning", ""),
-            platform_availability=list(data.get("platform_availability", [])),
-            community_review=MemoryService._review_from_dict(data.get("community_review")),
+            estimated_playtime=data.get("estimated_playtime"),
         )
 
     @staticmethod
@@ -313,5 +285,4 @@ class MemoryService:
             "alternatives": [
                 MemoryService._recommendation_to_dict(alt) for alt in session.alternatives
             ],
-            "user_feedback": session.user_feedback,
         }

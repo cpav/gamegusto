@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from agent.enricher import Enricher
 from agent.library_service import LibraryService
 from agent.tools import ToolRegistry
 from models.game_record import GameRecord
@@ -18,6 +19,23 @@ from services.sources.manual_source import ManualSource
 from services.tavily_service import TavilyService
 
 USER_ID = "tools-user"
+
+# What the fake model returns when the enricher asks it to classify a title.
+_ENRICH_JSON = (
+    '{"genre": "Run-and-gun shooter", "estimated_playtime_minutes": 120, '
+    '"platform_availability": ["Nintendo Switch", "PlayStation 4"], '
+    '"community_review": {"score": 8.5, "summary": "Frenetic and acclaimed."}}'
+)
+
+
+class _FakeBedrock:
+    """Returns a preset classification reply for the enricher (no network)."""
+
+    def __init__(self, reply: str) -> None:
+        self._reply = reply
+
+    def invoke_conversational(self, prompt: str, session_id: str) -> str:
+        return self._reply
 
 
 class _InMemoryClient:
@@ -55,8 +73,9 @@ class _FakeTavilyClient:
 def _registry() -> tuple[ToolRegistry, MemoryService]:
     memory = MemoryService(_InMemoryClient())
     tavily = TavilyService(api_key="x", client=_FakeTavilyClient())
-    library = LibraryService([ManualSource(memory, USER_ID)], tavily, memory)
-    return ToolRegistry(memory, library, tavily, USER_ID), memory
+    enricher = Enricher(_FakeBedrock(_ENRICH_JSON), tavily)  # type: ignore[arg-type]
+    library = LibraryService([ManualSource(memory, USER_ID)], enricher, memory)
+    return ToolRegistry(memory, library, tavily, enricher, USER_ID), memory
 
 
 def test_platform_tools_round_trip() -> None:
@@ -120,7 +139,7 @@ def test_enrich_and_web_search() -> None:
 
     enriched = reg.dispatch("enrich_game", {"title": "Hades"})
     assert enriched["ok"] is True
-    assert enriched["game"]["genre"] == "RPG"  # parsed from canned answer
+    assert enriched["game"]["genre"] == "Run-and-gun shooter"  # from LLM classification
     assert "Nintendo Switch" in enriched["game"]["platform_availability"]
 
     assert reg.dispatch("enrich_game", {"title": "ghost"})["ok"] is False

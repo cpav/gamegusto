@@ -126,7 +126,7 @@ class TestMicrosoftStoreParser:
         assert record.title == "Zombies Ate My Neighbors and Ghoul Patrol"
         assert record.source == "gmail"
         assert record.purchase_date == EXPECTED_DATE
-        assert record.platforms == ["Xbox"]  # default when no platform token in body
+        assert record.platforms == ["Xbox Series X/S"]  # default when no platform token in body
 
     def test_parses_multiple_line_items(self) -> None:
         raw = _raw_message(
@@ -162,7 +162,7 @@ class TestMicrosoftStoreParser:
 
         records = _parse_microsoft_store(raw)
 
-        assert records[0].platforms == ["Windows"]
+        assert records[0].platforms == ["PC"]
 
     def test_returns_empty_when_no_item_table(self) -> None:
         raw = _raw_message(

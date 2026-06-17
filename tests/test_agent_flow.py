@@ -62,6 +62,13 @@ class _NoopTavilyClient:
         return {}
 
 
+class _IdentityEnricher:
+    """Returns records untouched (enrichment is not exercised in this flow)."""
+
+    def enrich(self, record: GameRecord) -> GameRecord:
+        return record
+
+
 def _tool(use: ToolUse) -> ConverseResult:
     return ConverseResult(
         stop_reason="tool_use",
@@ -106,8 +113,9 @@ def test_taste_match_then_already_played_followup() -> None:
     )
 
     tavily = TavilyService(api_key="x", client=_NoopTavilyClient())
-    library = LibraryService([ManualSource(memory, USER_ID)], tavily, memory)
-    tools = ToolRegistry(memory, library, tavily, USER_ID)
+    enricher = _IdentityEnricher()
+    library = LibraryService([ManualSource(memory, USER_ID)], enricher, memory)  # type: ignore[arg-type]
+    tools = ToolRegistry(memory, library, tavily, enricher, USER_ID)  # type: ignore[arg-type]
 
     octopath_pick = (
         "I recommend Octopath Traveler — an HD-2D RPG with a job system, great solo, "

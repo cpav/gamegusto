@@ -52,6 +52,13 @@ class _NoopTavilyClient:
         return {}
 
 
+class _IdentityEnricher:
+    """Returns records untouched (enrichment is not exercised by the CLI tests)."""
+
+    def enrich(self, record: GameRecord) -> GameRecord:
+        return record
+
+
 class _FakeRuntime:
     """Stands in for AgentRuntime: returns a preset reply or raises."""
 
@@ -75,7 +82,7 @@ class _FakeRuntime:
 def _ctx(runtime: Any) -> tuple[AppContext, MemoryService]:
     memory = MemoryService(_InMemoryClient())
     tavily = TavilyService(api_key="x", client=_NoopTavilyClient())
-    library = LibraryService([ManualSource(memory, USER_ID)], tavily, memory)
+    library = LibraryService([ManualSource(memory, USER_ID)], _IdentityEnricher(), memory)  # type: ignore[arg-type]
     ctx = AppContext(
         config=CONFIG,
         user_id=USER_ID,
