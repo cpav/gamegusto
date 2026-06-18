@@ -2,7 +2,7 @@
 
 ## Overview
 
-GameGusto is a Python application that recommends the next video game to play based on the user's mood, available time, taste, and the platforms they own. A **tool-using agent** — a Claude Sonnet base model on Amazon Bedrock driven through the Converse API tool-use loop — is the reasoning core: it interprets the user's request, decides which tools to call (manage platforms, read/update the library, import from sources, enrich, web search, recall recent picks, persist sessions), asks for missing information only when needed, and **selects the recommendation itself** so the result honors the user's stated taste and genre. It returns one strong recommendation with clear reasoning plus up to three alternatives, and handles follow-ups ("I already played it", "something shorter") as turns in the same conversation.
+GameGusto is a Python application that recommends the next video game to **buy and play** based on the user's mood, available time, taste, and the platforms they own. It is a **discovery tool**: it recommends games the user does **not** already own, using their library only to learn their taste and to exclude titles they already have. A **tool-using agent** — a Claude Sonnet base model on Amazon Bedrock driven through the Converse API tool-use loop — is the reasoning core: it interprets the user's request, decides which tools to call (manage platforms, read the owned library for taste/exclusion, import from sources, enrich, web search, recall recent picks, persist sessions), asks for missing information only when needed, and **selects the recommendation itself** so the result honors the user's stated taste and genre. It returns one strong new-title recommendation (playable on an owned platform) with clear reasoning plus up to three alternatives, and handles follow-ups ("I already played it", "something shorter") as turns in the same conversation.
 
 The library is assembled from interchangeable **record sources** — read-only Gmail purchase-confirmation emails (valuable for Nintendo, which has no history API) and manual UI entry — all normalized into a **single canonical `Game_Record`**. Every record is enriched by an **LLM-assisted enricher** (the Bedrock model classifies genre, playtime, platform availability, and community review from Tavily web results) and persisted in a DynamoDB-backed store so recommendations favor well-regarded titles playable on owned hardware and improve across sessions.
 
@@ -76,9 +76,9 @@ typical recommendation conversation looks like:
 
 1. User sends a free-text request (mood, time, taste/genre — whatever they choose to say).
 2. `AgentRuntime` appends the message to history and calls Converse with the tool specs.
-3. The model calls tools as it sees fit — e.g. `get_owned_platforms` (and asks the user to add one if the list is empty), `get_library` (optionally filtered), and `enrich_game`/`web_search` to fill gaps — matching platforms at the family level.
-4. The model **selects** one primary game that honors the request, plus up to three alternatives, and calls `get_recent_recommendations` to avoid recent repeats.
-5. The model emits a final answer with reasoning (including a community-review summary when known) and calls `save_recommendation` to persist the session.
+3. The model calls tools as it sees fit — e.g. `get_owned_platforms` (and asks the user to add one if the list is empty), `get_library` (to learn taste and to know which owned titles to exclude), and `web_search`/`enrich_game` to confirm details of candidate **new** titles — matching platforms at the family level.
+4. The model **selects** one primary game the user does NOT own that honors the request, plus up to three alternatives, and calls `get_recent_recommendations` to avoid recent repeats.
+5. The model emits a final answer with reasoning (including a community-review summary when known, and noting the title isn't already owned) and calls `save_recommendation` to persist the session.
 6. Follow-ups ("I already played it", "something shorter") continue the same conversation; the model excludes the prior pick and offers the next best without re-asking what it already knows.
 
 The loop runs until the model emits a final answer (`stopReason == "end_turn"`),
@@ -490,7 +490,7 @@ class BedrockService:
 
 ### Tool Registry (`agent/tools.py`)
 
-Each tool is a thin function plus a Converse `toolSpec` (JSON schema) wrapping an existing service. The model decides which to call; the registry only declares the surface and dispatches. **Selection of the game is the model's job, not a tool** — it reads the library, applies the user's taste/mood/time/owned platforms, and may enrich or web-search to fill gaps. Tools never raise: expected failures return `{"ok": False, "error": ...}` and the underlying services already degrade gracefully.
+Each tool is a thin function plus a Converse `toolSpec` (JSON schema) wrapping an existing service. The model decides which to call; the registry only declares the surface and dispatches. **Selection of the game is the model's job, not a tool** — it reads the library to learn the user's taste and to exclude already-owned titles, then recommends a **new** game (one the user does not own) matching taste/mood/time and playable on an owned platform, using its own knowledge plus `web_search`/`enrich_game` to confirm details. Tools never raise: expected failures return `{"ok": False, "error": ...}` and the underlying services already degrade gracefully.
 
 | Tool | Input | Backed by |
 |---|---|---|

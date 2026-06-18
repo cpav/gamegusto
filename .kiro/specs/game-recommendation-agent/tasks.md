@@ -126,7 +126,7 @@ Every source produces and every consumer reads the single canonical `GameRecord`
     - `ui/bootstrap.py`: build and cache the service graph in session state by delegating to `bootstrap.build_app`; expose `get_runtime`, `get_memory_service`, `get_user_id`, `get_autocomplete`; graceful degradation across memory/Tavily/Gmail
     - _Requirements: 3.5, 10.2, 10.3, 10.4_
   - [ ] 9.3 Implement the chat view
-    - `ui/chat_view.py`: conversational chat driving `AgentRuntime.send`, rendering the agent's reply (its recommendation + reasoning) in a distinct retro card, with the stateless notice when memory is down
+    - `ui/chat_view.py`: conversational chat consuming the runtime's turn events (9.7). Render the model's inter-turn narration ("Let me check your library…") and tool calls as **transient status** (e.g. `st.status` with a per-tool label like "🔧 searching the web…") that collapses, and the final recommendation + reasoning persistently in a distinct retro card; stateless notice when memory is down. (The headless `cli.py` keeps the simple concatenated text.)
     - _Requirements: 9.3_
   - [ ] 9.4 Implement the library/dashboard view
     - `ui/library_view.py`: platform manager (add/edit/remove), add/edit game via manual entry + autocomplete writing to the shared store, `GameRecord`s grouped/filterable by platform, recommendation history
@@ -135,8 +135,11 @@ Every source produces and every consumer reads the single canonical `GameRecord`
     - `ui/sidebar.py`: connect Gmail + trigger import showing imported count (sanitized errors on failure), and the chat / library view switch
     - _Requirements: 4.1, 9.6, 10.5_
   - [ ] 9.6 Write UI smoke tests
-    - `inject_retro_theme` output contains the pixel font and a responsive media query; the chat view renders the agent reply text inside the retro `rec-card` and shows the stateless notice when memory is down
+    - `inject_retro_theme` output contains the pixel font and a responsive media query; the chat view renders the agent reply text inside the retro `rec-card`, shows tool/narration status transiently, and shows the stateless notice when memory is down
     - _Requirements: 9.1, 9.2, 9.3_
+  - [ ] 9.7 Expose agent turn events from `AgentRuntime` (for the UI's smoother UX)
+    - Add an event/streaming API alongside `send` (e.g. `stream(user_text)` yielding per-turn events — narration `text` deltas and `tool_call` names — and a final `answer`), so the chat view can show thinking/tool-use transiently and persist only the final answer. `send` stays as the simple concatenated-text path the CLI uses. Optionally back it with Bedrock `ConverseStream` for token streaming later.
+    - _Requirements: 9.3, 11.2_
 
 - [ ] 10. Wire the Streamlit application entry point
   - [ ] 10.1 Implement `ui/app.py`
@@ -171,6 +174,9 @@ Every source produces and every consumer reads the single canonical `GameRecord`
   - [x] 12.8 LLM-assisted enrichment + platform refinements
     - `agent/enricher.py`: Tavily web search → Bedrock structured classification (genre, completion playtime, availability, review), cache-first + graceful degradation; strip the dead keyword machinery from `TavilyService` (now web_search + autocomplete only). Microsoft Store records labelled `Xbox Series X/S`; PSP given its own platform family in `platform_match`. Re-scraped the live `default` library (Metal Slug → "Run-and-gun shooter"). Owned platforms set to Nintendo Switch, Nintendo Switch 2, Xbox Series X/S, PC, PSP.
     - _Requirements: 5.1, 5.3, 5.5, 6.1, 6.4, 7.6, 10.3_
+  - [x] 12.9 Discovery pivot: recommend games the user does NOT own
+    - Product decision (user, live testing): GameGusto recommends **new** games to buy/play, not picks from the backlog. The owned library is used to infer taste and to **exclude** already-owned titles; recommendations must be playable on an owned platform and avoid recently-recommended ones. Updated the `AgentRuntime` system prompt and the spec (intro, Req 7, design overview/flow/tool notes).
+    - _Requirements: 1.3, 7.1, 7.2, 7.4, 8.3_
 
 ## Notes
 
@@ -178,6 +184,7 @@ Every source produces and every consumer reads the single canonical `GameRecord`
 - The agent is a Claude Sonnet base model on Bedrock driven through the Converse **tool-use loop** (`eu.anthropic.claude-sonnet-4-6`, region `eu-north-1`). The LLM is a hard dependency: failures surface as errors and are never replaced by mock/deterministic content. Memory (DynamoDB) and Tavily degrade gracefully.
 - The tool-use loop runs **without** extended thinking: interleaved `reasoningContent` blocks returned with tool use cannot be round-tripped by the pinned boto3 (`SDK_UNKNOWN_MEMBER`). Revisit if/when boto3 is upgraded (then interleaved thinking + tool use becomes an option).
 - Game selection is the model's judgment, not a deterministic ranker; the behavior is exercised by the scripted multi-turn e2e and steered by the system prompt + tools.
+- GameGusto is a **discovery** tool: it recommends games the user does NOT own (taste-matched, playable on an owned platform), using the owned library for taste + exclusion (Task 12.9).
 - Live integration tests against real Bedrock / DynamoDB / Gmail are optional and require credentials; offline equivalents (fake DynamoDB table, faked network edge) cover these boundaries in the fast suite.
 - The headless `cli.py` is the current runnable entrypoint; the Streamlit UI (Tasks 9–10) will reuse `bootstrap.build_app`.
 
@@ -186,7 +193,7 @@ Every source produces and every consumer reads the single canonical `GameRecord`
 ```json
 {
   "waves": [
-    { "id": 0, "tasks": ["9.2"] },
+    { "id": 0, "tasks": ["9.2", "9.7"] },
     { "id": 1, "tasks": ["9.3", "9.4", "9.5"] },
     { "id": 2, "tasks": ["9.6", "10.1"] },
     { "id": 3, "tasks": ["11"] }
