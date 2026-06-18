@@ -110,16 +110,21 @@ class AgentRuntime:
         """
         self._messages.append({"role": "user", "content": [{"text": user_text}]})
         called: list[str] = []
-        last_text = ""
+        # Collect text from every turn, not just the final one: the model often
+        # writes its recommendation prose in the same turn it calls a tool (e.g.
+        # save_recommendation) and then ends with only a short closing line, so
+        # returning just the last turn's text would drop the actual answer.
+        texts: list[str] = []
 
         for _ in range(_MAX_TOOL_ITERATIONS):
             result = self._bedrock.converse_tools(self._messages, self._tools.specs(), self._system)
-            last_text = result.text.strip()
+            if result.text.strip():
+                texts.append(result.text.strip())
             if result.assistant_content:
                 self._messages.append({"role": "assistant", "content": result.assistant_content})
 
             if result.stop_reason != "tool_use" or not result.tool_uses:
-                return self._reply(last_text, called)
+                return self._reply("\n\n".join(texts), called)
 
             tool_results: list[dict[str, Any]] = []
             for use in result.tool_uses:
@@ -136,7 +141,7 @@ class AgentRuntime:
                 )
             self._messages.append({"role": "user", "content": tool_results})
 
-        return self._reply(last_text or _ITERATION_LIMIT_MESSAGE, called)
+        return self._reply("\n\n".join(texts), called)
 
     def _reply(self, message: str, called: list[str]) -> AgentReply:
         """Wrap ``message`` in an :class:`AgentReply`, reflecting memory health."""
