@@ -109,13 +109,31 @@ def test_tool_round_trip_executes_tool_and_returns_answer() -> None:
 
     reply = runtime.send("I own a Switch")
 
-    assert reply.message == "Done — try Hades."
+    # Text from both turns is preserved, not just the final turn's.
+    assert "Adding that." in reply.message
+    assert "Done — try Hades." in reply.message
     assert reply.tool_calls == ["add_platform"]
     # The tool actually ran against memory.
     assert [p.name for p in memory.get_platform_list(USER_ID)] == ["Nintendo Switch"]
     # The second model call saw the assistant turn and the toolResult appended.
     second_call_history = bedrock.calls[1]
     assert second_call_history[-1]["content"][0]["toolResult"]["toolUseId"] == "t1"
+
+
+def test_text_emitted_before_a_tool_call_is_not_dropped() -> None:
+    """Regression: the model's answer in a tool-use turn (e.g. alongside
+    save_recommendation) must survive even when the final turn is just a closer."""
+    save = ToolUse("s1", "save_recommendation", {"game_title": "Hades", "reasoning": "fits"})
+    recommendation_text = "I recommend Hades — a fast roguelike. Alternatives: Celeste, Tunic."
+    bedrock = _ScriptedBedrock(
+        [_tool_call(save, recommendation_text), _final("Let me know if any catch your eye!")]
+    )
+    runtime, _ = _runtime(bedrock)
+
+    reply = runtime.send("recommend a roguelike")
+
+    assert "I recommend Hades" in reply.message  # the substantive answer is kept
+    assert "Let me know if any catch your eye!" in reply.message
 
 
 def test_iteration_cap_returns_fallback() -> None:
