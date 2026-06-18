@@ -2,10 +2,10 @@
 
 Wires the real ``ToolRegistry``, ``LibraryService``, ``ManualSource``,
 ``MemoryService`` and ``AgentRuntime`` together, faking only the network edges
-(Bedrock and Tavily). A scripted model drives a realistic multi-turn journey that
-mirrors the brief's acceptance scenario: a taste-rich request yields a matching
-owned title, and an "I already played it" follow-up offers the next best within
-the same conversation — without re-asking what is already known.
+(Bedrock and Tavily). A scripted model drives a realistic multi-turn journey mirroring the discovery
+flow: a taste-rich request yields a strong NEW (unowned) title matching the taste
+inferred from the owned library, and an "I already played it" follow-up offers
+the next best within the same conversation — without re-asking what is known.
 """
 
 from __future__ import annotations
@@ -117,27 +117,29 @@ def test_taste_match_then_already_played_followup() -> None:
     library = LibraryService([ManualSource(memory, USER_ID)], enricher, memory)  # type: ignore[arg-type]
     tools = ToolRegistry(memory, library, tavily, enricher, USER_ID)  # type: ignore[arg-type]
 
-    octopath_pick = (
-        "I recommend Octopath Traveler — an HD-2D RPG with a job system, great solo, "
-        "and a manageable story. Alternative: Triangle Strategy."
+    # The owned library (above) signals taste + is the exclusion set; the model
+    # recommends NEW titles the user does not own.
+    sea_of_stars_pick = (
+        "Since you love HD-2D job-system RPGs like Octopath, try Sea of Stars — a new "
+        "retro-styled RPG you don't own yet, on Switch. Alternative: Chained Echoes."
     )
-    triangle_pick = (
-        "Since you've played Octopath, go for Triangle Strategy — same HD-2D style with "
-        "a deeper tactical job system."
+    chained_echoes_pick = (
+        "Already played Sea of Stars? Then grab Chained Echoes — another acclaimed "
+        "16-bit-style RPG with a unique class system, also new to your library."
     )
     bedrock = _ScriptedBedrock(
         [
             _tool(ToolUse("a", "get_owned_platforms", {})),
             _tool(ToolUse("b", "get_library", {})),
-            _final(octopath_pick),
+            _final(sea_of_stars_pick),
             _tool(
                 ToolUse(
                     "c",
                     "save_recommendation",
-                    {"game_title": "Octopath Traveler", "reasoning": "fit"},
+                    {"game_title": "Sea of Stars", "reasoning": "fit"},
                 )
             ),
-            _final(triangle_pick),
+            _final(chained_echoes_pick),
         ]
     )
     runtime = AgentRuntime(bedrock, tools, memory)  # type: ignore[arg-type]
@@ -147,9 +149,9 @@ def test_taste_match_then_already_played_followup() -> None:
         "story not too complex, ~30h."
     )
     assert first.tool_calls == ["get_owned_platforms", "get_library"]
-    assert "Octopath Traveler" in first.message
+    assert "Sea of Stars" in first.message  # a new title, not one of the owned games
 
     second = runtime.send("I already played it")
-    assert "Triangle Strategy" in second.message
+    assert "Chained Echoes" in second.message
     # The recommendation was persisted during the follow-up turn.
-    assert tools.dispatch("get_recent_recommendations", {})["titles"] == ["Octopath Traveler"]
+    assert tools.dispatch("get_recent_recommendations", {})["titles"] == ["Sea of Stars"]
