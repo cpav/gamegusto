@@ -108,6 +108,9 @@ h3 { font-size: 1.8rem; }
 /* Transient "thinking"/tool line shown while the agent works, then cleared. */
 .gg-thinking { color: var(--arcade-neon-cyan); font-size: 1.1rem; opacity: 0.85;
     padding: 0.2rem 0; }
+/* Big, glowing "added to library" check next to a suggestion / pick. */
+.gg-added { color: var(--arcade-neon-green); font-size: 2rem; line-height: 1.2;
+    text-align: center; text-shadow: 0 0 8px var(--arcade-neon-green); }
 .stChatInputContainer, [data-testid="stChatInput"] {
     border-top: 2px solid var(--arcade-neon-pink); }
 /* Keep the pinned chat bar opaque so messages never bleed through it, and pad
