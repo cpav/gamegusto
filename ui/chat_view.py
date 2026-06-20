@@ -6,8 +6,7 @@ reachable on a laptop or an iPhone SE without scrolling), and the messages flow
 above it. A trailing spacer plus an opaque input bar keep the last reply from
 sliding under the input. Messages read as a conversation: the user on the right,
 the agent on the left, each in a retro speech bubble. The agent's reply reveals
-word-by-word; tool use shows transiently; quick follow-up chips and auto-scroll
-round out the feel.
+word-by-word; tool use shows transiently; quick follow-up chips round out the feel.
 
 The LLM is a hard dependency: a failure surfaces as a sanitized message (Req 10.1).
 """
@@ -17,7 +16,6 @@ from __future__ import annotations
 import time
 
 import streamlit as st
-import streamlit.components.v1 as components
 
 from services.bedrock_service import BedrockServiceError
 from ui.bootstrap import get_memory_service, get_runtime
@@ -92,7 +90,6 @@ def render_chat_view() -> None:
         _render_chips()
     # In-flow spacer so the last message always clears the pinned input bar.
     st.markdown('<div class="gg-spacer"></div>', unsafe_allow_html=True)
-    _scroll_to_bottom()
 
 
 def _render_message(role: str, content: str) -> None:
@@ -121,8 +118,9 @@ def _stream_turn(prompt: str) -> str:
     try:
         for event in runtime.stream(prompt):
             if event.kind == "tool":
+                # Update only the status header (no body writes — those stacked
+                # and overlapped the final "Ready" label).
                 status.update(label=_tool_label(event.tool))
-                status.write(_tool_label(event.tool))
             elif event.text:
                 parts.append(event.text)
     except BedrockServiceError as exc:
@@ -150,13 +148,3 @@ def _typewriter(placeholder: object, text: str) -> None:
         placeholder.markdown(_card_html(" ".join(shown)), unsafe_allow_html=True)  # type: ignore[attr-defined]
         time.sleep(delay)
     placeholder.markdown(_card_html(text), unsafe_allow_html=True)  # type: ignore[attr-defined]
-
-
-def _scroll_to_bottom() -> None:
-    """Auto-scroll the page to the latest message (best-effort)."""
-    components.html(
-        "<script>const d=window.parent.document;"
-        "const m=d.querySelectorAll('[data-testid=\"stChatMessage\"]');"
-        "if(m.length){m[m.length-1].scrollIntoView({behavior:'smooth',block:'end'});}</script>",
-        height=0,
-    )
