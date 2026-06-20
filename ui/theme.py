@@ -30,7 +30,9 @@ p, div, span, label, li, input, textarea, select, button {
     font-family: 'VT323', monospace !important;
 }
 html, body { font-size: 18px; }
-h1, h2, h3, .gg-title, .stButton button {
+/* Press Start 2P is reserved for short hero text (marquee title, buttons). It is
+   too coarse for headings at phone sizes, so headings use VT323 (see below). */
+.gg-title, .stButton button {
     font-family: 'Press Start 2P', monospace !important;
 }
 .stApp {
@@ -41,11 +43,17 @@ h1, h2, h3, .gg-title, .stButton button {
         radial-gradient(circle at 50% 0%, var(--arcade-bg-2) 0%, var(--arcade-bg) 70%);
     color: var(--arcade-neon-cyan);
 }
+/* Headings: pink and glowing for the arcade look, but in VT323 with a tight
+   glow so they stay crisp and readable — even on a small phone. (Press Start 2P
+   here smeared into an unreadable blur at mobile sizes.) */
 h1, h2, h3 {
     color: var(--arcade-neon-pink);
-    text-shadow: 0 0 6px var(--arcade-neon-pink), 0 0 12px var(--arcade-neon-pink);
-    letter-spacing: 1px;
+    text-shadow: 0 0 4px var(--arcade-neon-pink);
+    letter-spacing: 1px; line-height: 1.1;
 }
+h1 { font-size: 2.6rem; }
+h2 { font-size: 2.1rem; }
+h3 { font-size: 1.8rem; }
 /* Pinball-style backglass marquee for the app title. */
 .gg-marquee {
     text-align: center; padding: 0.7rem 1rem; margin: 0 0 1rem 0; border-radius: 10px;
@@ -68,7 +76,6 @@ h1, h2, h3 {
     box-shadow: 0 0 12px var(--arcade-neon-cyan), inset 0 0 14px rgba(45,226,230,0.22);
     padding: 1rem 1.1rem; background: rgba(13,2,33,0.88); font-size: 1.3rem; line-height: 1.5;
 }
-.rec-card h1, .rec-card h2, .rec-card h3 { font-family: 'Press Start 2P', monospace !important; }
 /* Bumper buttons. */
 .stButton button {
     background: var(--arcade-neon-pink); color: #0d0221; border-radius: 8px;
