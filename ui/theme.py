@@ -82,19 +82,34 @@ h1, h2, h3 {
     background: rgba(18,6,48,0.6); }
 .stChatInputContainer, [data-testid="stChatInput"] {
     border-top: 2px solid var(--arcade-neon-pink); }
+/* Keep the pinned chat bar opaque so messages never bleed through it, and pad
+   the content area so the last message always clears the bar. */
+[data-testid="stBottom"], [data-testid="stBottomBlockContainer"] {
+    background: var(--arcade-bg); }
+[data-testid="stMainBlockContainer"], .block-container { padding-bottom: 7rem; }
 .lib-line, .hist-line { font-size: 1.2rem; border-bottom: 1px dashed rgba(45,226,230,0.3);
     padding: 0.25rem 0; }
-/* Responsive: keep everything operable on a phone (Req 9.2). */
+/* Responsive: keep everything readable and operable on a phone (Req 9.2). */
 @media (max-width: 640px) {
-    html, body { font-size: 15px !important; }
-    .gg-marquee .gg-title { font-size: 1.1rem; }
-    .gg-marquee .gg-sub { font-size: 1rem; }
-    .chat-intro { font-size: 1.3rem; }
-    .rec-card { padding: 0.7rem; font-size: 1.2rem; }
+    html, body { font-size: 13px !important; }
+    .gg-marquee { padding: 0.5rem 0.6rem; }
+    .gg-marquee .gg-title { font-size: 0.95rem; }
+    .gg-marquee .gg-sub { font-size: 0.8rem; }
+    .chat-intro { font-size: 1.05rem; }
+    .rec-card { padding: 0.6rem; font-size: 1.05rem; }
+    .lib-line, .hist-line { font-size: 1.05rem; }
     .stButton button { width: 100%; }
-    /* Taller, easier-to-tap chat input on small phones (e.g. iPhone SE). */
     [data-testid="stChatInput"] textarea {
-        min-height: 3rem; font-size: 1rem; line-height: 1.4; }
+        min-height: 2.75rem; font-size: 0.95rem; line-height: 1.35; }
+    [data-testid="stMainBlockContainer"], .block-container { padding-bottom: 6rem; }
+}
+/* Small phones (e.g. iPhone SE, ~375px): a notch smaller again. */
+@media (max-width: 400px) {
+    html, body { font-size: 12px !important; }
+    .gg-marquee .gg-title { font-size: 0.8rem; letter-spacing: 0; }
+    .gg-marquee .gg-sub { font-size: 0.7rem; letter-spacing: 0; }
+    .chat-intro { font-size: 0.95rem; }
+    .rec-card { font-size: 1rem; padding: 0.55rem; }
 }
 </style>
 """
