@@ -110,26 +110,32 @@ def _render_chips() -> None:
 
 
 def _stream_turn(prompt: str) -> str:
-    """Stream one agent turn: tool use transiently, then reveal the reply word-by-word."""
+    """Stream one agent turn: a transient "thinking" line, then the reply word-by-word.
+
+    The thinking line is a single placeholder that updates per tool and is cleared
+    when done — no persistent status box and no leftover "Ready"/tool text.
+    """
     runtime = get_runtime()
-    status = st.status("Consulting the arcade oracle…", expanded=False)
+    thinking = st.empty()
     card = st.empty()
+    thinking.markdown('<div class="gg-thinking">🕹️ thinking…</div>', unsafe_allow_html=True)
     parts: list[str] = []
     try:
         for event in runtime.stream(prompt):
             if event.kind == "tool":
-                # Update only the status header (no body writes — those stacked
-                # and overlapped the final "Ready" label).
-                status.update(label=_tool_label(event.tool))
+                thinking.markdown(
+                    f'<div class="gg-thinking">{_tool_label(event.tool)}…</div>',
+                    unsafe_allow_html=True,
+                )
             elif event.text:
                 parts.append(event.text)
     except BedrockServiceError as exc:
-        status.update(label="Out of order", state="error")
+        thinking.empty()
         st.error(str(exc))
         return ""
 
+    thinking.empty()
     message = "\n\n".join(parts)
-    status.update(label="Ready", state="complete")
     _typewriter(card, message)
     if not get_memory_service().is_available:
         st.caption("⚠️ memory unavailable — personalization is limited this session")

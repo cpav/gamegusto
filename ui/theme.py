@@ -95,21 +95,29 @@ h3 { font-size: 1.8rem; }
 }
 .stButton button:hover { background: var(--arcade-neon-yellow); }
 .stButton button:active { transform: translateY(3px); box-shadow: 0 1px 0 #b3005f; }
-/* The per-message row is transparent (no box/glow) — only the inner bubbles
-   (.user-bubble, .rec-card) carry borders, so the chat reads as a conversation. */
+/* The per-message row is transparent (no box/glow) and vertically centers the
+   avatar against the bubble; only the inner bubbles (.user-bubble, .rec-card)
+   carry borders, so the chat reads as a conversation. */
 .stChatMessage { border: none !important; background: transparent !important;
-    box-shadow: none !important; }
-/* Bigger, borderless space-invader avatars (no circle/background). */
-[data-testid^="stChatMessageAvatar"] {
-    background: transparent !important; border: none !important; box-shadow: none !important;
-    width: 2.6rem !important; height: 2.6rem !important; }
-[data-testid^="stChatMessageAvatar"] > * { font-size: 2rem !important; line-height: 1 !important; }
+    box-shadow: none !important; align-items: center !important; }
+/* Bigger, borderless space-invader avatars (no circle/box). Case-insensitive
+   match so it works regardless of the exact avatar test id. */
+[data-testid*="vatar" i] {
+    background: transparent !important; border: none !important; box-shadow: none !important; }
+[data-testid*="vatar" i] > * { font-size: 2rem !important; line-height: 1 !important; }
+/* Transient "thinking"/tool line shown while the agent works, then cleared. */
+.gg-thinking { color: var(--arcade-neon-cyan); font-size: 1.1rem; opacity: 0.85;
+    padding: 0.2rem 0; }
 .stChatInputContainer, [data-testid="stChatInput"] {
     border-top: 2px solid var(--arcade-neon-pink); }
 /* Keep the pinned chat bar opaque so messages never bleed through it, and pad
    the content area so the last message always clears the bar. */
-[data-testid="stBottom"], [data-testid="stBottomBlockContainer"] {
-    background: var(--arcade-bg); }
+/* Opaque purple under the pinned input. It must span the FULL viewport width
+   (the outer stBottom), not just the centered block — otherwise the gutters show
+   through as black boxes at the bottom corners. */
+[data-testid="stBottom"], [data-testid="stBottom"] > div,
+[data-testid="stBottomBlockContainer"] {
+    background: var(--arcade-bg) !important; }
 /* In-flow spacer below the conversation so the last reply clears the pinned bar. */
 .gg-spacer { height: 6rem; }
 .lib-line, .hist-line { font-size: 1.2rem; border-bottom: 1px dashed rgba(45,226,230,0.3);
