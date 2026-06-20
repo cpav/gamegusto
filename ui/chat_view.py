@@ -42,35 +42,54 @@ def _tool_label(name: str) -> str:
     return _TOOL_LABELS.get(name, f"🔧 {name.replace('_', ' ')}")
 
 
+#: Height (px) of the scrollable chat "screen". Big enough to feel roomy on a
+#: phone while leaving space for the marquee and the input below it.
+_SCREEN_HEIGHT = 460
+
+
 def render_chat_view() -> None:
-    """Render the chat history and handle a new turn with streamed status."""
-    messages = st.session_state.setdefault("messages", [])
-    if not messages:
-        st.markdown(
-            '<div class="chat-intro">Tell me what you\'re in the mood to play — '
-            "genre, vibe, how much time you've got.</div>",
-            unsafe_allow_html=True,
-        )
+    """Render the chat as a self-contained arcade "screen" + inline input.
 
-    for msg in messages:
-        with st.chat_message(msg["role"], avatar=_AVATARS.get(msg["role"])):
-            if msg["role"] == "assistant":
-                st.markdown(_card_html(msg["content"]), unsafe_allow_html=True)
-            else:
-                st.markdown(msg["content"])
+    Blueprint (Streamlit's recommended chat layout): a fixed-height, scrollable
+    ``st.container`` holds the message history, and ``st.chat_input`` is nested in
+    the same wrapper so it sits *inline below* the screen rather than floating
+    over the page — which structurally prevents the input from overlapping the
+    last reply.
+    """
+    history = st.session_state.setdefault("messages", [])
+    shell = st.container()
+    screen = shell.container(height=_SCREEN_HEIGHT, border=True)
 
-    prompt = st.chat_input("Insert coin… what should I play?")
+    with screen:
+        if not history:
+            st.markdown(
+                '<div class="chat-intro">Tell me what you\'re in the mood to play — '
+                "genre, vibe, how much time you've got.</div>",
+                unsafe_allow_html=True,
+            )
+        for msg in history:
+            _render_message(msg["role"], msg["content"])
+
+    prompt = shell.chat_input("Insert coin… what should I play?")
     if not prompt:
         return
 
-    messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user", avatar=_AVATARS["user"]):
-        st.markdown(prompt)
-
-    with st.chat_message("assistant", avatar=_AVATARS["assistant"]):
-        message = _stream_turn(prompt)
+    history.append({"role": "user", "content": prompt})
+    with screen:
+        _render_message("user", prompt)
+        with st.chat_message("assistant", avatar=_AVATARS["assistant"]):
+            message = _stream_turn(prompt)
     if message:
-        messages.append({"role": "assistant", "content": message})
+        history.append({"role": "assistant", "content": message})
+
+
+def _render_message(role: str, content: str) -> None:
+    """Render one stored message in its chat bubble (assistant uses the rec-card)."""
+    with st.chat_message(role, avatar=_AVATARS.get(role)):
+        if role == "assistant":
+            st.markdown(_card_html(content), unsafe_allow_html=True)
+        else:
+            st.markdown(content)
 
 
 def _stream_turn(prompt: str) -> str:
