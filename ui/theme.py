@@ -98,10 +98,13 @@ MARQUEE_HTML = (
 
 
 def inject_retro_theme() -> None:
-    """Inject the retro arcade/pinball CSS once per session (idempotent)."""
-    if not st.session_state.get("_theme_injected"):
-        st.markdown(RETRO_ARCADE_CSS, unsafe_allow_html=True)
-        st.session_state["_theme_injected"] = True
+    """Inject the retro arcade/pinball CSS.
+
+    Streamlit rebuilds the DOM on every rerun, so the CSS must be re-emitted each
+    run — guarding it to "once per session" makes the styling vanish when the view
+    switches (chat ⇄ library) or any widget triggers a rerun.
+    """
+    st.markdown(RETRO_ARCADE_CSS, unsafe_allow_html=True)
 
 
 def render_marquee() -> None:
