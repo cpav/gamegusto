@@ -81,6 +81,9 @@ h1, h2, h3 {
     .gg-marquee .gg-sub { font-size: 0.5rem; }
     .rec-card { padding: 0.7rem; font-size: 1.1rem; }
     .stButton button { width: 100%; }
+    /* Taller, easier-to-tap chat input on small phones (e.g. iPhone SE). */
+    [data-testid="stChatInput"] textarea {
+        min-height: 3rem; font-size: 1rem; line-height: 1.4; }
 }
 </style>
 """
