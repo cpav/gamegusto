@@ -142,10 +142,36 @@ class TavilyService:
 
     @staticmethod
     def _extract_titles(data: dict[str, Any]) -> list[str]:
-        """Return deduplicated result titles for autocomplete suggestions (Req 3.4)."""
+        """Return cleaned, deduplicated game titles for autocomplete (Req 3.4).
+
+        Web result titles are page titles like "Hollow Knight - Wikipedia" or
+        "Elden Ring | Steam"; the site suffix is stripped so a suggestion is just
+        the game title.
+        """
         titles: list[str] = []
+        seen: set[str] = set()
         for result in TavilyService._results(data):
-            title = result.get("title")
-            if isinstance(title, str) and title.strip() and title not in titles:
-                titles.append(title.strip())
+            raw = result.get("title")
+            if not isinstance(raw, str):
+                continue
+            title = TavilyService._clean_title(raw)
+            key = title.casefold()
+            if title and key not in seen:
+                seen.add(key)
+                titles.append(title)
         return titles
+
+    @staticmethod
+    def _clean_title(title: str) -> str:
+        """Strip a trailing ' - Site' / ' | Site' suffix from a page title.
+
+        Cuts at the earliest separator surrounded by spaces (so colons and
+        hyphenated words inside a real title, e.g. 'Spider-Man', are preserved).
+        """
+        cleaned = title.strip()
+        cut = len(cleaned)
+        for separator in (" - ", " – ", " — ", " | "):
+            index = cleaned.find(separator)
+            if index != -1:
+                cut = min(cut, index)
+        return cleaned[:cut].strip()
