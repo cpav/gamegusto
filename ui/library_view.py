@@ -69,7 +69,7 @@ def _render_add_game(memory: object, user_id: str) -> None:
             cols = st.columns([5, 1])
             cols[0].markdown(f'<div class="lib-line">🎮 {suggestion}</div>', unsafe_allow_html=True)
             if suggestion.casefold() in owned:
-                cols[1].markdown("✓")
+                cols[1].markdown('<div class="gg-added">✓</div>', unsafe_allow_html=True)
             elif cols[1].button("➕", key=f"sugadd_{suggestion}", help="Add to your library"):
                 _add_game(memory, user_id, suggestion, platforms)
 
@@ -143,7 +143,7 @@ def _render_history(memory: object, user_id: str) -> None:
             f'<div class="hist-line">🎯 <b>{rec.game_title}</b></div>', unsafe_allow_html=True
         )
         if key in owned:
-            cols[1].markdown("✓")
+            cols[1].markdown('<div class="gg-added">✓</div>', unsafe_allow_html=True)
         elif cols[1].button(
             "➕", key=f"pickadd_{index}_{rec.game_title}", help="Add to your library"
         ):
