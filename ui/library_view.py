@@ -132,12 +132,19 @@ def _render_history(memory: object, user_id: str) -> None:
         return
     st.caption("Tap ➕ to add a pick to your library")
     owned = {r.title.casefold() for r in memory.get_records(user_id)}  # type: ignore[attr-defined]
-    for rec in recs:
+    seen: set[str] = set()
+    for index, rec in enumerate(recs):
+        key = rec.game_title.casefold()
+        if key in seen:  # the same game may be recommended across sessions; show it once
+            continue
+        seen.add(key)
         cols = st.columns([5, 1])
         cols[0].markdown(
             f'<div class="hist-line">🎯 <b>{rec.game_title}</b></div>', unsafe_allow_html=True
         )
-        if rec.game_title.casefold() in owned:
+        if key in owned:
             cols[1].markdown("✓")
-        elif cols[1].button("➕", key=f"pickadd_{rec.game_title}", help="Add to your library"):
+        elif cols[1].button(
+            "➕", key=f"pickadd_{index}_{rec.game_title}", help="Add to your library"
+        ):
             _add_game(memory, user_id, rec.game_title, [])

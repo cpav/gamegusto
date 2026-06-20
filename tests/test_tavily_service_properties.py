@@ -224,3 +224,24 @@ def test_calls_beyond_cap_degrade_without_api(extra_calls: int) -> None:
 
         # No degraded call ever reached the API.
         assert fake.call_count == cap
+
+
+def test_autocomplete_strips_site_suffixes_from_titles() -> None:
+    """Autocomplete returns just the game title, not the web page's site suffix."""
+    response = {
+        "results": [
+            {"title": "Hollow Knight - Wikipedia"},
+            {"title": "Elden Ring | Steam"},
+            {"title": "Marvel's Spider-Man — IGN"},
+            {"title": "Hades"},
+            {"title": "Hades - Metacritic"},  # dedupes with the clean "Hades"
+        ]
+    }
+    service = _make_service(FakeSearchClient(response))
+
+    assert service.autocomplete("game") == [
+        "Hollow Knight",
+        "Elden Ring",
+        "Marvel's Spider-Man",
+        "Hades",
+    ]
