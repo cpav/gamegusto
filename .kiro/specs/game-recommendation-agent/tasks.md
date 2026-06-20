@@ -6,13 +6,13 @@ The backend and a runnable **headless conversation app** are complete, and the a
 
 The original fixed mood→time→recommend pipeline (the `AgentOrchestrator` state machine, the deterministic `Recommender`, and the `MoodInterpreter`/`TimeParser`) has been **replaced** by `AgentRuntime` + `ToolRegistry`; the affected sub-tasks under Task 6 are marked **(superseded by Task 12)**.
 
-The **remaining work is the Streamlit UI** (Task 9) and its application entry point (Task 10), followed by a final checkpoint (Task 11).
+**All tasks are complete.** The retro arcade/pinball Streamlit UI (Tasks 9–10) is built and the app is deployed privately to Streamlit Community Cloud (Task 13), usable on desktop and phone.
 
 Every source produces and every consumer reads the single canonical `GameRecord` (`models/game_record.py`, data contract v2.0.0; provenance `gmail`/`manual`/`enrichment`).
 
 ## Tasks
 
-> Tasks 1–8 (backend + headless app) and Task 12 (tool-using agent re-architecture) are complete. The only remaining work is the Streamlit UI (Task 9) and its entry point (Task 10), then the final checkpoint (Task 11).
+> All tasks (1–13) are complete: backend + headless app, the tool-using Bedrock agent re-architecture (Task 12), the retro Streamlit UI (Tasks 9–10), and the private Streamlit Community Cloud deployment (Task 13).
 
 - [x] 1. Project setup and tooling
   - [x] 1.1 Scaffold project structure, dependencies, and configuration
@@ -118,35 +118,35 @@ Every source produces and every consumer reads the single canonical `GameRecord`
     - DynamoDB round-trips over a fake table; full conversation-flow test over the real agent graph with the network edge faked (replaced by the Task 12 agent-flow e2e)
     - _Requirements: 8.1, 8.2, 1.1, 7.1, 7.4_
 
-- [ ] 9. Retro arcade Streamlit UI (Req 9)
+- [x] 9. Retro arcade Streamlit UI (Req 9)
   - [x] 9.1 Implement the retro arcade theme
     - `ui/theme.py`: retro arcade CSS (Press Start 2P, neon/CRT), responsive media query, idempotent injection
     - _Requirements: 9.1, 9.2_
-  - [ ] 9.2 Implement UI bootstrap/accessors
+  - [x] 9.2 Implement UI bootstrap/accessors
     - `ui/bootstrap.py`: bridge `st.secrets` → env (so `Config.from_env()` works on Streamlit Cloud and locally), then build and cache the service graph in session state via `bootstrap.build_app`; expose `get_runtime`, `get_memory_service`, `get_user_id`, `get_autocomplete`; Gmail omitted when unconfigured; graceful degradation across memory/Tavily
     - _Requirements: 3.5, 10.2, 10.3, 10.4, 12.3, 12.4_
-  - [ ] 9.3 Implement the chat view
+  - [x] 9.3 Implement the chat view
     - `ui/chat_view.py`: conversational chat consuming the runtime's turn events (9.7). Render the model's inter-turn narration ("Let me check your library…") and tool calls as **transient status** (e.g. `st.status` with a per-tool label like "🔧 searching the web…") that collapses, and the final recommendation + reasoning persistently in a distinct retro card; stateless notice when memory is down. (The headless `cli.py` keeps the simple concatenated text.)
     - _Requirements: 9.3_
-  - [ ] 9.4 Implement the library/dashboard view
+  - [x] 9.4 Implement the library/dashboard view
     - `ui/library_view.py`: platform manager (add/edit/remove), add/edit game via manual entry + autocomplete writing to the shared store, `GameRecord`s grouped/filterable by platform, recommendation history
     - _Requirements: 3.3, 6.1, 9.4, 9.5_
-  - [ ] 9.5 Implement the sidebar
+  - [x] 9.5 Implement the sidebar
     - `ui/sidebar.py`: connect Gmail + trigger import showing imported count (sanitized errors on failure), and the chat / library view switch
     - _Requirements: 4.1, 9.6, 10.5_
-  - [ ] 9.6 Write UI smoke tests
+  - [x] 9.6 Write UI smoke tests
     - `inject_retro_theme` output contains the pixel font and a responsive media query; the chat view renders the agent reply text inside the retro `rec-card`, shows tool/narration status transiently, and shows the stateless notice when memory is down
     - _Requirements: 9.1, 9.2, 9.3_
-  - [ ] 9.7 Expose agent turn events from `AgentRuntime` (for the UI's smoother UX)
+  - [x] 9.7 Expose agent turn events from `AgentRuntime` (for the UI's smoother UX)
     - Add an event/streaming API alongside `send` (e.g. `stream(user_text)` yielding per-turn events — narration `text` deltas and `tool_call` names — and a final `answer`), so the chat view can show thinking/tool-use transiently and persist only the final answer. `send` stays as the simple concatenated-text path the CLI uses. Optionally back it with Bedrock `ConverseStream` for token streaming later.
     - _Requirements: 9.3, 11.2_
 
-- [ ] 10. Wire the Streamlit application entry point
-  - [ ] 10.1 Implement `ui/app.py`
+- [x] 10. Wire the Streamlit application entry point
+  - [x] 10.1 Implement `ui/app.py`
     - Set page config, inject the theme, render the sidebar (view switch + Gmail connect), and route to the chat or library view, building on `ui/bootstrap.py` (Gmail source present only when configured) with graceful degradation
     - _Requirements: 3.1, 3.5, 9.6, 10.2, 10.3, 10.4, 10.5_
 
-- [ ] 11. Final checkpoint
+- [x] 11. Final checkpoint
   - Ensure the full gate is green (ruff, mypy, fast tests) and the Streamlit app launches; confirm the chat and library views work end to end on desktop and a phone-width viewport.
 
 - [x] 12. Tool-using Bedrock agent re-architecture (Req 1, 7, 11)
@@ -178,11 +178,11 @@ Every source produces and every consumer reads the single canonical `GameRecord`
     - Product decision (user, live testing): GameGusto recommends **new** games to buy/play, not picks from the backlog. The owned library is used to infer taste and to **exclude** already-owned titles; recommendations must be playable on an owned platform and avoid recently-recommended ones. Updated the `AgentRuntime` system prompt and the spec (intro, Req 7, design overview/flow/tool notes).
     - _Requirements: 1.3, 7.1, 7.2, 7.4, 8.3_
 
-- [ ] 13. Hosted deployment to Streamlit Community Cloud (Req 12)
-  - [ ] 13.1 Deployment prerequisites in-repo
+- [x] 13. Hosted deployment to Streamlit Community Cloud (Req 12)
+  - [x] 13.1 Deployment prerequisites in-repo
     - Single entry point Streamlit can run (`streamlit_app.py` delegating to `ui/app.py`); pin the Python version (`runtime.txt` / `.python-version`); ensure `requirements.txt` is complete; add `.streamlit/secrets.toml.example` (names only) documenting `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `BEDROCK_MODEL_ID`, `DYNAMODB_TABLE_NAME`, `TAVILY_API_KEY`; keep real `.streamlit/secrets.toml` git-ignored
     - _Requirements: 12.1, 12.3, 12.5_
-  - [ ] 13.2 Owner deploy steps (documented; owner-performed)
+  - [x] 13.2 Owner deploy steps (documented; owner-performed)
     - README "Deploy" section: create the app on share.streamlit.io from `cpav/gamegusto` (main, `streamlit_app.py`); paste secrets into the Streamlit secrets manager; set the app **Private** and invite the owner's Google email; verify sign-in + phone access. Requires an AWS access key for the `gamegusto` IAM user (least-privilege: Bedrock invoke + DynamoDB on the `gamegusto` table)
     - _Requirements: 12.2, 12.3, 12.6_
 
