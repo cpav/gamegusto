@@ -50,21 +50,37 @@ def _render_platform_manager(memory: object, user_id: str) -> None:
 
 
 def _render_add_game(memory: object, user_id: str) -> None:
-    """Add a game by hand, with autocomplete after 3+ characters (Req 3.4, 9.5)."""
+    """Add a game by hand or one-click from autocomplete suggestions (Req 3.4, 9.5)."""
     st.subheader("➕ Add a Game (you own)")
     query = st.text_input("Game title", key="add_game", placeholder="Type 3+ letters…")
+    platform = st.text_input("Platform (optional)", key="add_game_platform", placeholder="e.g. PC")
     title = query.strip()
+    platforms = [platform.strip()] if platform.strip() else []
+
+    if st.button("Add Game") and title:
+        _add_game(memory, user_id, title, platforms)
+
     if len(title) >= 3:
+        owned = {r.title.casefold() for r in memory.get_records(user_id)}  # type: ignore[attr-defined]
         suggestions = get_autocomplete(title)
         if suggestions:
-            title = st.selectbox("Suggestions", [title, *suggestions])
-    platform = st.text_input("Platform", key="add_game_platform", placeholder="e.g. PC")
-    if st.button("Add Game") and title and platform.strip():
-        memory.upsert_record(  # type: ignore[attr-defined]
-            user_id, GameRecord(title=title, platforms=[platform.strip()], source="manual")
-        )
-        st.success(f"Added {title} on {platform.strip()}.")
-        st.rerun()
+            st.caption("Suggestions — tap ➕ to add to your library")
+        for suggestion in suggestions:
+            cols = st.columns([5, 1])
+            cols[0].markdown(f'<div class="lib-line">🎮 {suggestion}</div>', unsafe_allow_html=True)
+            if suggestion.casefold() in owned:
+                cols[1].markdown("✓")
+            elif cols[1].button("➕", key=f"sugadd_{suggestion}", help="Add to your library"):
+                _add_game(memory, user_id, suggestion, platforms)
+
+
+def _add_game(memory: object, user_id: str, title: str, platforms: list[str]) -> None:
+    """Persist a manual game, toast confirmation, and rerun (so it shows as added)."""
+    memory.upsert_record(  # type: ignore[attr-defined]
+        user_id, GameRecord(title=title, platforms=platforms, source="manual")
+    )
+    st.toast(f"Added “{title}” to your library")
+    st.rerun()
 
 
 def _render_library(memory: object, user_id: str) -> None:
