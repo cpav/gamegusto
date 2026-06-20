@@ -87,6 +87,11 @@ h3 { font-size: 1.8rem; }
 /* Score-panel styling for chat + inputs. */
 .stChatMessage { border: 1px solid rgba(45,226,230,0.35); border-radius: 8px;
     background: rgba(18,6,48,0.6); }
+/* Bigger, borderless space-invader avatars (no circle/background). */
+[data-testid^="stChatMessageAvatar"] {
+    background: transparent !important; border: none !important; box-shadow: none !important;
+    width: 2.6rem !important; height: 2.6rem !important; }
+[data-testid^="stChatMessageAvatar"] > * { font-size: 2rem !important; line-height: 1 !important; }
 .stChatInputContainer, [data-testid="stChatInput"] {
     border-top: 2px solid var(--arcade-neon-pink); }
 /* Keep the pinned chat bar opaque so messages never bleed through it, and pad
