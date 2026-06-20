@@ -67,12 +67,7 @@ h1, h2, h3 {
     border: 3px solid var(--arcade-neon-cyan); border-radius: 8px;
     box-shadow: 0 0 12px var(--arcade-neon-cyan), inset 0 0 14px rgba(45,226,230,0.22);
     padding: 1rem 1.1rem; background: rgba(13,2,33,0.88); font-size: 1.3rem; line-height: 1.5;
-    /* The agent's reply is right-aligned so the chat reads as a conversation. */
-    text-align: right; margin-left: auto; max-width: 92%;
 }
-/* A chat row containing a rec-card is an assistant reply: put its avatar on the
-   right too (keys off our own class, so it's robust to Streamlit internals). */
-[data-testid="stChatMessage"]:has(.rec-card) { flex-direction: row-reverse; }
 .rec-card h1, .rec-card h2, .rec-card h3 { font-family: 'Press Start 2P', monospace !important; }
 /* Bumper buttons. */
 .stButton button {
@@ -95,7 +90,7 @@ h1, h2, h3 {
     .gg-marquee .gg-title { font-size: 1.1rem; }
     .gg-marquee .gg-sub { font-size: 1rem; }
     .chat-intro { font-size: 1.3rem; }
-    .rec-card { padding: 0.7rem; font-size: 1.2rem; max-width: 100%; }
+    .rec-card { padding: 0.7rem; font-size: 1.2rem; }
     .stButton button { width: 100%; }
     /* Taller, easier-to-tap chat input on small phones (e.g. iPhone SE). */
     [data-testid="stChatInput"] textarea {
