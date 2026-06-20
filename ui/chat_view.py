@@ -13,6 +13,9 @@ import streamlit as st
 from services.bedrock_service import BedrockServiceError
 from ui.bootstrap import get_memory_service, get_runtime
 
+#: Space-invaders avatars: the agent is the invader, the user a fellow alien.
+_AVATARS = {"assistant": "👾", "user": "👽"}
+
 #: Friendly label per tool, shown transiently while the agent works.
 _TOOL_LABELS = {
     "get_owned_platforms": "🎮 checking your platforms",
@@ -43,12 +46,14 @@ def render_chat_view() -> None:
     """Render the chat history and handle a new turn with streamed status."""
     messages = st.session_state.setdefault("messages", [])
     if not messages:
-        st.caption(
-            "Tell me what you're in the mood to play — genre, vibe, how much time you've got."
+        st.markdown(
+            '<div class="chat-intro">Tell me what you\'re in the mood to play — '
+            "genre, vibe, how much time you've got.</div>",
+            unsafe_allow_html=True,
         )
 
     for msg in messages:
-        with st.chat_message(msg["role"]):
+        with st.chat_message(msg["role"], avatar=_AVATARS.get(msg["role"])):
             if msg["role"] == "assistant":
                 st.markdown(_card_html(msg["content"]), unsafe_allow_html=True)
             else:
@@ -59,10 +64,10 @@ def render_chat_view() -> None:
         return
 
     messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
+    with st.chat_message("user", avatar=_AVATARS["user"]):
         st.markdown(prompt)
 
-    with st.chat_message("assistant"):
+    with st.chat_message("assistant", avatar=_AVATARS["assistant"]):
         message = _stream_turn(prompt)
     if message:
         messages.append({"role": "assistant", "content": message})
