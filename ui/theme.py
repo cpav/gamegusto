@@ -22,11 +22,17 @@ RETRO_ARCADE_CSS = """
     --arcade-neon-green: #4cf26a;
     --pinball-chrome: linear-gradient(180deg, #f0f0f5 0%, #9aa0b5 45%, #4a4f66 55%, #c9cdda 100%);
 }
-html, body, [class*="css"], .stMarkdown, .stButton button, input, textarea, select {
+/* Everything is retro: VT323 (a readable terminal face) is the base for all
+   text, and Press Start 2P is used for headers, the marquee title, and buttons.
+   No default (non-retro) fonts anywhere. */
+html, body, [class*="css"], [class*="st-"], .stApp, .stMarkdown,
+p, div, span, label, li, input, textarea, select, button {
+    font-family: 'VT323', monospace !important;
+}
+html, body { font-size: 18px; }
+h1, h2, h3, .gg-title, .stButton button {
     font-family: 'Press Start 2P', monospace !important;
 }
-/* Long-form body text uses the readable retro terminal face. */
-.rec-card, .stChatMessage p, .lib-line, .hist-line { font-family: 'VT323', monospace !important; }
 .stApp {
     background:
         repeating-linear-gradient(
@@ -51,13 +57,22 @@ h1, h2, h3 {
     color: var(--arcade-neon-yellow); font-size: 1.5rem;
     text-shadow: 0 0 8px var(--arcade-neon-yellow), 0 0 16px var(--arcade-neon-pink);
 }
-.gg-marquee .gg-sub { color: var(--arcade-neon-cyan); font-size: 0.6rem; opacity: 0.9; }
+.gg-marquee .gg-sub { color: var(--arcade-neon-cyan); font-size: 1.2rem; opacity: 0.95;
+    text-shadow: 0 0 6px var(--arcade-neon-cyan); letter-spacing: 1px; }
+/* Chat empty-state intro line, sized up to read like part of the title. */
+.chat-intro { color: var(--arcade-neon-cyan); font-size: 1.6rem; text-align: center;
+    margin: 0.4rem 0 1rem; text-shadow: 0 0 6px var(--arcade-neon-cyan); }
 /* Recommendation "playfield" card. */
 .rec-card {
     border: 3px solid var(--arcade-neon-cyan); border-radius: 8px;
     box-shadow: 0 0 12px var(--arcade-neon-cyan), inset 0 0 14px rgba(45,226,230,0.22);
-    padding: 1rem 1.1rem; background: rgba(13,2,33,0.88); font-size: 1.25rem; line-height: 1.5;
+    padding: 1rem 1.1rem; background: rgba(13,2,33,0.88); font-size: 1.3rem; line-height: 1.5;
+    /* The agent's reply is right-aligned so the chat reads as a conversation. */
+    text-align: right; margin-left: auto; max-width: 92%;
 }
+/* A chat row containing a rec-card is an assistant reply: put its avatar on the
+   right too (keys off our own class, so it's robust to Streamlit internals). */
+[data-testid="stChatMessage"]:has(.rec-card) { flex-direction: row-reverse; }
 .rec-card h1, .rec-card h2, .rec-card h3 { font-family: 'Press Start 2P', monospace !important; }
 /* Bumper buttons. */
 .stButton button {
@@ -76,10 +91,11 @@ h1, h2, h3 {
     padding: 0.25rem 0; }
 /* Responsive: keep everything operable on a phone (Req 9.2). */
 @media (max-width: 640px) {
-    html, body, [class*="css"] { font-size: 11px !important; }
+    html, body { font-size: 15px !important; }
     .gg-marquee .gg-title { font-size: 1.1rem; }
-    .gg-marquee .gg-sub { font-size: 0.5rem; }
-    .rec-card { padding: 0.7rem; font-size: 1.1rem; }
+    .gg-marquee .gg-sub { font-size: 1rem; }
+    .chat-intro { font-size: 1.3rem; }
+    .rec-card { padding: 0.7rem; font-size: 1.2rem; max-width: 100%; }
     .stButton button { width: 100%; }
     /* Taller, easier-to-tap chat input on small phones (e.g. iPhone SE). */
     [data-testid="stChatInput"] textarea {

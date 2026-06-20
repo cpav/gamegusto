@@ -48,7 +48,12 @@ DynamoDB library + manual entry.
    table). It can't use a local AWS profile.
 2. **Create the app** — at [share.streamlit.io](https://share.streamlit.io),
    *New app* → repo `cpav/gamegusto`, branch `main`, **Main file path
-   `streamlit_app.py`**. Under *Advanced settings* pick Python 3.11+.
+   `streamlit_app.py`**. Under *Advanced settings* **pick Python 3.13** (a
+   pinned `runtime.txt` requests this too). **Do not use Python 3.14** — its
+   `dataclasses` changes break `from __future__ import annotations` and the app
+   fails to start with `AttributeError: 'NoneType' object has no attribute
+   '__dict__'`. Python version can only be set at deploy time, so to change it on
+   an existing app, delete it and redeploy (the subdomain is freed for reuse).
 3. **Secrets** — open the app's *Settings → Secrets* and paste the keys from
    [`.streamlit/secrets.toml.example`](.streamlit/secrets.toml.example) with real
    values (`AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
