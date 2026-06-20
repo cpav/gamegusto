@@ -49,24 +49,24 @@ def _bridge_secrets() -> None:
         os.environ.setdefault(key, value)
 
 
-@st.cache_resource(show_spinner=False)
-def _build_context() -> AppContext:
-    """Build and cache the wired service graph for the session (Req 3.5)."""
-    _bridge_secrets()
-    return build_app(Config.from_env(), user_id=USER_ID)
-
-
 def get_context() -> AppContext:
-    """Return the cached :class:`AppContext`, or stop with a friendly error.
+    """Return the per-session :class:`AppContext`, or stop with a friendly error.
 
-    A missing required secret surfaces as a sanitized message (the variable name
-    only, never a value) rather than a stack trace (Req 10.1).
+    Cached in ``st.session_state`` (not ``st.cache_resource``): a session is recreated
+    after a redeploy/reconnect, so the graph is rebuilt with the current code rather
+    than a stale object from a previous version (which caused ``AttributeError`` on a
+    newly-added field). A missing required secret surfaces as a sanitized message —
+    the variable name only, never a value (Req 10.1).
     """
-    try:
-        return _build_context()
-    except ConfigError as exc:
-        st.error(f"⚙️ Configuration problem: {exc}. Set it in the app's secrets and reload.")
-        st.stop()
+    if "_ctx" not in st.session_state:
+        _bridge_secrets()
+        try:
+            st.session_state["_ctx"] = build_app(Config.from_env(), user_id=USER_ID)
+        except ConfigError as exc:
+            st.error(f"⚙️ Configuration problem: {exc}. Set it in the app's secrets and reload.")
+            st.stop()
+    ctx: AppContext = st.session_state["_ctx"]
+    return ctx
 
 
 def get_runtime() -> Any:
