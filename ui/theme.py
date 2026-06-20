@@ -70,12 +70,23 @@ h3 { font-size: 1.8rem; }
 /* Chat empty-state intro line, sized up to read like part of the title. */
 .chat-intro { color: var(--arcade-neon-cyan); font-size: 1.6rem; text-align: center;
     margin: 0.4rem 0 1rem; text-shadow: 0 0 6px var(--arcade-neon-cyan); }
-/* Recommendation "playfield" card. */
+/* Agent speech bubble / recommendation "playfield" card (left side). */
 .rec-card {
-    border: 3px solid var(--arcade-neon-cyan); border-radius: 8px;
+    border: 3px solid var(--arcade-neon-cyan); border-radius: 14px 14px 14px 2px;
     box-shadow: 0 0 12px var(--arcade-neon-cyan), inset 0 0 14px rgba(45,226,230,0.22);
     padding: 1rem 1.1rem; background: rgba(13,2,33,0.88); font-size: 1.3rem; line-height: 1.5;
 }
+/* User speech bubble (right side). */
+.user-bubble {
+    display: inline-block; max-width: 88%; text-align: left;
+    background: linear-gradient(180deg, rgba(255,46,151,0.28), rgba(255,46,151,0.12));
+    border: 2px solid var(--arcade-neon-pink); border-radius: 14px 14px 2px 14px;
+    box-shadow: 0 0 8px rgba(255,46,151,0.45); padding: 0.5rem 0.85rem;
+    color: var(--arcade-neon-yellow); font-size: 1.25rem; line-height: 1.4;
+}
+/* Conversation alignment: a message containing a user bubble flips to the right. */
+[data-testid="stChatMessage"]:has(.user-bubble) { flex-direction: row-reverse; }
+[data-testid="stChatMessage"]:has(.user-bubble) .stMarkdown { text-align: right; }
 /* Bumper buttons. */
 .stButton button {
     background: var(--arcade-neon-pink); color: #0d0221; border-radius: 8px;
@@ -98,7 +109,8 @@ h3 { font-size: 1.8rem; }
    the content area so the last message always clears the bar. */
 [data-testid="stBottom"], [data-testid="stBottomBlockContainer"] {
     background: var(--arcade-bg); }
-[data-testid="stMainBlockContainer"], .block-container { padding-bottom: 7rem; }
+/* In-flow spacer below the conversation so the last reply clears the pinned bar. */
+.gg-spacer { height: 6rem; }
 .lib-line, .hist-line { font-size: 1.2rem; border-bottom: 1px dashed rgba(45,226,230,0.3);
     padding: 0.25rem 0; }
 /* Responsive: keep everything readable and operable on a phone (Req 9.2). */
@@ -113,7 +125,7 @@ h3 { font-size: 1.8rem; }
     .stButton button { width: 100%; }
     [data-testid="stChatInput"] textarea {
         min-height: 2.75rem; font-size: 0.95rem; line-height: 1.35; }
-    [data-testid="stMainBlockContainer"], .block-container { padding-bottom: 6rem; }
+    .gg-spacer { height: 4.5rem; }
 }
 /* Small phones (e.g. iPhone SE, ~375px): a notch smaller again. */
 @media (max-width: 400px) {
