@@ -66,6 +66,21 @@ def test_successful_enrichment_populates_fields() -> None:
     assert enriched.community_review.source_count == len(_SNIPPETS)
 
 
+def test_review_uses_model_aggregate_source_count_when_present() -> None:
+    """The aggregated review prefers the model's own source_count (outlets averaged)."""
+    reply = (
+        '{"genre": "Action RPG", "estimated_playtime_minutes": 3000, '
+        '"platform_availability": ["PC"], '
+        '"community_review": {"score": 9.1, "summary": "Acclaimed.", "source_count": 27}}'
+    )
+    record = GameRecord(title="Elden Ring", platforms=["PC"], source="manual")
+    enriched = _enricher(_FakeBedrock(reply)).enrich(record)
+
+    assert enriched.community_review is not None
+    assert enriched.community_review.score == 9.1
+    assert enriched.community_review.source_count == 27  # model's count, not the snippet count
+
+
 def test_cache_first_skips_already_enriched() -> None:
     bedrock = _FakeBedrock(_GOOD_JSON)
     record = GameRecord(

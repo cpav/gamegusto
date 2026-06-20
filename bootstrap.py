@@ -36,6 +36,7 @@ class AppContext:
     memory: MemoryService
     tavily: TavilyService
     library: LibraryService
+    enricher: Enricher
     runtime: AgentRuntime
     gmail: GmailSource | None
 
@@ -67,6 +68,7 @@ def build_app(config: Config, user_id: str = "default") -> AppContext:
         memory=memory,
         tavily=tavily,
         library=library,
+        enricher=enricher,
         runtime=runtime,
         gmail=gmail,
     )

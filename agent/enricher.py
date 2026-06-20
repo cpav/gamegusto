@@ -80,8 +80,13 @@ class Enricher:
             '"estimated_playtime_minutes": <integer approximate main-story '
             "completion time in minutes, or null>, "
             '"platform_availability": ["<platforms it is available on>"], '
-            '"community_review": {"score": <number 0-10>, "summary": "<one sentence>"} '
-            "or null}\n"
+            '"community_review": {"score": <number 0-10>, "summary": "<one sentence>", '
+            '"source_count": <integer>} or null}\n'
+            "For community_review, give an AGGREGATE score AVERAGED across multiple "
+            "outlets/critics and player reviews (a consensus rating, like a Metacritic "
+            "average) normalized to 0-10 — NOT a single review — and set source_count to "
+            "the number of distinct review sources you considered. The summary should "
+            "describe the overall consensus.\n"
             "Do not invent platforms or ratings you cannot support; use null / [] when "
             "unknown. Prefer accuracy from your own knowledge over the snippets when they "
             "conflict.\n\n"
@@ -111,17 +116,24 @@ class Enricher:
 
 
 def _parse_review(value: Any, source_count: int) -> CommunityReview | None:
-    """Build a ``CommunityReview`` from the model's ``community_review`` object."""
+    """Build an aggregated ``CommunityReview`` from the model's object.
+
+    The score is an outlet-averaged consensus rating (see the prompt). The model's
+    own ``source_count`` (distinct outlets considered) is preferred; ``source_count``
+    (the snippet count) is the fallback when the model omits it.
+    """
     if not isinstance(value, dict):
         return None
     score = value.get("score")
     if not isinstance(score, (int, float)):
         return None
+    model_sources = value.get("source_count")
+    sources = int(model_sources) if isinstance(model_sources, (int, float)) else source_count
     summary = value.get("summary")
     return CommunityReview(
         score=max(0.0, min(10.0, float(score))),
         sentiment_summary=str(summary).strip() if summary else "",
-        source_count=source_count,
+        source_count=max(sources, 0),
     )
 
 

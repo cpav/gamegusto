@@ -12,7 +12,7 @@ import streamlit as st
 from agent.platform_match import platforms_match
 from models.game_record import GameRecord
 from models.platform import OwnedPlatform
-from ui.bootstrap import get_autocomplete, get_memory_service, get_user_id
+from ui.bootstrap import get_autocomplete, get_enricher, get_memory_service, get_user_id
 
 
 def render_library_view() -> None:
@@ -78,20 +78,33 @@ def _render_library(memory: object, user_id: str) -> None:
     choice = st.selectbox("Filter by platform", ["All", *owned])
     if choice != "All":
         records = [r for r in records if any(platforms_match(choice, p) for p in r.platforms)]
-    st.caption(f"{len(records)} game(s)")
+    st.caption(
+        f"{len(records)} game(s) · ✨ enriches genre, playtime, platforms & an averaged review"
+    )
     for record in sorted(records, key=lambda r: r.title.casefold()):
+        review = record.community_review
         meta = " · ".join(
             part
             for part in (
                 record.genre,
                 f"~{record.estimated_playtime} min" if record.estimated_playtime else "",
+                f"⭐{review.score:.1f}/10 ({review.source_count} sources)" if review else "",
                 ", ".join(record.platforms),
             )
             if part
         )
-        st.markdown(
-            f'<div class="lib-line">🎮 <b>{record.title}</b> — {meta}</div>', unsafe_allow_html=True
+        cols = st.columns([6, 1])
+        cols[0].markdown(
+            f'<div class="lib-line">🎮 <b>{record.title}</b> — {meta or "no details yet"}</div>',
+            unsafe_allow_html=True,
         )
+        if not record.is_enriched() and cols[1].button(
+            "✨", key=f"enrich_{record.dedup_key}", help="Enrich this game's details"
+        ):
+            with st.spinner(f"Enriching {record.title}…"):
+                get_enricher().enrich(record)
+                memory.upsert_record(user_id, record)  # type: ignore[attr-defined]
+            st.rerun()
 
 
 def _render_history(memory: object, user_id: str) -> None:

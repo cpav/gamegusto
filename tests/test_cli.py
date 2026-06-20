@@ -82,13 +82,15 @@ class _FakeRuntime:
 def _ctx(runtime: Any) -> tuple[AppContext, MemoryService]:
     memory = MemoryService(_InMemoryClient())
     tavily = TavilyService(api_key="x", client=_NoopTavilyClient())
-    library = LibraryService([ManualSource(memory, USER_ID)], _IdentityEnricher(), memory)  # type: ignore[arg-type]
+    enricher = _IdentityEnricher()
+    library = LibraryService([ManualSource(memory, USER_ID)], enricher, memory)  # type: ignore[arg-type]
     ctx = AppContext(
         config=CONFIG,
         user_id=USER_ID,
         memory=memory,
         tavily=tavily,
         library=library,
+        enricher=enricher,  # type: ignore[arg-type]
         runtime=runtime,
         gmail=None,
     )

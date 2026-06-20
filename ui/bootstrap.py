@@ -87,3 +87,8 @@ def get_user_id() -> str:
 def get_autocomplete(query: str) -> list[str]:
     """Return manual-entry title suggestions for ``query`` (>= 3 chars, Req 3.4)."""
     return get_context().tavily.autocomplete(query)
+
+
+def get_enricher() -> Any:
+    """Return the enricher (Tavily search + LLM) for on-demand enrichment."""
+    return get_context().enricher
