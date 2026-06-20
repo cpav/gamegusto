@@ -124,13 +124,20 @@ def _render_library(memory: object, user_id: str) -> None:
 
 
 def _render_history(memory: object, user_id: str) -> None:
-    """Show recent recommendations (Req 9.4)."""
+    """Show recent recommendations, each addable to the library with one click (Req 9.4)."""
     st.subheader("🏆 Recent Picks")
     recs = memory.get_recent_recommendations(user_id, 10)  # type: ignore[attr-defined]
     if not recs:
         st.caption("No recommendations yet — head to the chat and ask for one.")
         return
+    st.caption("Tap ➕ to add a pick to your library")
+    owned = {r.title.casefold() for r in memory.get_records(user_id)}  # type: ignore[attr-defined]
     for rec in recs:
-        st.markdown(
+        cols = st.columns([5, 1])
+        cols[0].markdown(
             f'<div class="hist-line">🎯 <b>{rec.game_title}</b></div>', unsafe_allow_html=True
         )
+        if rec.game_title.casefold() in owned:
+            cols[1].markdown("✓")
+        elif cols[1].button("➕", key=f"pickadd_{rec.game_title}", help="Add to your library"):
+            _add_game(memory, user_id, rec.game_title, [])
