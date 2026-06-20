@@ -136,6 +136,20 @@ def test_text_emitted_before_a_tool_call_is_not_dropped() -> None:
     assert "Let me know if any catch your eye!" in reply.message
 
 
+def test_stream_yields_text_and_tool_events_in_order() -> None:
+    """stream() exposes per-turn text chunks and tool-call events for the UI."""
+    add = ToolUse("t1", "add_platform", {"name": "Nintendo Switch"})
+    bedrock = _ScriptedBedrock([_tool_call(add, "Adding that."), _final("Done — try a new RPG.")])
+    runtime, _ = _runtime(bedrock)
+
+    events = list(runtime.stream("I own a Switch"))
+
+    assert [e.kind for e in events] == ["text", "tool", "text"]
+    assert events[0].text == "Adding that."
+    assert events[1].tool == "add_platform"
+    assert events[2].text == "Done — try a new RPG."
+
+
 def test_iteration_cap_returns_fallback() -> None:
     forever = _tool_call(ToolUse("t", "get_owned_platforms", {}))
     bedrock = _ScriptedBedrock([forever], loop_last=True)

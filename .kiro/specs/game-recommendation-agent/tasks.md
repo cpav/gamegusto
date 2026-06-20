@@ -123,8 +123,8 @@ Every source produces and every consumer reads the single canonical `GameRecord`
     - `ui/theme.py`: retro arcade CSS (Press Start 2P, neon/CRT), responsive media query, idempotent injection
     - _Requirements: 9.1, 9.2_
   - [ ] 9.2 Implement UI bootstrap/accessors
-    - `ui/bootstrap.py`: build and cache the service graph in session state by delegating to `bootstrap.build_app`; expose `get_runtime`, `get_memory_service`, `get_user_id`, `get_autocomplete`; graceful degradation across memory/Tavily/Gmail
-    - _Requirements: 3.5, 10.2, 10.3, 10.4_
+    - `ui/bootstrap.py`: bridge `st.secrets` → env (so `Config.from_env()` works on Streamlit Cloud and locally), then build and cache the service graph in session state via `bootstrap.build_app`; expose `get_runtime`, `get_memory_service`, `get_user_id`, `get_autocomplete`; Gmail omitted when unconfigured; graceful degradation across memory/Tavily
+    - _Requirements: 3.5, 10.2, 10.3, 10.4, 12.3, 12.4_
   - [ ] 9.3 Implement the chat view
     - `ui/chat_view.py`: conversational chat consuming the runtime's turn events (9.7). Render the model's inter-turn narration ("Let me check your library…") and tool calls as **transient status** (e.g. `st.status` with a per-tool label like "🔧 searching the web…") that collapses, and the final recommendation + reasoning persistently in a distinct retro card; stateless notice when memory is down. (The headless `cli.py` keeps the simple concatenated text.)
     - _Requirements: 9.3_
@@ -147,7 +147,7 @@ Every source produces and every consumer reads the single canonical `GameRecord`
     - _Requirements: 3.1, 3.5, 9.6, 10.2, 10.3, 10.4, 10.5_
 
 - [ ] 11. Final checkpoint
-  - Ensure the full gate is green (ruff, mypy, fast tests) and the Streamlit app launches; confirm the chat and library views work end to end.
+  - Ensure the full gate is green (ruff, mypy, fast tests) and the Streamlit app launches; confirm the chat and library views work end to end on desktop and a phone-width viewport.
 
 - [x] 12. Tool-using Bedrock agent re-architecture (Req 1, 7, 11)
   - [x] 12.1 Add `converse_tools` + `ToolLoop` types to BedrockService
@@ -178,6 +178,14 @@ Every source produces and every consumer reads the single canonical `GameRecord`
     - Product decision (user, live testing): GameGusto recommends **new** games to buy/play, not picks from the backlog. The owned library is used to infer taste and to **exclude** already-owned titles; recommendations must be playable on an owned platform and avoid recently-recommended ones. Updated the `AgentRuntime` system prompt and the spec (intro, Req 7, design overview/flow/tool notes).
     - _Requirements: 1.3, 7.1, 7.2, 7.4, 8.3_
 
+- [ ] 13. Hosted deployment to Streamlit Community Cloud (Req 12)
+  - [ ] 13.1 Deployment prerequisites in-repo
+    - Single entry point Streamlit can run (`streamlit_app.py` delegating to `ui/app.py`); pin the Python version (`runtime.txt` / `.python-version`); ensure `requirements.txt` is complete; add `.streamlit/secrets.toml.example` (names only) documenting `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `BEDROCK_MODEL_ID`, `DYNAMODB_TABLE_NAME`, `TAVILY_API_KEY`; keep real `.streamlit/secrets.toml` git-ignored
+    - _Requirements: 12.1, 12.3, 12.5_
+  - [ ] 13.2 Owner deploy steps (documented; owner-performed)
+    - README "Deploy" section: create the app on share.streamlit.io from `cpav/gamegusto` (main, `streamlit_app.py`); paste secrets into the Streamlit secrets manager; set the app **Private** and invite the owner's Google email; verify sign-in + phone access. Requires an AWS access key for the `gamegusto` IAM user (least-privilege: Bedrock invoke + DynamoDB on the `gamegusto` table)
+    - _Requirements: 12.2, 12.3, 12.6_
+
 ## Notes
 
 - The single `GameRecord` contract (v2.0.0) is the only owned-game record type; provenance values are `gmail`, `manual`, `enrichment`. The contract is unchanged by the re-architecture.
@@ -195,8 +203,9 @@ Every source produces and every consumer reads the single canonical `GameRecord`
   "waves": [
     { "id": 0, "tasks": ["9.2", "9.7"] },
     { "id": 1, "tasks": ["9.3", "9.4", "9.5"] },
-    { "id": 2, "tasks": ["9.6", "10.1"] },
-    { "id": 3, "tasks": ["11"] }
+    { "id": 2, "tasks": ["9.6", "10.1", "13.1"] },
+    { "id": 3, "tasks": ["11"] },
+    { "id": 4, "tasks": ["13.2"] }
   ]
 }
 ```

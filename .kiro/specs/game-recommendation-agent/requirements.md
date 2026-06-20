@@ -123,11 +123,11 @@ A Python application that recommends the next video game to **buy and play** bas
 #### Acceptance Criteria
 
 1. THE Streamlit_UI SHALL apply a retro arcade machine visual theme, including retro-style fonts, an arcade cabinet aesthetic, and neon or CRT-style styling.
-2. THE Streamlit_UI SHALL render responsively on desktop and mobile screen sizes while preserving the retro arcade theme.
+2. THE Streamlit_UI SHALL render responsively and remain fully usable on both desktop and mobile (phone) screen sizes while preserving the retro arcade theme — chat input, recommendation cards, the library view, and platform/game management SHALL all be operable on a phone.
 3. THE Streamlit_UI SHALL present a conversational chat interface that displays the primary recommendation with its reasoning in a visually distinct card and shows alternatives in an expandable section.
 4. THE Streamlit_UI SHALL provide a library/dashboard view presenting the user's platforms, their Game_Records grouped and filterable by platform, and their recommendation history.
 5. THE Streamlit_UI SHALL allow the user to add a game, edit its Game_Record fields, and manage platforms directly in the library/dashboard view, writing to the same Game_Record store used by all Record_Sources.
-6. THE Streamlit_UI SHALL provide controls to connect Gmail and trigger an email import, and report the number of games imported.
+6. WHERE Gmail is configured, THE Streamlit_UI SHALL provide controls to trigger an email import and report the number of games imported; WHERE Gmail is not configured (e.g. the hosted deployment), THE Streamlit_UI SHALL omit those controls and rely on the existing library and manual entry.
 
 ### Requirement 10: Error Handling and Graceful Degradation
 
@@ -152,3 +152,16 @@ A Python application that recommends the next video game to **buy and play** bas
 3. WHEN a Tool reports an error or returns no data, THE Recommendation_Agent SHALL adapt and continue the conversation, surfacing only sanitized information to the user (Req 10) and never fabricating ratings, platforms, or titles the user does not own.
 4. THE set of Tools SHALL be extensible — adding or removing a Tool SHALL NOT require changing the agent conversation loop.
 5. WHILE running the tool-use loop, THE Agent_Runtime SHALL bound the number of tool-call rounds per user turn so the loop always terminates with either a final answer or a clear fallback message.
+
+### Requirement 12: Hosted Deployment (Streamlit Community Cloud)
+
+**User Story:** As the owner, I want the app hosted so I can use it from my phone, while keeping it private to me and protecting my AWS/Bedrock spend and data.
+
+#### Acceptance Criteria
+
+1. THE Streamlit_UI SHALL be deployable to Streamlit Community Cloud from the `cpav/gamegusto` GitHub repository via a single Streamlit entry point.
+2. THE deployment SHALL be configured as a **private** Streamlit app whose viewer access is restricted to the owner's allow-listed Google account(s); the app SHALL NOT be openly usable by anyone with the URL.
+3. THE application SHALL read all credentials (AWS region/keys for Bedrock + DynamoDB, Tavily key) from the platform's secrets manager / environment, never from the repository; no secret SHALL be committed.
+4. THE hosted deployment SHALL operate without Gmail (the Gmail token stays local); it SHALL rely on the existing DynamoDB library and manual entry, degrading gracefully per Req 3.6 / 9.6.
+5. THE runtime dependencies and Python version SHALL be pinned so the hosted build is reproducible.
+6. THE hosted app SHALL be fully usable from a phone browser (Req 9.2).

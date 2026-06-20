@@ -15,8 +15,9 @@ Memory and Tavily degrade gracefully via the tools they back.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from agent.tools import ToolRegistry
 from services.bedrock_service import BedrockService
@@ -89,6 +90,20 @@ class AgentReply:
     """Names of tools invoked while producing this reply (for transparency)."""
 
 
+@dataclass
+class AgentEvent:
+    """One streamed step of a turn (see :meth:`AgentRuntime.stream`).
+
+    ``kind == "text"`` carries a chunk of the model's reply in ``text`` (append it
+    to the assistant message); ``kind == "tool"`` names a tool the model is about
+    to run in ``tool`` (show it transiently, e.g. "🔧 searching the web…").
+    """
+
+    kind: Literal["text", "tool"]
+    text: str = ""
+    tool: str = ""
+
+
 class AgentRuntime:
     """Drives the Bedrock tool-use loop for one user's conversation."""
 
@@ -116,27 +131,40 @@ class AgentRuntime:
         Raises ``BedrockServiceError`` (sanitized) if the model is unavailable —
         the LLM is a hard dependency with no canned fallback.
         """
-        self._messages.append({"role": "user", "content": [{"text": user_text}]})
-        called: list[str] = []
-        # Collect text from every turn, not just the final one: the model often
-        # writes its recommendation prose in the same turn it calls a tool (e.g.
-        # save_recommendation) and then ends with only a short closing line, so
-        # returning just the last turn's text would drop the actual answer.
         texts: list[str] = []
+        called: list[str] = []
+        for event in self.stream(user_text):
+            if event.kind == "text":
+                texts.append(event.text)
+            else:
+                called.append(event.tool)
+        return self._reply("\n\n".join(texts), called)
+
+    def stream(self, user_text: str) -> Iterator[AgentEvent]:
+        """Run the tool loop, yielding text chunks and tool-call events as they occur.
+
+        Lets a UI render the model's narration progressively and show tool use
+        transiently, while the persisted reply is the concatenation of the text
+        events. Text is yielded from every turn (not just the last): the model
+        often writes its recommendation in the same turn it calls a tool and ends
+        with only a closing line, so the substantive answer would otherwise be
+        dropped. Raises ``BedrockServiceError`` (sanitized) if the model fails.
+        """
+        self._messages.append({"role": "user", "content": [{"text": user_text}]})
 
         for _ in range(_MAX_TOOL_ITERATIONS):
             result = self._bedrock.converse_tools(self._messages, self._tools.specs(), self._system)
             if result.text.strip():
-                texts.append(result.text.strip())
+                yield AgentEvent(kind="text", text=result.text.strip())
             if result.assistant_content:
                 self._messages.append({"role": "assistant", "content": result.assistant_content})
 
             if result.stop_reason != "tool_use" or not result.tool_uses:
-                return self._reply("\n\n".join(texts), called)
+                return
 
             tool_results: list[dict[str, Any]] = []
             for use in result.tool_uses:
-                called.append(use.name)
+                yield AgentEvent(kind="tool", tool=use.name)
                 output = self._tools.dispatch(use.name, use.input)
                 tool_results.append(
                     {
@@ -148,8 +176,6 @@ class AgentRuntime:
                     }
                 )
             self._messages.append({"role": "user", "content": tool_results})
-
-        return self._reply("\n\n".join(texts), called)
 
     def _reply(self, message: str, called: list[str]) -> AgentReply:
         """Wrap ``message`` in an :class:`AgentReply`, reflecting memory health."""

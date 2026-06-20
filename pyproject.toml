@@ -59,4 +59,8 @@ omit = [
     "tests/*",
     ".venv/*",
     "scripts/*",
+    # Streamlit render modules need a running app context, not unit coverage;
+    # their pure helpers are smoke-tested in tests/test_ui_*.py.
+    "ui/*",
+    "streamlit_app.py",
 ]

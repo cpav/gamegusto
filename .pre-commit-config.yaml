@@ -13,6 +13,9 @@ repos:
     hooks:
       - id: mypy
         args: ["--config-file", "pyproject.toml"]
-        # The hook runs in an isolated env; include the typed test deps so mypy
-        # can resolve imports in tests/ just like the local .venv run does.
-        additional_dependencies: ["hypothesis==6.122.3", "pytest==8.3.4"]
+        # The hook runs in an isolated env; include the typed deps so mypy
+        # resolves imports just like the local .venv run. Streamlit ships type
+        # info (py.typed); without it the UI's st.* returns degrade to Any and
+        # mypy flags no-any-return where the local run is clean.
+        additional_dependencies:
+          ["hypothesis==6.122.3", "pytest==8.3.4", "streamlit==1.40.1"]
