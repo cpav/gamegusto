@@ -32,16 +32,15 @@ _CHIP_PROMPTS = {
 }
 
 #: Conversation starters (short labels -> the text sent) shown on the empty screen.
-#: A fresh handful is sampled per session to keep the empty state lively.
+#: Kept genre-agnostic — about *ways in*, not specific tastes — and a fresh handful
+#: is sampled per session to keep the empty state lively.
 _STARTER_PROMPTS = {
-    "🕹️ Short & snappy": "Something short and arcadey I can finish in one sitting",
-    "🐉 Big RPG": "A fantasy RPG I can really sink into",
-    "👾 Catch 'em all": "A monster-taming / creature-collecting game",
-    "♟️ Something tactical": "A tactical or strategy game that makes me think",
-    "💸 On sale now": "What's on a good deal right now for my platforms?",
-    "🤔 Help me choose": (
-        "I've got a few directions in mind — help me pick, deals welcome as a tiebreaker"
-    ),
+    "🤔 Help me decide": "I'm not sure what I feel like — help me figure out what to play next",
+    "🎯 Match my taste": "Recommend something new based on the taste in my library",
+    "💸 Good deals": "What good games are on a deal right now for my platforms?",
+    "⏱️ Short on time": "I've only got a short while tonight — what should I play?",
+    "🆕 Surprise me": "Surprise me with a new game I might love",
+    "👀 Hidden gem": "Suggest a great game I've probably overlooked",
 }
 
 #: How many starters to flash at once (a 2x2 grid reads well on phones).
@@ -152,31 +151,36 @@ def _render_starters() -> None:
 def _stream_turn(prompt: str) -> str:
     """Stream one agent turn: a transient "thinking" line, then the reply word-by-word.
 
-    The thinking line is a single placeholder that updates per tool and is cleared
-    when done — no persistent status box and no leftover "Ready"/tool text.
+    A SINGLE placeholder carries the turn: it shows the "thinking"/tool line and is
+    then overwritten in place by the reply. Using one slot (not a separate empty
+    card) matters — an empty placeholder left below the thinking line reuses the
+    previous turn's reply at that delta path and shows it ghosted until written, so
+    the prior answer would flash under "thinking…". Writing the slot immediately
+    avoids that.
     """
     runtime = get_runtime()
-    thinking = st.empty()
-    card = st.empty()
-    thinking.markdown('<div class="gg-thinking">🕹️ thinking…</div>', unsafe_allow_html=True)
+    slot = st.empty()
+    slot.markdown('<div class="gg-thinking">🕹️ thinking…</div>', unsafe_allow_html=True)
     parts: list[str] = []
     try:
         for event in runtime.stream(prompt):
             if event.kind == "tool":
-                thinking.markdown(
+                slot.markdown(
                     f'<div class="gg-thinking">{_tool_label(event.tool)}…</div>',
                     unsafe_allow_html=True,
                 )
             elif event.text:
                 parts.append(event.text)
     except BedrockServiceError as exc:
-        thinking.empty()
+        slot.empty()
         st.error(str(exc))
         return ""
 
-    thinking.empty()
     message = "\n\n".join(parts)
-    _typewriter(card, message)
+    if message:
+        _typewriter(slot, message)
+    else:
+        slot.empty()  # no text this turn — don't leave the "thinking…" line behind
     if not get_memory_service().is_available:
         st.caption("⚠️ memory unavailable — personalization is limited this session")
     return message
