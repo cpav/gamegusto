@@ -105,7 +105,8 @@ def _render_library(memory: object, user_id: str) -> None:
     view = all_records
     if choice != "All":
         view = [r for r in all_records if any(platforms_match(choice, p) for p in r.platforms)]
-    st.caption(f"{len(view)} game(s) · 🕹️ set platform · ✨ enrich details")
+    st.caption(f"{len(view)} game(s) · 🕹️ set/change platform · ✨ enrich details")
+    suggestions = _platform_suggestions(owned, all_records)
 
     # Mutating a record then persisting the WHOLE list keeps edits that change the
     # dedup key (e.g. adding a platform) from leaving a stale duplicate behind.
@@ -126,8 +127,7 @@ def _render_library(memory: object, user_id: str) -> None:
             f'<div class="lib-line">🎮 <b>{record.title}</b> — {meta or "no details yet"}</div>',
             unsafe_allow_html=True,
         )
-        if not record.platforms:
-            _set_platform_control(plat_col, memory, user_id, all_records, record, index)
+        _platform_control(plat_col, memory, user_id, all_records, record, index, suggestions)
         if not record.is_enriched() and enrich_col.button(
             "✨",
             key=f"enrich_{index}",
@@ -140,23 +140,46 @@ def _render_library(memory: object, user_id: str) -> None:
             st.rerun()
 
 
-def _set_platform_control(
-    column: object, memory: object, user_id: str, all_records: list, record: object, index: int
+def _platform_suggestions(owned: list[str], records: list) -> list[str]:
+    """Platforms the user has actually used: the owned list + values on any record."""
+    names = set(owned)
+    for record in records:
+        names.update(p for p in record.platforms if p)
+    return sorted(names, key=str.casefold)
+
+
+def _platform_control(
+    column: object,
+    memory: object,
+    user_id: str,
+    all_records: list,
+    record: object,
+    index: int,
+    suggestions: list[str],
 ) -> None:
-    """A 🕹️ popover to set the platform for a record that has none."""
+    """A 🕹️ popover to set or change a record's platform from the existing list.
+
+    Picking from platforms you already use avoids typos; "Other…" allows a new one.
+    """
+    current = record.platforms[0] if record.platforms else ""  # type: ignore[attr-defined]
     with column.popover(  # type: ignore[attr-defined]
-        "🕹️", help="Set the platform you own this on", use_container_width=True
+        "🕹️", help="Set or change the platform you own this on", use_container_width=True
     ):
-        value = st.text_input(
-            "Platform", key=f"setplat_{index}", placeholder="e.g. PC", label_visibility="collapsed"
+        st.caption(f"Current: {current}" if current else "No platform set yet")
+        options = [*suggestions, "Other…"]
+        default = options.index(current) if current in suggestions else len(options) - 1
+        pick = st.selectbox(
+            "Platform", options, index=default, key=f"setplat_{index}", label_visibility="collapsed"
         )
-        if (
-            st.button("Save", key=f"setplatsave_{index}", use_container_width=True)
-            and value.strip()
-        ):
-            record.platforms = [value.strip()]  # type: ignore[attr-defined]
+        value = pick
+        if pick == "Other…":
+            value = st.text_input(
+                "New platform", key=f"setplatother_{index}", placeholder="e.g. Steam Deck"
+            ).strip()
+        if st.button("Save", key=f"setplatsave_{index}", use_container_width=True) and value:
+            record.platforms = [value]  # type: ignore[attr-defined]
             memory.store_records(user_id, all_records)  # type: ignore[attr-defined]
-            st.toast(f"Set platform for “{record.title}”: {value.strip()}")  # type: ignore[attr-defined]
+            st.toast(f"Platform for “{record.title}”: {value}")  # type: ignore[attr-defined]
             st.rerun()
 
 
