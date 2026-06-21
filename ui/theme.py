@@ -87,14 +87,21 @@ h3 { font-size: 1.8rem; }
 /* Conversation alignment: a message containing a user bubble flips to the right. */
 [data-testid="stChatMessage"]:has(.user-bubble) { flex-direction: row-reverse; }
 [data-testid="stChatMessage"]:has(.user-bubble) .stMarkdown { text-align: right; }
-/* Bumper buttons. */
-.stButton button {
+/* Bumper buttons — regular buttons AND popover triggers share one look. */
+.stButton button, [data-testid="stPopover"] button {
     background: var(--arcade-neon-pink); color: #0d0221; border-radius: 8px;
     border: 2px solid var(--arcade-neon-yellow); box-shadow: 0 4px 0 #b3005f;
-    transition: transform 0.05s ease;
+    transition: transform 0.05s ease; min-height: 2.6rem;
 }
-.stButton button:hover { background: var(--arcade-neon-yellow); }
-.stButton button:active { transform: translateY(3px); box-shadow: 0 1px 0 #b3005f; }
+.stButton button:hover, [data-testid="stPopover"] button:hover {
+    background: var(--arcade-neon-yellow); }
+.stButton button:active, [data-testid="stPopover"] button:active {
+    transform: translateY(3px); box-shadow: 0 1px 0 #b3005f; }
+/* Visible keyboard focus ring on every interactive control (accessibility). */
+.stButton button:focus-visible, [data-testid="stPopover"] button:focus-visible,
+input:focus-visible, textarea:focus-visible, select:focus-visible,
+[role="radiogroup"] :focus-visible {
+    outline: 3px solid var(--arcade-neon-yellow) !important; outline-offset: 2px !important; }
 /* The per-message row is transparent (no box/glow) and vertically centers the
    avatar against the bubble; only the inner bubbles (.user-bubble, .rec-card)
    carry borders, so the chat reads as a conversation. */
@@ -114,14 +121,14 @@ h3 { font-size: 1.8rem; }
     text-align: center; text-shadow: 0 0 8px var(--arcade-neon-green); }
 .stChatInputContainer, [data-testid="stChatInput"] {
     border-top: 2px solid var(--arcade-neon-pink); }
-/* Keep the pinned chat bar opaque so messages never bleed through it, and pad
-   the content area so the last message always clears the bar. */
 /* Opaque purple under the pinned input. It must span the FULL viewport width
    (the outer stBottom), not just the centered block — otherwise the gutters show
    through as black boxes at the bottom corners. */
 [data-testid="stBottom"], [data-testid="stBottom"] > div,
 [data-testid="stBottomBlockContainer"] {
     background: var(--arcade-bg) !important; }
+/* Captions/hints: readable muted cyan instead of the low-contrast default gray. */
+[data-testid="stCaptionContainer"], .stCaption { color: rgba(45,226,230,0.8) !important; }
 /* In-flow spacer below the conversation so the last reply clears the pinned bar. */
 .gg-spacer { height: 6rem; }
 .lib-line, .hist-line { font-size: 1.2rem; border-bottom: 1px dashed rgba(45,226,230,0.3);
@@ -147,6 +154,12 @@ h3 { font-size: 1.8rem; }
     .gg-marquee .gg-sub { font-size: 0.7rem; letter-spacing: 0; }
     .chat-intro { font-size: 0.95rem; }
     .rec-card { font-size: 1rem; padding: 0.55rem; }
+}
+/* Respect users who prefer reduced motion: drop the button press animation. */
+@media (prefers-reduced-motion: reduce) {
+    .stButton button, [data-testid="stPopover"] button { transition: none !important; }
+    .stButton button:active, [data-testid="stPopover"] button:active {
+        transform: none !important; }
 }
 </style>
 """
