@@ -186,6 +186,11 @@ Every source produces and every consumer reads the single canonical `GameRecord`
     - README "Deploy" section: create the app on share.streamlit.io from `cpav/gamegusto` (main, `streamlit_app.py`); paste secrets into the Streamlit secrets manager; set the app **Private** and invite the owner's Google email; verify sign-in + phone access. Requires an AWS access key for the `gamegusto` IAM user (least-privilege: Bedrock invoke + DynamoDB on the `gamegusto` table)
     - _Requirements: 12.2, 12.3, 12.6_
 
+- [x] 14. Store-deals tool (tie-breaker dimension)
+  - [x] 14.1 `find_deals` tool + `agent/deals.py`
+    - New tool the model may call (its judgment, never forced): given a title and the candidate's platforms, it maps each platform to its official store (PlayStation Store, Xbox/Microsoft Store, Nintendo eShop, Steam) via `platform_family`, de-dupes per store, and runs a region-scoped `TavilyService.web_search` per store, returning grouped snippets the model reads for price/discount. No paid price API; degrades to empty snippets like the rest. Region from new optional `DEALS_REGION` config (default `Denmark`), threaded `Config → ToolRegistry`. System prompt gains a permissive "deals are an optional tie-breaker, never override fit" bullet. UI: `find_deals` tool label + per-session conversation-starter chips on the empty chat screen. Tests: `tests/test_deals.py` + `find_deals` dispatch in `tests/test_tools.py`.
+    - _Requirements: 7.x, 11.4_
+
 ## Notes
 
 - The single `GameRecord` contract (v2.0.0) is the only owned-game record type; provenance values are `gmail`, `manual`, `enrichment`. The contract is unchanged by the re-architecture.

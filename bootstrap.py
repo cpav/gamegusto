@@ -58,7 +58,12 @@ def build_app(config: Config, user_id: str = "default") -> AppContext:
     enricher = Enricher(bedrock, tavily)
     library = LibraryService(sources=sources, enricher=enricher, memory=memory)
     tools = ToolRegistry(
-        memory=memory, library=library, tavily=tavily, enricher=enricher, user_id=user_id
+        memory=memory,
+        library=library,
+        tavily=tavily,
+        enricher=enricher,
+        user_id=user_id,
+        deals_region=config.deals_region,
     )
     runtime = AgentRuntime(bedrock=bedrock, tools=tools, memory=memory)
 

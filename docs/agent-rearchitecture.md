@@ -85,6 +85,7 @@ Each tool = thin function + JSON schema. Implementations already exist:
 | `import_gmail` | – | imported count | `LibraryService.refresh` / `GmailSource` |
 | `enrich_game` | title | enriched fields | `TavilyService.enrich` |
 | `web_search` | query | snippets (genre/playtime/availability/review) | `TavilyService` (internet access) |
+| `find_deals` | title, optional platforms | per-store deal snippets (price/discount) | `agent/deals.py` → `TavilyService.web_search` (official stores, region-scoped) |
 | `get_recent_recommendations` | n | titles | `MemoryService.get_recent_recommendations` |
 | `save_recommendation` | game, reasoning, mood, time | ok | `MemoryService.store_session` |
 | `parse_time` (optional) | text | minutes / needs_clarification | `TimeParser` |

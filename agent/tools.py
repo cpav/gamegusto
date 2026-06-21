@@ -17,6 +17,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from agent.deals import DEFAULT_DEALS_REGION, find_deals
 from agent.enricher import Enricher
 from agent.library_service import LibraryService
 from agent.platform_match import owned_intersects, platforms_match
@@ -58,6 +59,7 @@ class ToolRegistry:
         tavily: TavilyService,
         enricher: Enricher,
         user_id: str,
+        deals_region: str = DEFAULT_DEALS_REGION,
     ) -> None:
         """Build the registry around the shared service graph for ``user_id``."""
         self._memory = memory
@@ -65,6 +67,7 @@ class ToolRegistry:
         self._tavily = tavily
         self._enricher = enricher
         self._user_id = user_id
+        self._deals_region = deals_region
         self._handlers: dict[str, ToolHandler] = {
             "get_owned_platforms": self._get_owned_platforms,
             "add_platform": self._add_platform,
@@ -75,6 +78,7 @@ class ToolRegistry:
             "import_gmail": self._import_gmail,
             "enrich_game": self._enrich_game,
             "web_search": self._web_search,
+            "find_deals": self._find_deals,
             "get_recent_recommendations": self._get_recent_recommendations,
             "save_recommendation": self._save_recommendation,
         }
@@ -184,6 +188,16 @@ class ToolRegistry:
         if not query:
             return {"ok": False, "error": "query is required"}
         return {"results": self._tavily.web_search(query)}
+
+    def _find_deals(self, tool_input: dict[str, Any]) -> dict[str, Any]:
+        title = str(tool_input.get("title", "")).strip()
+        if not title:
+            return {"ok": False, "error": "title is required"}
+        raw = tool_input.get("platforms")
+        platforms = (
+            [str(p).strip() for p in raw if str(p).strip()] if isinstance(raw, list) else None
+        )
+        return find_deals(self._tavily, title, platforms or None, self._deals_region)
 
     # --- personalization tools (Req 8) ---
 
@@ -330,6 +344,24 @@ _TOOL_SPECS: list[dict[str, Any]] = [
         "Search the web for game info (genre, playtime, availability, reviews).",
         {"query": {"type": "string"}},
         ["query"],
+    ),
+    _spec(
+        "find_deals",
+        "Check current prices and discounts for a game on its platforms' official "
+        "stores (PlayStation Store, Xbox/Microsoft Store, Nintendo eShop, Steam) for "
+        "the user's region. Optional and your call: use it to break a close tie, weigh "
+        "value into a pick, or spot a discounted game that fits. Returns web snippets "
+        "to read for price and percent off.",
+        {
+            "title": {"type": "string", "description": "The game to look up deals for."},
+            "platforms": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Platforms to check; each maps to its official store. Pass the "
+                "candidate's available platforms. Omit for a general store search.",
+            },
+        },
+        ["title"],
     ),
     _spec(
         "get_recent_recommendations",
