@@ -34,14 +34,19 @@ def _render_platform_manager(memory: object, user_id: str) -> None:
         st.rerun()
 
     for platform in memory.get_platform_list(user_id):  # type: ignore[attr-defined]
-        cols = st.columns([4, 1])
+        cols = st.columns([5, 1])
         edited = cols[0].text_input(
             "name",
             value=platform.name,
             key=f"edit_{platform.platform_id}",
             label_visibility="collapsed",
         )
-        if cols[1].button("Remove", key=f"rm_{platform.platform_id}"):
+        if cols[1].button(
+            "🗑️",
+            key=f"rm_{platform.platform_id}",
+            help="Remove this platform",
+            use_container_width=True,
+        ):
             memory.remove_platform(user_id, platform.platform_id)  # type: ignore[attr-defined]
             st.rerun()
         elif edited.strip() and edited != platform.name:
@@ -89,20 +94,22 @@ def _add_game(memory: object, user_id: str, title: str, platforms: list[str]) ->
 
 
 def _render_library(memory: object, user_id: str) -> None:
-    """Show owned games grouped/filterable by platform (Req 9.4)."""
+    """Show owned games with per-row set-platform / enrich actions (Req 9.4, 9.5)."""
     st.subheader("📚 My Library")
-    records = memory.get_records(user_id)  # type: ignore[attr-defined]
-    if not records:
+    all_records = memory.get_records(user_id)  # type: ignore[attr-defined]
+    if not all_records:
         st.caption("No games yet — add one above, or import from Gmail via the CLI.")
         return
     owned = [p.name for p in memory.get_platform_list(user_id)]  # type: ignore[attr-defined]
     choice = st.selectbox("Filter by platform", ["All", *owned])
+    view = all_records
     if choice != "All":
-        records = [r for r in records if any(platforms_match(choice, p) for p in r.platforms)]
-    st.caption(
-        f"{len(records)} game(s) · ✨ enriches genre, playtime, platforms & an averaged review"
-    )
-    for record in sorted(records, key=lambda r: r.title.casefold()):
+        view = [r for r in all_records if any(platforms_match(choice, p) for p in r.platforms)]
+    st.caption(f"{len(view)} game(s) · 🕹️ set platform · ✨ enrich details")
+
+    # Mutating a record then persisting the WHOLE list keeps edits that change the
+    # dedup key (e.g. adding a platform) from leaving a stale duplicate behind.
+    for index, record in enumerate(sorted(view, key=lambda r: r.title.casefold())):
         review = record.community_review
         meta = " · ".join(
             part
@@ -114,17 +121,42 @@ def _render_library(memory: object, user_id: str) -> None:
             )
             if part
         )
-        cols = st.columns([6, 1])
-        cols[0].markdown(
+        info, plat_col, enrich_col = st.columns([6, 1, 1])
+        info.markdown(
             f'<div class="lib-line">🎮 <b>{record.title}</b> — {meta or "no details yet"}</div>',
             unsafe_allow_html=True,
         )
-        if not record.is_enriched() and cols[1].button(
-            "✨", key=f"enrich_{record.dedup_key}", help="Enrich this game's details"
+        if not record.platforms:
+            _set_platform_control(plat_col, memory, user_id, all_records, record, index)
+        if not record.is_enriched() and enrich_col.button(
+            "✨",
+            key=f"enrich_{index}",
+            help="Enrich genre, playtime, platforms & reviews",
+            use_container_width=True,
         ):
             with st.spinner(f"Enriching {record.title}…"):
                 get_enricher().enrich(record)
-                memory.upsert_record(user_id, record)  # type: ignore[attr-defined]
+            memory.store_records(user_id, all_records)  # type: ignore[attr-defined]
+            st.rerun()
+
+
+def _set_platform_control(
+    column: object, memory: object, user_id: str, all_records: list, record: object, index: int
+) -> None:
+    """A 🕹️ popover to set the platform for a record that has none."""
+    with column.popover(  # type: ignore[attr-defined]
+        "🕹️", help="Set the platform you own this on", use_container_width=True
+    ):
+        value = st.text_input(
+            "Platform", key=f"setplat_{index}", placeholder="e.g. PC", label_visibility="collapsed"
+        )
+        if (
+            st.button("Save", key=f"setplatsave_{index}", use_container_width=True)
+            and value.strip()
+        ):
+            record.platforms = [value.strip()]  # type: ignore[attr-defined]
+            memory.store_records(user_id, all_records)  # type: ignore[attr-defined]
+            st.toast(f"Set platform for “{record.title}”: {value.strip()}")  # type: ignore[attr-defined]
             st.rerun()
 
 
