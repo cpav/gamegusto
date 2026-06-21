@@ -82,27 +82,52 @@ def _tool_label(name: str) -> str:
 
 
 def render_chat_view() -> None:
-    """Render the conversation, handle a new turn, follow-up chips, and auto-scroll."""
+    """Render the conversation, handle a new turn, follow-up chips, and auto-scroll.
+
+    A turn is split across two runs so the agent's blocking stream never paints over
+    a stale frame: submitting only appends the user message and reruns; the *next*
+    run renders the whole history (now including that message) and then streams the
+    answer into a freshly-added assistant block. Because the pre-stream frame has no
+    reply at that position, Streamlit has no prior answer to show ghosted under the
+    "thinking…" line while the model works.
+    """
     history = st.session_state.setdefault("messages", [])
-    if not history:
-        st.markdown(
-            '<div class="chat-intro">Tell me what you\'re in the mood to play — '
-            "genre, vibe, how much time you've got.</div>",
-            unsafe_allow_html=True,
-        )
-        _render_starters()
+
+    # The intro + starters live in ONE persistent placeholder so leaving the empty
+    # state actively *clears* them (an emptied node) rather than leaving the starter
+    # buttons behind as a ghosted "stale" layer during the next, blocking run. The
+    # slot occupies the same position every run, so .empty() reliably replaces it.
+    intro_slot = st.empty()
+    awaiting = st.session_state.get("_pending_prompt") or st.session_state.get("_pending_answer")
+    if not history and not awaiting:
+        with intro_slot.container():
+            st.markdown(
+                '<div class="chat-intro">Tell me what you\'re in the mood to play — '
+                "genre, vibe, how much time you've got.</div>",
+                unsafe_allow_html=True,
+            )
+            _render_starters()
+    else:
+        intro_slot.empty()
+
     for msg in history:
         _render_message(msg["role"], msg["content"])
+
+    # An answer queued by the previous run: stream it now, below the rendered history.
+    pending = st.session_state.pop("_pending_answer", None)
+    if pending is not None:
+        with st.chat_message("assistant", avatar=_AVATARS["assistant"]):
+            message = _stream_turn(pending)
+        if message:
+            history.append({"role": "assistant", "content": message})
 
     typed = st.chat_input("Insert coin… what should I play?")  # pinned to viewport bottom
     prompt = typed or st.session_state.pop("_pending_prompt", None)
     if prompt:
+        # Record the turn and hand off to the next run to stream the reply cleanly.
         history.append({"role": "user", "content": prompt})
-        _render_message("user", prompt)
-        with st.chat_message("assistant", avatar=_AVATARS["assistant"]):
-            message = _stream_turn(prompt)
-        if message:
-            history.append({"role": "assistant", "content": message})
+        st.session_state["_pending_answer"] = prompt
+        st.rerun()
 
     if any(m["role"] == "assistant" for m in history):
         _render_chips()
