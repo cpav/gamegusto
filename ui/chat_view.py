@@ -13,6 +13,7 @@ The LLM is a hard dependency: a failure surfaces as a sanitized message (Req 10.
 
 from __future__ import annotations
 
+import random
 import time
 
 import streamlit as st
@@ -30,6 +31,22 @@ _CHIP_PROMPTS = {
     "🎲 Surprise me": "Surprise me with something different",
 }
 
+#: Conversation starters (short labels -> the text sent) shown on the empty screen.
+#: A fresh handful is sampled per session to keep the empty state lively.
+_STARTER_PROMPTS = {
+    "🕹️ Short & snappy": "Something short and arcadey I can finish in one sitting",
+    "🐉 Big RPG": "A fantasy RPG I can really sink into",
+    "👾 Catch 'em all": "A monster-taming / creature-collecting game",
+    "♟️ Something tactical": "A tactical or strategy game that makes me think",
+    "💸 On sale now": "What's on a good deal right now for my platforms?",
+    "🤔 Help me choose": (
+        "I've got a few directions in mind — help me pick, deals welcome as a tiebreaker"
+    ),
+}
+
+#: How many starters to flash at once (a 2x2 grid reads well on phones).
+_STARTER_COUNT = 4
+
 #: Total seconds the word-by-word reveal is allowed to take (kept snappy).
 _TYPE_BUDGET = 1.2
 
@@ -44,6 +61,7 @@ _TOOL_LABELS = {
     "import_gmail": "📧 importing purchases",
     "enrich_game": "🔎 looking up game details",
     "web_search": "🌐 searching the web",
+    "find_deals": "💸 checking store deals",
     "get_recent_recommendations": "🧠 recalling recent picks",
     "save_recommendation": "💾 saving this pick",
 }
@@ -73,6 +91,7 @@ def render_chat_view() -> None:
             "genre, vibe, how much time you've got.</div>",
             unsafe_allow_html=True,
         )
+        _render_starters()
     for msg in history:
         _render_message(msg["role"], msg["content"])
 
@@ -107,6 +126,27 @@ def _render_chips() -> None:
         if col.button(chip, key=f"chip_{chip}", use_container_width=True):
             st.session_state["_pending_prompt"] = _CHIP_PROMPTS[chip]
             st.rerun()
+
+
+def _render_starters() -> None:
+    """Flash a few conversation-starter chips on the empty screen.
+
+    A fresh sample is drawn once per session (stored in session state so it stays
+    stable across reruns), then laid out two-per-row to read well on a phone. A
+    click queues that starter's text as the first turn.
+    """
+    starters = st.session_state.get("_starters")
+    if starters is None:
+        k = min(_STARTER_COUNT, len(_STARTER_PROMPTS))
+        starters = random.sample(list(_STARTER_PROMPTS), k=k)
+        st.session_state["_starters"] = starters
+    for row in range(0, len(starters), 2):
+        pair = starters[row : row + 2]
+        cols = st.columns(len(pair))
+        for col, label in zip(cols, pair):
+            if col.button(label, key=f"starter_{label}", use_container_width=True):
+                st.session_state["_pending_prompt"] = _STARTER_PROMPTS[label]
+                st.rerun()
 
 
 def _stream_turn(prompt: str) -> str:

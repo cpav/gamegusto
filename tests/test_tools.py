@@ -149,6 +149,18 @@ def test_enrich_and_web_search() -> None:
     assert reg.dispatch("web_search", {"query": "  "})["ok"] is False
 
 
+def test_find_deals_dispatch() -> None:
+    reg, _ = _registry()
+    out = reg.dispatch("find_deals", {"title": "Hades", "platforms": ["Switch", "PS5"]})
+
+    assert out["title"] == "Hades"
+    assert out["region"] == "Denmark"  # registry default
+    assert {d["store"] for d in out["deals"]} == {"Nintendo eShop", "PlayStation Store"}
+    assert all(d["snippets"] for d in out["deals"])  # canned Tavily snippets flow through
+
+    assert reg.dispatch("find_deals", {"title": "  "})["ok"] is False
+
+
 def test_import_gmail_reports_delta() -> None:
     reg, memory = _registry()
     memory.upsert_record(USER_ID, GameRecord(title="Hades", platforms=["Switch"], source="manual"))
