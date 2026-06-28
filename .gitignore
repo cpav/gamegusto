@@ -31,3 +31,6 @@ htmlcov/
 
 # macOS
 .DS_Store
+
+# Local Claude Code preview/run config (machine-specific paths)
+.claude/

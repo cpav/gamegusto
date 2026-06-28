@@ -33,3 +33,27 @@ def test_build_app_wires_runtime_without_gmail() -> None:
 def test_build_app_defaults_user_id() -> None:
     ctx = build_app(CONFIG)
     assert ctx.user_id == "default"
+
+
+def _with_region(region: str | None) -> Config:
+    return Config(
+        aws_region="eu-north-1",
+        bedrock_model_id="m",
+        tavily_api_key="x",
+        dynamodb_table_name="t",
+        deals_region=region,
+    )
+
+
+def test_region_resolves_config_then_detected_then_default() -> None:
+    # Explicit config region wins over a detected one, and reaches the prompt.
+    ctx = build_app(_with_region("France"), detected_region="Sweden")
+    assert "based in France" in ctx.runtime._system  # noqa: SLF001 - wiring under test
+
+    # Detected region is used when config leaves it unset.
+    ctx = build_app(_with_region(None), detected_region="Sweden")
+    assert "based in Sweden" in ctx.runtime._system  # noqa: SLF001
+
+    # Falls back to the default when neither is given.
+    ctx = build_app(_with_region(None))
+    assert "based in Denmark" in ctx.runtime._system  # noqa: SLF001

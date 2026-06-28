@@ -13,9 +13,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from agent.deals import DEFAULT_DEALS_REGION
 from agent.enricher import Enricher
 from agent.library_service import LibraryService
-from agent.runtime import AgentRuntime
+from agent.runtime import AgentRuntime, system_prompt_for_region
 from agent.tools import ToolRegistry
 from config import Config
 from services.bedrock_service import BedrockService
@@ -41,8 +42,17 @@ class AppContext:
     gmail: GmailSource | None
 
 
-def build_app(config: Config, user_id: str = "default") -> AppContext:
-    """Construct the full service graph for ``user_id`` from ``config``."""
+def build_app(
+    config: Config, user_id: str = "default", detected_region: str | None = None
+) -> AppContext:
+    """Construct the full service graph for ``user_id`` from ``config``.
+
+    The store-deals region resolves as **explicit ``config.deals_region`` ›
+    ``detected_region`` (e.g. browser locale, passed by the UI) › default**, and is
+    given to both the ``find_deals`` tool and the system prompt so the agent knows
+    it without asking.
+    """
+    region = config.deals_region or detected_region or DEFAULT_DEALS_REGION
     bedrock = BedrockService(config)
     tavily = TavilyService(config.tavily_api_key)
     memory = MemoryService(
@@ -63,9 +73,14 @@ def build_app(config: Config, user_id: str = "default") -> AppContext:
         tavily=tavily,
         enricher=enricher,
         user_id=user_id,
-        deals_region=config.deals_region,
+        deals_region=region,
     )
-    runtime = AgentRuntime(bedrock=bedrock, tools=tools, memory=memory)
+    runtime = AgentRuntime(
+        bedrock=bedrock,
+        tools=tools,
+        memory=memory,
+        system_prompt=system_prompt_for_region(region),
+    )
 
     return AppContext(
         config=config,

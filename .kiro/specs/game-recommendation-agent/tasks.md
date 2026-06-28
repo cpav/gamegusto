@@ -190,6 +190,9 @@ Every source produces and every consumer reads the single canonical `GameRecord`
   - [x] 14.1 `find_deals` tool + `agent/deals.py`
     - New tool the model may call (its judgment, never forced): given a title and the candidate's platforms, it maps each platform to its official store (PlayStation Store, Xbox/Microsoft Store, Nintendo eShop, Steam) via `platform_family`, de-dupes per store, and runs a region-scoped `TavilyService.web_search` per store, returning grouped snippets the model reads for price/discount. No paid price API; degrades to empty snippets like the rest. Region from new optional `DEALS_REGION` config (default `Denmark`), threaded `Config → ToolRegistry`. System prompt gains a permissive "deals are an optional tie-breaker, never override fit" bullet. UI: `find_deals` tool label + per-session conversation-starter chips on the empty chat screen. Tests: `tests/test_deals.py` + `find_deals` dispatch in `tests/test_tools.py`.
     - _Requirements: 7.x, 11.4_
+  - [x] 14.2 Auto-detect the deals region (stop asking the user)
+    - The region only lived inside the tool query, so the model kept asking the user to confirm it. Now it is **surfaced to the model** (`agent.runtime.system_prompt_for_region`) and resolved as **explicit `DEALS_REGION` › browser timezone › `Denmark`**, threaded through `bootstrap.build_app` to both the `find_deals` tool and the system prompt. Browser **timezone** (`Intl…timeZone` via `streamlit-js-eval`, mapped `Europe/Copenhagen → Denmark`) reflects physical location, unlike `Accept-Language` (a Dane may run en-GB) or a hosted server's IP/AWS region (the datacenter). `Config.deals_region` is now optional (None when unset); `get_context` rebuilds when the timezone resolves. Verified on the local preview: timezone → Denmark, DKK pricing, no region question. Tests: region precedence in `test_bootstrap`, timezone map in `test_ui_smoke`.
+    - _Requirements: 7.x_
 
 ## Notes
 
