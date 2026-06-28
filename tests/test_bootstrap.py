@@ -7,6 +7,8 @@ lazily/offline, so building the graph for a test config yields a fully wired
 
 from __future__ import annotations
 
+from datetime import date
+
 from agent.runtime import AgentRuntime
 from bootstrap import build_app
 from config import Config
@@ -57,3 +59,8 @@ def test_region_resolves_config_then_detected_then_default() -> None:
     # Falls back to the default when neither is given.
     ctx = build_app(_with_region(None))
     assert "based in Denmark" in ctx.runtime._system  # noqa: SLF001
+
+
+def test_system_prompt_includes_today_for_deal_staleness() -> None:
+    ctx = build_app(CONFIG)
+    assert date.today().isoformat() in ctx.runtime._system  # noqa: SLF001 - wiring under test

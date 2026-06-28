@@ -7,6 +7,7 @@ degradation are all checked without any network.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
 from agent.deals import build_deal_query, find_deals, store_for_platform
@@ -56,6 +57,7 @@ def test_find_deals_groups_and_dedups_by_store() -> None:
 
     assert out["title"] == "Hades"
     assert out["region"] == "Denmark"
+    assert out["today"] == date.today().isoformat()  # date carried for staleness checks
     assert [d["store"] for d in out["deals"]] == ["PlayStation Store", "Steam"]
     assert out["deals"][0]["platforms"] == ["PS4", "PS5"]  # both folded into one store
     assert len(tavily.queries) == 2  # one query per distinct store

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Any, Literal
 
 from agent.tools import ToolRegistry
@@ -86,22 +87,31 @@ with web_search when unsure.
 """
 
 
-def system_prompt_for_region(region: str | None) -> str:
-    """Return the system prompt, telling the model the user's region when known.
+def system_prompt_for_region(region: str | None, today: date | None = None) -> str:
+    """Return the system prompt with the current date and the user's region injected.
 
-    Surfacing the region (from explicit config or auto-detection) lets the agent
-    use it for store prices, availability, and deals (``find_deals``) directly,
-    instead of stopping to ask the user to confirm it — the region otherwise lived
-    only inside the tool's query, invisible to the model.
+    Both are appended as extra bullets so the base prompt stays a constant. The date
+    lets the agent judge deal/sale freshness — web snippets often describe past,
+    expired sales, and the model has no innate sense of "today". The region lets it
+    use store prices/deals (``find_deals``) directly instead of asking the user to
+    confirm it (the region otherwise lived only inside the tool's query).
     """
-    if not region:
-        return SYSTEM_PROMPT
-    return (
-        f"{SYSTEM_PROMPT}- The user is based in {region}. Treat {region} as their "
-        f"store region and currency for prices, availability, and deals — use it "
-        f"directly (e.g. with find_deals) and do NOT ask them to confirm their "
-        f"region or currency.\n"
-    )
+    extra = ""
+    if today is not None:
+        extra += (
+            f"- Today's date is {today.isoformat()}. Deals and sales expire and web "
+            f"results can be stale: before presenting a deal, check its end/validity "
+            f"date against today and NEVER present a sale that has already ended as a "
+            f"current offer. If you cannot confirm a deal is still live, say so rather "
+            f"than stating it as a current price.\n"
+        )
+    if region:
+        extra += (
+            f"- The user is based in {region}. Treat {region} as their store region and "
+            f"currency for prices, availability, and deals — use it directly (e.g. with "
+            f"find_deals) and do NOT ask them to confirm their region or currency.\n"
+        )
+    return SYSTEM_PROMPT + extra
 
 
 @dataclass

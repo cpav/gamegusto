@@ -193,6 +193,9 @@ Every source produces and every consumer reads the single canonical `GameRecord`
   - [x] 14.2 Auto-detect the deals region (stop asking the user)
     - The region only lived inside the tool query, so the model kept asking the user to confirm it. Now it is **surfaced to the model** (`agent.runtime.system_prompt_for_region`) and resolved as **explicit `DEALS_REGION` › browser timezone › `Denmark`**, threaded through `bootstrap.build_app` to both the `find_deals` tool and the system prompt. Browser **timezone** (`Intl…timeZone` via `streamlit-js-eval`, mapped `Europe/Copenhagen → Denmark`) reflects physical location, unlike `Accept-Language` (a Dane may run en-GB) or a hosted server's IP/AWS region (the datacenter). `Config.deals_region` is now optional (None when unset); `get_context` rebuilds when the timezone resolves. Verified on the local preview: timezone → Denmark, DKK pricing, no region question. Tests: region precedence in `test_bootstrap`, timezone map in `test_ui_smoke`.
     - _Requirements: 7.x_
+  - [x] 14.3 Deal-freshness: stop presenting expired sales as current
+    - The agent had no notion of "today", so it relayed stale Tavily snippets (e.g. Hollow Knight "sale ends April 1, 2026") as live deals months later. Now **today's date is injected** into the system prompt (`system_prompt_for_region(region, today=date.today())` from `bootstrap.build_app`) with a rule to check a deal's end/validity date and never present an ended sale as current, and `find_deals` returns a `today` field beside the snippets. Verified on the preview: the model now says the April sale "has already passed (today is June 28, 2026) … no longer active" instead of quoting it. Tests: `today` in `test_deals`, date-in-prompt in `test_bootstrap`.
+    - _Requirements: 7.x, 10.3_
 
 ## Notes
 
