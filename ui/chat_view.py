@@ -17,6 +17,7 @@ import random
 import time
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 from services.bedrock_service import BedrockServiceError
 from ui.bootstrap import get_memory_service, get_runtime
@@ -107,6 +108,7 @@ def render_chat_view() -> None:
                 unsafe_allow_html=True,
             )
             _render_starters()
+        _pin_to_top()
     else:
         intro_slot.empty()
 
@@ -131,8 +133,11 @@ def render_chat_view() -> None:
 
     if any(m["role"] == "assistant" for m in history):
         _render_chips()
-    # In-flow spacer so the last message always clears the pinned input bar.
-    st.markdown('<div class="gg-spacer"></div>', unsafe_allow_html=True)
+    # In-flow spacer so the last message clears the pinned input bar — only once
+    # there's a conversation; on the empty state it would just add height that
+    # overflows the viewport and pushes the marquee out of view.
+    if history:
+        st.markdown('<div class="gg-spacer"></div>', unsafe_allow_html=True)
 
 
 def _render_message(role: str, content: str) -> None:
@@ -150,6 +155,41 @@ def _render_chips() -> None:
         if col.button(chip, key=f"chip_{chip}", use_container_width=True):
             st.session_state["_pending_prompt"] = _CHIP_PROMPTS[chip]
             st.rerun()
+
+
+def _pin_to_top() -> None:
+    """Keep the empty state scrolled to the top so the marquee/intro stay visible.
+
+    Streamlit wraps a chat app in an auto-scroll-to-bottom container (it exists
+    because of ``st.chat_input``); once the starter chips make the empty state taller
+    than a laptop/desktop viewport, that container scrolls past the GameGusto marquee
+    on open. A one-shot scroll loses the race — an async rerun (e.g. the timezone
+    detection resolving) re-fires Streamlit's scroll-to-bottom afterwards — so we hold
+    the top for ~2s, then stop. We also stop the instant the user scrolls, so it never
+    fights intentional scrolling, and it only runs in the empty state (never during a
+    real conversation, where scroll-to-latest is wanted). The 0-height iframe reaches
+    the parent document because its srcdoc shares the app's origin (allow-same-origin).
+    """
+    components.html(
+        """
+        <script>
+          const doc = window.parent.document;
+          const sel = '[data-testid="stAppScrollToBottomContainer"]';
+          const top = () => { const c = doc.querySelector(sel); if (c) c.scrollTop = 0; };
+          top();
+          let live = true;
+          const id = setInterval(() => { if (live) top(); }, 100);
+          const stop = () => { live = false; clearInterval(id); };
+          const c = doc.querySelector(sel);
+          if (c) {
+            c.addEventListener('wheel', stop, {once: true, passive: true});
+            c.addEventListener('touchmove', stop, {once: true, passive: true});
+          }
+          setTimeout(stop, 2000);
+        </script>
+        """,
+        height=0,
+    )
 
 
 def _render_starters() -> None:
