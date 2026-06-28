@@ -37,6 +37,11 @@ class RateLimitState:
     minute_start: float = 0.0
 
 
+#: Per-result cap on a deep search's page text, so full ``raw_content`` (store deal
+#: pages run ~12k chars) is bounded before it reaches the model's context.
+_DEEP_CONTENT_CHARS = 3000
+
+
 class TavilyService:
     """Searches the web and serves autocomplete via the Tavily API."""
 
@@ -57,16 +62,23 @@ class TavilyService:
         self._available = True
         self._last_error: str | None = None
 
-    def web_search(self, query: str) -> list[dict[str, str]]:
-        """Return raw web snippets for ``query`` to inform agent/enricher reasoning.
+    def web_search(
+        self, query: str, include_domains: list[str] | None = None, deep: bool = False
+    ) -> list[dict[str, str]]:
+        """Return raw web snippets for ``query`` to inform agent reasoning.
 
-        Each snippet is ``{"title", "content", "url"}``. A rate-limit miss or any
+        Each snippet is ``{"title", "content", "url"}``. ``include_domains`` (when
+        given) restricts results to those domains — e.g. a single official store
+        domain, so the agent reads the storefront rather than price-aggregator/
+        grey-market sites. ``deep`` switches on advanced extraction + full page
+        ``raw_content`` (bounded), which is what surfaces the actual prices on a
+        store's deals page that a basic snippet misses. A rate-limit miss or any
         failure degrades to ``[]`` rather than raising (Req 5.4, 10.3).
         """
         if not query.strip() or not self._available or not self._check_rate_limit():
             return []
         try:
-            data = self._search(query)
+            data = self._search(query, include_domains, deep)
         except Exception as exc:  # noqa: BLE001 - degrade on any Tavily failure (Req 10.3)
             self._degrade(exc)
             return []
@@ -75,10 +87,15 @@ class TavilyService:
         if isinstance(answer, str) and answer.strip():
             snippets.append({"title": "summary", "content": answer.strip(), "url": ""})
         for result in self._results(data):
+            content = str(result.get("content", ""))
+            if deep:
+                raw = str(result.get("raw_content") or "")
+                if raw:  # the page body holds store prices; bound it so it fits context
+                    content = f"{content}\n{raw}"[:_DEEP_CONTENT_CHARS]
             snippets.append(
                 {
                     "title": str(result.get("title", "")),
-                    "content": str(result.get("content", "")),
+                    "content": content,
                     "url": str(result.get("url", "")),
                 }
             )
@@ -123,9 +140,23 @@ class TavilyService:
         self._rate.requests_this_minute += 1
         return True
 
-    def _search(self, query: str) -> dict[str, Any]:
-        """Issue a Tavily search including the synthesized answer envelope."""
-        return self._client.search(query, include_answer=True, max_results=5)
+    def _search(
+        self, query: str, include_domains: list[str] | None = None, deep: bool = False
+    ) -> dict[str, Any]:
+        """Issue a Tavily search including the synthesized answer envelope.
+
+        ``include_domains`` is forwarded only when non-empty so the default behaviour
+        (search the whole web) is unchanged for the enricher and basic searches.
+        ``deep`` switches on advanced extraction + full page ``raw_content`` — used when
+        reading store deals pages, where prices live in the page body the snippet misses.
+        """
+        kwargs: dict[str, Any] = {"include_answer": True, "max_results": 5}
+        if include_domains:
+            kwargs["include_domains"] = include_domains
+        if deep:
+            kwargs["search_depth"] = "advanced"
+            kwargs["include_raw_content"] = True
+        return self._client.search(query, **kwargs)
 
     def _degrade(self, exc: Exception) -> None:
         """Mark the service unavailable and record a sanitized error (Req 10.3)."""

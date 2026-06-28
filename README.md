@@ -11,7 +11,8 @@ web) and avoiding anything you already have.
 
 `models → services → agent → ui`. The agent runs a Bedrock Converse tool-use
 loop (`agent/runtime.py`) over tools that wrap the services
-(`agent/tools.py`): platforms, library, enrichment, web search, store deals, persistence.
+(`agent/tools.py`): platforms, library, enrichment, web search (with deep page
+reads for store deals), persistence.
 Memory is a single DynamoDB table; the LLM is a hard dependency while memory and
 Tavily degrade gracefully. See [`.kiro/specs/game-recommendation-agent`](.kiro/specs/game-recommendation-agent)
 for the full requirements/design.

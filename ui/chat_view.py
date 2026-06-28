@@ -61,7 +61,6 @@ _TOOL_LABELS = {
     "import_gmail": "📧 importing purchases",
     "enrich_game": "🔎 looking up game details",
     "web_search": "🌐 searching the web",
-    "find_deals": "💸 checking store deals",
     "get_recent_recommendations": "🧠 recalling recent picks",
     "save_recommendation": "💾 saving this pick",
 }

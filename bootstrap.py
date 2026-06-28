@@ -14,12 +14,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
-from agent.deals import DEFAULT_DEALS_REGION
 from agent.enricher import Enricher
 from agent.library_service import LibraryService
 from agent.runtime import AgentRuntime, system_prompt_for_region
 from agent.tools import ToolRegistry
-from config import Config
+from config import DEFAULT_DEALS_REGION, Config
 from services.bedrock_service import BedrockService
 from services.dynamodb_memory_client import DynamoDBMemoryClient
 from services.memory_service import MemoryService
@@ -49,9 +48,9 @@ def build_app(
     """Construct the full service graph for ``user_id`` from ``config``.
 
     The store-deals region resolves as **explicit ``config.deals_region`` ›
-    ``detected_region`` (e.g. browser locale, passed by the UI) › default**, and is
-    given to both the ``find_deals`` tool and the system prompt so the agent knows
-    it without asking.
+    ``detected_region`` (e.g. browser timezone, passed by the UI) › default**, and is
+    surfaced to the agent in the system prompt so it knows the region (and currency)
+    without asking — the agent then reads deals itself via ``web_search`` (deep).
     """
     region = config.deals_region or detected_region or DEFAULT_DEALS_REGION
     bedrock = BedrockService(config)
@@ -69,12 +68,7 @@ def build_app(
     enricher = Enricher(bedrock, tavily)
     library = LibraryService(sources=sources, enricher=enricher, memory=memory)
     tools = ToolRegistry(
-        memory=memory,
-        library=library,
-        tavily=tavily,
-        enricher=enricher,
-        user_id=user_id,
-        deals_region=region,
+        memory=memory, library=library, tavily=tavily, enricher=enricher, user_id=user_id
     )
     runtime = AgentRuntime(
         bedrock=bedrock,

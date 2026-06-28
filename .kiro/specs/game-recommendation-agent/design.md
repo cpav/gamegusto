@@ -501,8 +501,7 @@ Each tool is a thin function plus a Converse `toolSpec` (JSON schema) wrapping a
 | `set_game_fields` | title, optional playtime/genre | `MemoryService.upsert_record` (manual playtime fill) |
 | `import_gmail` | – | `LibraryService.refresh` (returns imported delta) |
 | `enrich_game` | title | `Enricher.enrich` (LLM over Tavily) + persist |
-| `web_search` | query | `TavilyService.web_search` |
-| `find_deals` | title, optional `platforms` | `agent/deals.py` (per-platform official-store search via `TavilyService.web_search`, region-scoped) |
+| `web_search` | query, optional `deep`, `site` | `TavilyService.web_search` (`deep`=advanced+raw page content, `site`=domain restrict — lets the agent read store deals pages) |
 | `get_recent_recommendations` | optional n | `MemoryService.get_recent_recommendations` |
 | `save_recommendation` | game_title, reasoning, optional mood/time/alternatives | `MemoryService.store_session` |
 
