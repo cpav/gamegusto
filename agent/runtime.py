@@ -86,6 +86,24 @@ with web_search when unsure.
 """
 
 
+def system_prompt_for_region(region: str | None) -> str:
+    """Return the system prompt, telling the model the user's region when known.
+
+    Surfacing the region (from explicit config or auto-detection) lets the agent
+    use it for store prices, availability, and deals (``find_deals``) directly,
+    instead of stopping to ask the user to confirm it — the region otherwise lived
+    only inside the tool's query, invisible to the model.
+    """
+    if not region:
+        return SYSTEM_PROMPT
+    return (
+        f"{SYSTEM_PROMPT}- The user is based in {region}. Treat {region} as their "
+        f"store region and currency for prices, availability, and deals — use it "
+        f"directly (e.g. with find_deals) and do NOT ask them to confirm their "
+        f"region or currency.\n"
+    )
+
+
 @dataclass
 class AgentReply:
     """One agent turn for the caller (CLI/UI) to render."""

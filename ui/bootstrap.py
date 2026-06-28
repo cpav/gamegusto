@@ -23,6 +23,65 @@ from config import Config, ConfigError, load_env_file
 #: Single-user app: all data lives under one user id (the app is private to the owner).
 USER_ID = "default"
 
+#: IANA timezone -> store-region country name. The browser's timezone reflects where
+#: the user physically *is* (unlike language, which a Dane may set to en-GB, and
+#: unlike a server's IP/AWS region, which is the datacenter). Best-effort and
+#: overridable: an explicit DEALS_REGION always wins, and unknown zones fall back to
+#: the default. Extend as needed.
+_COUNTRY_BY_TIMEZONE = {
+    "Europe/Copenhagen": "Denmark",
+    "Europe/Stockholm": "Sweden",
+    "Europe/Oslo": "Norway",
+    "Europe/Helsinki": "Finland",
+    "Atlantic/Reykjavik": "Iceland",
+    "Europe/Berlin": "Germany",
+    "Europe/Amsterdam": "Netherlands",
+    "Europe/Brussels": "Belgium",
+    "Europe/Paris": "France",
+    "Europe/Madrid": "Spain",
+    "Europe/Rome": "Italy",
+    "Europe/Lisbon": "Portugal",
+    "Europe/Dublin": "Ireland",
+    "Europe/Vienna": "Austria",
+    "Europe/Zurich": "Switzerland",
+    "Europe/Warsaw": "Poland",
+    "Europe/Prague": "Czechia",
+    "Europe/London": "United Kingdom",
+    "America/New_York": "United States",
+    "America/Chicago": "United States",
+    "America/Denver": "United States",
+    "America/Los_Angeles": "United States",
+    "America/Toronto": "Canada",
+    "Australia/Sydney": "Australia",
+    "Pacific/Auckland": "New Zealand",
+}
+
+
+def _region_from_timezone(timezone: str | None) -> str | None:
+    """Map an IANA timezone (e.g. ``"Europe/Copenhagen"``) to a country, or ``None``."""
+    if not timezone:
+        return None
+    return _COUNTRY_BY_TIMEZONE.get(timezone.strip())
+
+
+def _detect_region() -> str | None:
+    """Best-effort store region from the browser's timezone (via a JS round-trip).
+
+    Returns ``None`` on the first run (the component resolves on the next rerun) and
+    for unmapped/unavailable timezones, so the configured default applies until/unless
+    a known timezone resolves. Degrades quietly if the component can't run.
+    """
+    try:
+        from streamlit_js_eval import streamlit_js_eval
+
+        timezone = streamlit_js_eval(
+            js_expressions="Intl.DateTimeFormat().resolvedOptions().timeZone",
+            key="user_timezone",
+        )
+    except Exception:  # noqa: BLE001 - component unavailable; fall back to the default
+        return None
+    return _region_from_timezone(timezone if isinstance(timezone, str) else None)
+
 
 def _secrets_to_env(secrets: Mapping[str, Any]) -> dict[str, str]:
     """Return the string-valued secret entries to export as environment variables.
@@ -49,19 +108,38 @@ def _bridge_secrets() -> None:
         os.environ.setdefault(key, value)
 
 
+def detect_and_store_region() -> None:
+    """Run the browser-timezone detection once per script run, caching any result.
+
+    Call this exactly once near the top of the app: it instantiates a JS component,
+    so invoking it from every ``get_context`` accessor would collide on the widget
+    key. The timezone resolves on the rerun after first paint; ``get_context`` then
+    rebuilds the graph with the new region. ``None`` results leave the cache (and so
+    the configured default) untouched.
+    """
+    region = _detect_region()
+    if region is not None:
+        st.session_state["_detected_region"] = region
+
+
 def get_context() -> AppContext:
     """Return the per-session :class:`AppContext`, or stop with a friendly error.
 
     Cached in ``st.session_state`` (not ``st.cache_resource``): a session is recreated
     after a redeploy/reconnect, so the graph is rebuilt with the current code rather
     than a stale object from a previous version (which caused ``AttributeError`` on a
-    newly-added field). A missing required secret surfaces as a sanitized message —
-    the variable name only, never a value (Req 10.1).
+    newly-added field). It is also rebuilt when the detected region changes (the
+    browser timezone resolves a rerun after first paint). A missing required secret
+    surfaces as a sanitized message — the variable name only, never a value (Req 10.1).
     """
-    if "_ctx" not in st.session_state:
+    region = st.session_state.get("_detected_region")
+    if "_ctx" not in st.session_state or region != st.session_state.get("_ctx_region"):
         _bridge_secrets()
         try:
-            st.session_state["_ctx"] = build_app(Config.from_env(), user_id=USER_ID)
+            st.session_state["_ctx"] = build_app(
+                Config.from_env(), user_id=USER_ID, detected_region=region
+            )
+            st.session_state["_ctx_region"] = region
         except ConfigError as exc:
             st.error(f"⚙️ Configuration problem: {exc}. Set it in the app's secrets and reload.")
             st.stop()

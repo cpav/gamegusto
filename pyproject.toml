@@ -41,6 +41,7 @@ module = [
     "google_auth_oauthlib.*",
     "requests.*",
     "streamlit.*",
+    "streamlit_js_eval.*",
     "altair.*",
 ]
 ignore_missing_imports = true

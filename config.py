@@ -14,10 +14,6 @@ from dataclasses import dataclass, fields
 # environment does not override it.
 _DEFAULT_REASONING_BUDGET_TOKENS = 3000
 
-# Default region (natural language) used to scope store deal searches when the
-# environment does not override it. See ``agent.deals``.
-_DEFAULT_DEALS_REGION = "Denmark"
-
 
 class ConfigError(RuntimeError):
     """Raised when a required configuration value is missing or invalid."""
@@ -99,8 +95,10 @@ class Config:
     bedrock_reasoning_budget_tokens: int = _DEFAULT_REASONING_BUDGET_TOKENS
     """Extended-thinking token budget passed to the Bedrock Converse API."""
 
-    deals_region: str = _DEFAULT_DEALS_REGION
-    """Region (natural language) scoped into the agent's store deal searches."""
+    deals_region: str | None = None
+    """Explicit store-deals region (natural language). When unset, the region is
+    auto-detected (browser locale) and falls back to a default; an explicit value
+    here always wins. See ``bootstrap.build_app`` / ``ui.bootstrap``."""
 
     # Optional (feature-gated integrations).
     gmail_token_path: str | None = None
@@ -116,7 +114,7 @@ class Config:
             bedrock_reasoning_budget_tokens=_optional_int(
                 "BEDROCK_REASONING_BUDGET_TOKENS", _DEFAULT_REASONING_BUDGET_TOKENS
             ),
-            deals_region=_optional("DEALS_REGION") or _DEFAULT_DEALS_REGION,
+            deals_region=_optional("DEALS_REGION"),
             gmail_token_path=_optional("GMAIL_TOKEN_PATH"),
         )
 
