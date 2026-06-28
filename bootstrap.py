@@ -12,6 +12,7 @@ always available. Sources are passed in precedence order (Gmail -> manual).
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 
 from agent.deals import DEFAULT_DEALS_REGION
 from agent.enricher import Enricher
@@ -79,7 +80,7 @@ def build_app(
         bedrock=bedrock,
         tools=tools,
         memory=memory,
-        system_prompt=system_prompt_for_region(region),
+        system_prompt=system_prompt_for_region(region, today=date.today()),
     )
 
     return AppContext(

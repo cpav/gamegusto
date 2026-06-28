@@ -18,6 +18,7 @@ yields empty snippets so the model proceeds without price info.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any, Protocol
 
 from agent.platform_match import platform_family
@@ -70,9 +71,11 @@ def find_deals(
     Each distinct store is searched once (so owning both "PS4" and "PS5" yields a
     single PlayStation Store query) and results are grouped per store. When no
     platform resolves to a known store (or none is given) a single store-agnostic
-    search is run instead, so the model still gets some price signal. Returns
-    ``{"ok": False, "error": ...}`` only for a missing title; otherwise a
-    ``{"title", "region", "deals": [{"store", "platforms", "snippets"}]}`` payload.
+    search is run instead, so the model still gets some price signal. The payload
+    carries ``today`` (ISO date) so the model can spot stale/expired sales in the
+    snippets. Returns ``{"ok": False, "error": ...}`` only for a missing title;
+    otherwise ``{"title", "region", "today", "deals": [{"store", "platforms",
+    "snippets"}]}``.
     """
     title = (title or "").strip()
     if not title:
@@ -88,7 +91,7 @@ def find_deals(
     else:
         snippets = tavily.web_search(f"{title} game price discount sale {region}")
         deals.append({"store": None, "platforms": [], "snippets": snippets})
-    return {"title": title, "region": region, "deals": deals}
+    return {"title": title, "region": region, "today": date.today().isoformat(), "deals": deals}
 
 
 def _stores_for_platforms(platforms: list[str] | None) -> list[tuple[str, list[str]]]:
