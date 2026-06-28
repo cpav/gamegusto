@@ -14,6 +14,10 @@ from dataclasses import dataclass, fields
 # environment does not override it.
 _DEFAULT_REASONING_BUDGET_TOKENS = 3000
 
+# Default store-deals region when neither DEALS_REGION nor browser detection
+# supplies one. Surfaced to the agent in the system prompt (see bootstrap).
+DEFAULT_DEALS_REGION = "Denmark"
+
 
 class ConfigError(RuntimeError):
     """Raised when a required configuration value is missing or invalid."""

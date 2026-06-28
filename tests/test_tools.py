@@ -149,16 +149,14 @@ def test_enrich_and_web_search() -> None:
     assert reg.dispatch("web_search", {"query": "  "})["ok"] is False
 
 
-def test_find_deals_dispatch() -> None:
+def test_web_search_deep_and_site() -> None:
     reg, _ = _registry()
-    out = reg.dispatch("find_deals", {"title": "Hades", "platforms": ["Switch", "PS5"]})
-
-    assert out["title"] == "Hades"
-    assert out["region"] == "Denmark"  # registry default
-    assert {d["store"] for d in out["deals"]} == {"Nintendo eShop", "PlayStation Store"}
-    assert all(d["snippets"] for d in out["deals"])  # canned Tavily snippets flow through
-
-    assert reg.dispatch("find_deals", {"title": "  "})["ok"] is False
+    # The deep + site options (used to read a store's deals page) flow through to a
+    # successful search; the fake client ignores the kwargs and returns its snippet.
+    out = reg.dispatch(
+        "web_search", {"query": "Xbox deals Denmark", "deep": True, "site": "microsoft.com"}
+    )
+    assert out["results"]
 
 
 def test_import_gmail_reports_delta() -> None:
