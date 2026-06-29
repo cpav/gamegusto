@@ -13,7 +13,6 @@ The LLM is a hard dependency: a failure surfaces as a sanitized message (Req 10.
 
 from __future__ import annotations
 
-import random
 import time
 
 import streamlit as st
@@ -192,17 +191,12 @@ def _pin_to_top() -> None:
 
 
 def _render_starters() -> None:
-    """Flash a few conversation-starter chips on the empty screen.
+    """Show a fixed set of conversation-starter chips on the empty screen.
 
-    A fresh sample is drawn once per session (stored in session state so it stays
-    stable across reruns), then laid out two-per-row to read well on a phone. A
-    click queues that starter's text as the first turn.
+    A fixed (not random) handful so they don't change on every reload, laid out
+    two-per-row to read well on a phone. A click queues that starter as the first turn.
     """
-    starters = st.session_state.get("_starters")
-    if starters is None:
-        k = min(_STARTER_COUNT, len(_STARTER_PROMPTS))
-        starters = random.sample(list(_STARTER_PROMPTS), k=k)
-        st.session_state["_starters"] = starters
+    starters = list(_STARTER_PROMPTS)[:_STARTER_COUNT]
     for row in range(0, len(starters), 2):
         pair = starters[row : row + 2]
         cols = st.columns(len(pair))
