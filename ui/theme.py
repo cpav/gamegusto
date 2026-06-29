@@ -38,10 +38,26 @@ html, body { font-size: 18px; }
 .stApp {
     background:
         repeating-linear-gradient(
-            0deg, rgba(0,0,0,0.18) 0, rgba(0,0,0,0.18) 1px,
+            0deg, rgba(0,0,0,0.24) 0, rgba(0,0,0,0.24) 1px,
             transparent 1px, transparent 3px),
         radial-gradient(circle at 50% 0%, var(--arcade-bg-2) 0%, var(--arcade-bg) 70%);
     color: var(--arcade-neon-cyan);
+}
+/* CRT-cabinet vignette: the screen edges darken inward like curved glass. A static,
+   click-through overlay (pointer-events:none) over the whole viewport. */
+.stApp::after {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 90;
+    background: radial-gradient(ellipse 78% 78% at 50% 42%, transparent 58%, rgba(0,0,0,0.5) 100%);
+}
+/* Marquee "attract mode": the neon glow breathes slowly. Off under reduced-motion. */
+@media (prefers-reduced-motion: no-preference) {
+    .gg-marquee { animation: gg-attract 3.4s ease-in-out infinite; }
+    @keyframes gg-attract {
+        0%, 100% { box-shadow: 0 0 14px rgba(45,226,230,0.5),
+            inset 0 0 18px rgba(255,46,151,0.25); }
+        50% { box-shadow: 0 0 24px rgba(45,226,230,0.85),
+            inset 0 0 28px rgba(255,46,151,0.45); }
+    }
 }
 /* The app's own dark is the page-wide background, and the top toolbar is cleared, so
    Streamlit's default near-black (#0e1117) never shows through as a black rectangle —
@@ -126,8 +142,12 @@ input:focus-visible, textarea:focus-visible, select:focus-visible,
 /* The per-message row is transparent (no box/glow) and vertically centers the
    avatar against the bubble; only the inner bubbles (.user-bubble, .rec-card)
    carry borders, so the chat reads as a conversation. */
+/* Rows are transparent; the avatar sits at the TOP of the bubble (not floating at the
+   centre of a tall reply card) so it reads as the speaker of that message. */
 .stChatMessage { border: none !important; background: transparent !important;
-    box-shadow: none !important; align-items: center !important; }
+    box-shadow: none !important; align-items: flex-start !important;
+    margin-bottom: 0.5rem !important; }
+[data-testid*="vatar" i] { margin-top: 0.35rem !important; }
 /* Bigger, borderless space-invader avatars (no circle/box). Case-insensitive
    match so it works regardless of the exact avatar test id. */
 [data-testid*="vatar" i] {
@@ -142,6 +162,14 @@ input:focus-visible, textarea:focus-visible, select:focus-visible,
     text-align: center; text-shadow: 0 0 8px var(--arcade-neon-green); }
 .stChatInputContainer, [data-testid="stChatInput"] {
     border-top: 2px solid var(--arcade-neon-pink); }
+/* Arcade-style chat input: a neon-framed box that glows cyan on focus, matching the
+   bumper buttons instead of looking like a default dark field. */
+[data-testid="stChatInput"] textarea {
+    border: 2px solid rgba(255,46,151,0.6) !important; border-radius: 10px !important;
+    box-shadow: 0 0 10px rgba(255,46,151,0.22) !important; }
+[data-testid="stChatInput"]:focus-within textarea {
+    border-color: var(--arcade-neon-cyan) !important;
+    box-shadow: 0 0 14px rgba(45,226,230,0.5) !important; }
 /* Opaque purple under the pinned input. It must span the FULL viewport width
    (the outer stBottom), not just the centered block — otherwise the gutters show
    through as black boxes at the bottom corners. */
