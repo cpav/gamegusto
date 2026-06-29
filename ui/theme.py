@@ -43,6 +43,13 @@ html, body { font-size: 18px; }
         radial-gradient(circle at 50% 0%, var(--arcade-bg-2) 0%, var(--arcade-bg) 70%);
     color: var(--arcade-neon-cyan);
 }
+/* The app's own dark is the page-wide background, and the top toolbar is cleared, so
+   Streamlit's default near-black (#0e1117) never shows through as a black rectangle —
+   under the marquee on desktop, in the gutters, or during a load/reconnect. */
+html, body, [data-testid="stAppViewContainer"] {
+    background-color: var(--arcade-bg) !important;
+}
+[data-testid="stHeader"] { background: transparent !important; }
 /* Headings: pink and glowing for the arcade look, but in VT323 with a tight
    glow so they stay crisp and readable — even on a small phone. (Press Start 2P
    here smeared into an unreadable blur at mobile sizes.) */
