@@ -50,6 +50,20 @@ html, body, [data-testid="stAppViewContainer"] {
     background-color: var(--arcade-bg) !important;
 }
 [data-testid="stHeader"] { background: transparent !important; }
+/* Invisible helper components (browser-timezone detection, scroll-to-top) must stay
+   in the DOM to run their JS, but must take NO layout space — otherwise their iframe
+   shows as a black bar/gap under the marquee. Collapse any element container holding
+   an iframe to zero height. */
+[data-testid="stElementContainer"]:has(iframe) {
+    height: 0 !important; min-height: 0 !important;
+    margin: 0 !important; padding: 0 !important; overflow: hidden !important;
+}
+/* On the empty "attract" screen (only there does .chat-intro exist), centre the
+   arcade content vertically so it doesn't sit top-heavy with a void below on desktop. */
+[data-testid="stMainBlockContainer"]:has(.chat-intro) {
+    display: flex; flex-direction: column; justify-content: center;
+    min-height: calc(100vh - 11rem);
+}
 /* Headings: pink and glowing for the arcade look, but in VT323 with a tight
    glow so they stay crisp and readable — even on a small phone. (Press Start 2P
    here smeared into an unreadable blur at mobile sizes.) */
