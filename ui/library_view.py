@@ -209,11 +209,20 @@ def _render_history(memory: object, user_id: str) -> None:
     verdict again clears it. The agent reads this feedback via
     ``get_recent_recommendations`` and weighs it as a taste signal on future picks.
     """
-    st.subheader("🏆 Recent Picks")
+    title_col, clear_col = st.columns([4, 1])
+    title_col.subheader("🏆 Recent Picks")
     recs = memory.get_recent_recommendations(user_id, 10)  # type: ignore[attr-defined]
     if not recs:
         st.caption("No recommendations yet — head to the chat and ask for one.")
         return
+    # Clearing the history frees the agent to suggest these titles again (e.g. a
+    # pick skipped today may be exactly right in a few months). Feedback verdicts
+    # are kept — they are taste, not recency. Behind a confirm to avoid stray taps.
+    with clear_col.popover("🧹", help="Clear the picks history", use_container_width=True):
+        st.caption("Forget these picks so they can be recommended again? (👍/👎 stay)")
+        if st.button("Yes, clear the history", key="clear_picks", use_container_width=True):
+            memory.clear_recent_recommendations(user_id)  # type: ignore[attr-defined]
+            st.rerun()
     st.caption("👍 loved it · 👎 not for me (the agent learns from this) · ➕ add to library")
     owned = {r.title.casefold() for r in memory.get_records(user_id)}  # type: ignore[attr-defined]
     feedback = memory.get_feedback(user_id)  # type: ignore[attr-defined]

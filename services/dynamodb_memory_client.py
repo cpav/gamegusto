@@ -127,3 +127,24 @@ class DynamoDBMemoryClient:
         return [
             _from_dynamo(item["event"]) for item in response.get("Items", []) if "event" in item
         ]
+
+    def clear_events(self, user_id: str, key: str) -> None:
+        """Delete ALL events under ``key`` for ``user_id`` (paginated batch delete)."""
+        from boto3.dynamodb.conditions import Key
+
+        condition = Key("pk").eq(_pk(user_id)) & Key("sk").begins_with(f"{EVENT_PREFIX}{key}#")
+        start_key: dict[str, Any] | None = None
+        with self._table.batch_writer() as batch:
+            while True:
+                kwargs: dict[str, Any] = {
+                    "KeyConditionExpression": condition,
+                    "ProjectionExpression": "pk, sk",
+                }
+                if start_key:
+                    kwargs["ExclusiveStartKey"] = start_key
+                response = self._table.query(**kwargs)
+                for item in response.get("Items", []):
+                    batch.delete_item(Key={"pk": item["pk"], "sk": item["sk"]})
+                start_key = response.get("LastEvaluatedKey")
+                if not start_key:
+                    return

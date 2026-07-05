@@ -57,6 +57,9 @@ class _InMemoryClient:
     def list_events(self, user_id: str, key: str, limit: int) -> list[dict[str, Any]]:
         return list(self._events.get((user_id, key), []))[:limit]
 
+    def clear_events(self, user_id: str, key: str) -> None:
+        self._events.pop((user_id, key), None)
+
 
 class _FakeTavilyClient:
     """Returns canned search data so enrichment/web_search are deterministic."""
