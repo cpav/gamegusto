@@ -27,6 +27,12 @@ from services.memory_service import MemoryService
 #: Hard cap on tool-call rounds per user turn, so a misbehaving loop terminates.
 _MAX_TOOL_ITERATIONS = 8
 
+#: Cap on retained conversation turns (one turn = a user message plus everything up
+#: to the next user message). Each Bedrock round re-sends the whole history, so an
+#: unbounded session grows cost quadratically; older turns are dropped whole — never
+#: splitting a toolUse from its toolResult — so the window is always Converse-valid.
+_MAX_HISTORY_TURNS = 8
+
 #: Extra "closing" rounds allowed after the cap, so the model can finish a cheap pending
 #: action (e.g. save_recommendation) and THEN write its answer, instead of stopping at a
 #: bare "let me put it together" with no recommendation.
@@ -122,6 +128,26 @@ picks unless the user asks to revisit one.
 you couldn't verify; never invent ratings, platforms, or availability — confirm \
 with web_search when unsure.
 """
+
+
+#: Minimum length for save-turn text to count as the presented answer. A real
+#: recommendation runs several paragraphs; save narration ("let me save this") is a
+#: sentence. The threshold keeps narration transient without risking a real answer.
+_MIN_PRESENTED_ANSWER_CHARS = 200
+
+
+def _presents_answer(result: Any) -> bool:
+    """True when a tool-calling turn's text is the answer, not working notes.
+
+    The prompt tells the model to present the recommendation and then call
+    ``save_recommendation`` — it often does both in ONE turn. Substantial text in a
+    turn whose only tool calls are saves is therefore the recommendation being
+    presented; classifying it as transient "thinking" (as for research turns) would
+    discard the actual answer and keep only the model's short closing follow-up.
+    """
+    if not result.tool_uses or any(u.name != "save_recommendation" for u in result.tool_uses):
+        return False
+    return len(result.text.strip()) >= _MIN_PRESENTED_ANSWER_CHARS
 
 
 def system_prompt_for_region(region: str | None, today: date | None = None) -> str:
@@ -239,6 +265,7 @@ class AgentRuntime:
         The prompt steers the model to write its full answer only in that final turn.
         Raises ``BedrockServiceError`` (sanitized) if the model fails.
         """
+        self._trim_history()
         checkpoint = len(self._messages)
         self._messages.append({"role": "user", "content": [{"text": user_text}]})
         try:
@@ -252,6 +279,21 @@ class AgentRuntime:
             del self._messages[checkpoint:]
             raise
 
+    def _trim_history(self) -> None:
+        """Drop the oldest whole turns so at most ``_MAX_HISTORY_TURNS`` (including
+        the turn about to start) remain. A turn starts at a user message carrying no
+        toolResult blocks, so the cut never separates a toolUse from its result and
+        the window always opens on a plain user message, as Converse requires."""
+        starts = [
+            index
+            for index, message in enumerate(self._messages)
+            if message["role"] == "user"
+            and not any("toolResult" in block for block in message["content"])
+        ]
+        excess = len(starts) - (_MAX_HISTORY_TURNS - 1)
+        if excess > 0:
+            del self._messages[: starts[excess]]
+
     def _turn(self) -> Iterator[AgentEvent]:
         """Run one turn's tool loop over the already-appended user message."""
         system = self.system_prompt()  # resolved once per turn (keeps the date fresh)
@@ -259,7 +301,8 @@ class AgentRuntime:
             result = self._bedrock.converse_tools(self._messages, self._tools.specs(), system)
             final = result.stop_reason != "tool_use" or not result.tool_uses
             if result.text.strip():
-                yield AgentEvent(kind="text" if final else "thinking", text=result.text.strip())
+                keep = final or _presents_answer(result)
+                yield AgentEvent(kind="text" if keep else "thinking", text=result.text.strip())
             if result.assistant_content:
                 self._messages.append({"role": "assistant", "content": result.assistant_content})
 
@@ -285,8 +328,11 @@ class AgentRuntime:
             if final:
                 yield AgentEvent(kind="text", text=result.text.strip() or _ITERATION_LIMIT_MESSAGE)
                 return
-            if result.text.strip():  # closing narration — show it transiently, don't keep it
-                yield AgentEvent(kind="thinking", text=result.text.strip())
+            if result.text.strip():
+                # Substantial text alongside a pure save is the answer being presented;
+                # anything else is closing narration — shown transiently, not kept.
+                keep = _presents_answer(result)
+                yield AgentEvent(kind="text" if keep else "thinking", text=result.text.strip())
             yield from self._apply_tools(result)
         yield AgentEvent(kind="text", text=_ITERATION_LIMIT_MESSAGE)
 

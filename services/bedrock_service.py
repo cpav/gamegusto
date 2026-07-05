@@ -24,6 +24,7 @@ sanitized message. Callers never fall back to mock/deterministic output.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -32,9 +33,29 @@ import boto3
 from config import Config
 from services.error_handler import ErrorHandler
 
+logger = logging.getLogger(__name__)
+
 # Output-token headroom added on top of the reasoning budget so the model has
 # room to emit an answer (Converse ``maxTokens`` counts thinking + answer tokens).
 _ANSWER_TOKEN_HEADROOM = 4096
+
+# A Converse prompt-cache breakpoint: everything before it (tools -> system ->
+# message prefix) is written to and read from the Bedrock prompt cache (~90%
+# cheaper on reads, ~5 min TTL). The tool loop re-sends the WHOLE growing history
+# up to ~10 times per user turn, so one static point after the system prompt plus
+# one moving point at the end of the messages lets each round re-read the previous
+# round's prefix instead of re-billing it at full price.
+_CACHE_POINT: dict[str, Any] = {"cachePoint": {"type": "default"}}
+
+
+def _rejects_cache_points(exc: Exception) -> bool:
+    """Heuristic: the call failed because of the cache-point blocks themselves.
+
+    Erring broad is safe — a false positive merely disables caching for the rest
+    of the process (correctness unaffected); a false negative surfaces the
+    sanitized error exactly as before.
+    """
+    return "cache" in str(exc).lower()
 
 
 class BedrockServiceError(RuntimeError):
@@ -81,6 +102,10 @@ class BedrockService:
             if client is not None
             else boto3.client("bedrock-runtime", region_name=config.aws_region)
         )
+        # Prompt caching is assumed available and switched off (for the rest of the
+        # process) on the first rejection, so an unsupported model/region degrades
+        # to plain full-price calls instead of failing.
+        self._cache_supported = True
 
     def invoke_conversational(self, prompt: str, session_id: str) -> str:
         """Return the model's free-text response for ``prompt`` (extended thinking on).
@@ -111,22 +136,55 @@ class BedrockService:
 
         ``messages`` is the running conversation history (user/assistant turns,
         including any prior ``toolResult`` blocks); ``tools`` is the Converse
-        ``toolSpec`` list; ``system`` is the system prompt. Raises
+        ``toolSpec`` list; ``system`` is the system prompt. Prompt-cache
+        breakpoints are added to the request (never to the caller's history) and
+        dropped permanently if the model rejects them. Raises
         ``BedrockServiceError`` (sanitized) on transport failure.
         """
+        kwargs = self._tool_turn_kwargs(messages, tools, system, cached=self._cache_supported)
+        try:
+            response = self._client.converse(**kwargs)
+        except Exception as exc:
+            if self._cache_supported and _rejects_cache_points(exc):
+                logger.warning("prompt caching rejected; disabling for this process: %s", exc)
+                self._cache_supported = False  # degrade to uncached for this process
+                return self.converse_tools(messages, tools, system)
+            raise BedrockServiceError(ErrorHandler.sanitize_error(exc, "llm")) from exc
+        return self._parse_tool_turn(response)
+
+    def _tool_turn_kwargs(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        system: str,
+        cached: bool,
+    ) -> dict[str, Any]:
+        """Build the Converse kwargs for a tool turn.
+
+        When ``cached``, a static cache point follows the system prompt (covering
+        tools + system) and a moving one is appended to a request-time COPY of the
+        last message (covering the whole conversation prefix). The caller's
+        ``messages`` list is never mutated, so cache points never leak into the
+        persisted history.
+        """
+        system_blocks: list[dict[str, Any]] = [{"text": system}]
+        if cached:
+            system_blocks.append(dict(_CACHE_POINT))
+            if messages:
+                last = messages[-1]
+                messages = [
+                    *messages[:-1],
+                    {**last, "content": [*last["content"], dict(_CACHE_POINT)]},
+                ]
         kwargs: dict[str, Any] = {
             "modelId": self._model_id,
-            "system": [{"text": system}],
+            "system": system_blocks,
             "messages": messages,
             "inferenceConfig": {"maxTokens": self._reasoning_budget + _ANSWER_TOKEN_HEADROOM},
         }
         if tools:  # Converse rejects an empty toolConfig ({"tools": []}); set only when non-empty
             kwargs["toolConfig"] = {"tools": tools}
-        try:
-            response = self._client.converse(**kwargs)
-        except Exception as exc:
-            raise BedrockServiceError(ErrorHandler.sanitize_error(exc, "llm")) from exc
-        return self._parse_tool_turn(response)
+        return kwargs
 
     @staticmethod
     def _parse_tool_turn(response: dict[str, Any]) -> ConverseResult:
