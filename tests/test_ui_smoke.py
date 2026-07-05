@@ -8,7 +8,7 @@ CSS, the chat card/label helpers, and the secrets→env mapping.
 from __future__ import annotations
 
 from ui.bootstrap import _region_from_timezone, _secrets_to_env
-from ui.chat_view import _card_html, _tool_label
+from ui.chat_view import _card_html, _strip_leading_rule, _tool_label
 from ui.theme import MARQUEE_HTML, RETRO_ARCADE_CSS
 
 
@@ -17,6 +17,15 @@ def test_theme_has_pixel_font_and_responsive_rule() -> None:
     assert "@media" in RETRO_ARCADE_CSS  # responsive for phone (Req 9.2)
     assert ".rec-card" in RETRO_ARCADE_CSS
     assert "GAMEGUSTO" in MARQUEE_HTML
+
+
+def test_strip_leading_rule() -> None:
+    assert _strip_leading_rule("---\n🎮 Tonight's Pick") == "🎮 Tonight's Pick"
+    assert _strip_leading_rule("\n\n***\n\nHi") == "Hi"
+    assert _strip_leading_rule("- - -\nBody") == "Body"
+    # a rule in the middle (a real divider) is left alone
+    assert _strip_leading_rule("Intro\n---\nMore") == "Intro\n---\nMore"
+    assert _strip_leading_rule("No rule here") == "No rule here"
 
 
 def test_card_html_wraps_message() -> None:

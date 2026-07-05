@@ -13,6 +13,7 @@ The LLM is a hard dependency: a failure surfaces as a sanitized message (Req 10.
 
 from __future__ import annotations
 
+import re
 import time
 
 import streamlit as st
@@ -84,6 +85,15 @@ def _one_line(text: str, limit: int = 90) -> str:
     """Collapse ``text`` to a single trimmed line for the transient 'thinking' display."""
     line = " ".join(text.split())
     return line if len(line) <= limit else line[:limit].rstrip() + "…"
+
+
+def _strip_leading_rule(text: str) -> str:
+    """Drop leading blank lines and markdown horizontal rules (---, ***, ___) the model
+    sometimes prefixes, which render as an ugly bar above the reply."""
+    lines = text.split("\n")
+    while lines and (not lines[0].strip() or re.fullmatch(r"\s*([-*_])(?:\s*\1){2,}\s*", lines[0])):
+        lines.pop(0)
+    return "\n".join(lines)
 
 
 def render_chat_view() -> None:
@@ -249,7 +259,7 @@ def _stream_turn(prompt: str) -> str:
         return ""
 
     # Persist only the final answer; fall back to the notes if there was no final text.
-    message = "\n\n".join(answer) or "\n\n".join(thinking)
+    message = _strip_leading_rule("\n\n".join(answer) or "\n\n".join(thinking))
     if message:
         _typewriter(slot, message)
     else:
