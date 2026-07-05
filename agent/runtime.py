@@ -27,6 +27,11 @@ from services.memory_service import MemoryService
 #: Hard cap on tool-call rounds per user turn, so a misbehaving loop terminates.
 _MAX_TOOL_ITERATIONS = 8
 
+#: Extra "closing" rounds allowed after the cap, so the model can finish a cheap pending
+#: action (e.g. save_recommendation) and THEN write its answer, instead of stopping at a
+#: bare "let me put it together" with no recommendation.
+_MAX_WRAPUP_ROUNDS = 2
+
 #: Fallback shown if the model never settles on a final answer within the cap.
 _ITERATION_LIMIT_MESSAGE = (
     "I'm having trouble pulling this together right now — could you rephrase or "
@@ -36,9 +41,11 @@ _ITERATION_LIMIT_MESSAGE = (
 #: Sent once the tool-round cap is hit, to force a final answer (no more tools) rather
 #: than leaving the turn as half-gathered working notes.
 _WRAP_UP_NUDGE = (
-    "You've gathered enough — stop using tools and give the user your complete "
-    "recommendation now, in your usual rich format: a short title line with an emoji, "
-    "the pick with clear reasoning, and a few alternatives."
+    "You've gathered enough — do NOT search any further. If you still need to save the "
+    "recommendation, do it now; then write your COMPLETE recommendation to the user in "
+    "your usual rich format: a short title line with an emoji, the pick with clear "
+    'reasoning, and a few alternatives. Do not reply with only a status like "let me '
+    'put it together" — write the actual recommendation.'
 )
 
 SYSTEM_PROMPT = """\
@@ -100,8 +107,11 @@ in their library) and up to THREE alternatives with brief reasons.
 only transiently (a passing status line) and then discarded — so keep those working \
 notes to a short phrase, and do NOT put your recommendation or any answer content \
 there. Write your COMPLETE reply only in your FINAL message, once you have everything; \
-never split the answer across earlier tool-calling turns. Don't open that reply with \
-a horizontal rule (---) or divider.
+never split the answer across earlier tool-calling turns. START that final reply \
+directly with the recommendation (e.g. a title line) — do NOT begin it by narrating \
+what you are about to do ("I now have enough…", "Let me now cross-reference your \
+library…", "Let me save this…"); that planning belongs in the transient notes, not the \
+answer. Don't open the reply with a horizontal rule (---) or divider either.
 - Follow-ups: within this conversation, remember what you've already suggested. \
 On "I already played it" / "something else" / "shorter", exclude the prior pick \
 and offer the next best WITHOUT re-asking everything you already know.
@@ -230,36 +240,48 @@ class AgentRuntime:
 
             if final:
                 return
+            yield from self._apply_tools(result)
 
-            tool_results: list[dict[str, Any]] = []
-            for use in result.tool_uses:
-                yield AgentEvent(kind="tool", tool=use.name)
-                output = self._tools.dispatch(use.name, use.input)
-                tool_results.append(
-                    {
-                        "toolResult": {
-                            "toolUseId": use.tool_use_id,
-                            "content": [{"json": output}],
-                            "status": "success",
-                        }
-                    }
-                )
-            self._messages.append({"role": "user", "content": tool_results})
-
-        # Cap reached without a final answer — nudge the model to answer now instead of
+        # Cap reached without a final answer — nudge the model to close out now instead of
         # leaving the turn as a pile of half-gathered working notes. The nudge is folded
         # into the last (user) toolResult message rather than appended as a second user
         # turn in a row, which Converse rejects (messages must alternate user/assistant).
         # Tools STAY in the request: once the history holds toolUse/toolResult blocks,
         # Converse requires toolConfig, so a bare (toolless) call fails validation with
-        # "toolConfig field must be defined". The nudge — not the absence of tools — is
-        # what steers it to a final text answer; if it still only calls a tool (which we
-        # don't dispatch), result.text is empty and we fall back to the limit message.
+        # "toolConfig field must be defined". We give it a few CLOSING rounds: if it still
+        # calls a tool (e.g. save_recommendation), we dispatch that and let it answer next,
+        # rather than mistaking its "let me save…" narration for the final recommendation.
         self._messages[-1]["content"].append({"text": _WRAP_UP_NUDGE})
-        result = self._bedrock.converse_tools(self._messages, self._tools.specs(), self._system)
-        if result.assistant_content:
-            self._messages.append({"role": "assistant", "content": result.assistant_content})
-        yield AgentEvent(kind="text", text=result.text.strip() or _ITERATION_LIMIT_MESSAGE)
+        for _ in range(_MAX_WRAPUP_ROUNDS):
+            result = self._bedrock.converse_tools(self._messages, self._tools.specs(), self._system)
+            final = result.stop_reason != "tool_use" or not result.tool_uses
+            if result.assistant_content:
+                self._messages.append({"role": "assistant", "content": result.assistant_content})
+            if final:
+                yield AgentEvent(kind="text", text=result.text.strip() or _ITERATION_LIMIT_MESSAGE)
+                return
+            if result.text.strip():  # closing narration — show it transiently, don't keep it
+                yield AgentEvent(kind="thinking", text=result.text.strip())
+            yield from self._apply_tools(result)
+        yield AgentEvent(kind="text", text=_ITERATION_LIMIT_MESSAGE)
+
+    def _apply_tools(self, result: Any) -> Iterator[AgentEvent]:
+        """Dispatch every tool the model asked for, yielding a tool event per call and
+        appending the collected results as the next user turn."""
+        tool_results: list[dict[str, Any]] = []
+        for use in result.tool_uses:
+            yield AgentEvent(kind="tool", tool=use.name)
+            output = self._tools.dispatch(use.name, use.input)
+            tool_results.append(
+                {
+                    "toolResult": {
+                        "toolUseId": use.tool_use_id,
+                        "content": [{"json": output}],
+                        "status": "success",
+                    }
+                }
+            )
+        self._messages.append({"role": "user", "content": tool_results})
 
     def _reply(self, message: str, called: list[str]) -> AgentReply:
         """Wrap ``message`` in an :class:`AgentReply`, reflecting memory health."""
