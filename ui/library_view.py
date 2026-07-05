@@ -7,6 +7,8 @@ recommendation history — all writing to the same store every record source use
 
 from __future__ import annotations
 
+import html
+
 import streamlit as st
 
 from agent.platform_match import platforms_match
@@ -72,7 +74,10 @@ def _render_add_game(memory: object, user_id: str) -> None:
             st.caption("Suggestions — tap ➕ to add to your library")
         for suggestion in suggestions:
             cols = st.columns([5, 1])
-            cols[0].markdown(f'<div class="lib-line">🎮 {suggestion}</div>', unsafe_allow_html=True)
+            cols[0].markdown(
+                f'<div class="lib-line">🎮 {html.escape(suggestion)}</div>',
+                unsafe_allow_html=True,
+            )
             if suggestion.casefold() in owned:
                 cols[1].markdown('<div class="gg-added">✓</div>', unsafe_allow_html=True)
             elif cols[1].button(
@@ -94,17 +99,26 @@ def _add_game(memory: object, user_id: str, title: str, platforms: list[str]) ->
 
 
 def _render_library(memory: object, user_id: str) -> None:
-    """Show owned games with per-row set-platform / enrich actions (Req 9.4, 9.5)."""
+    """Show owned games (searchable, platform-filterable) with per-row actions."""
     st.subheader("📚 My Library")
     all_records = memory.get_records(user_id)  # type: ignore[attr-defined]
     if not all_records:
         st.caption("No games yet — add one above, or import from Gmail via the CLI.")
         return
     owned = [p.name for p in memory.get_platform_list(user_id)]  # type: ignore[attr-defined]
-    choice = st.selectbox("Filter by platform", ["All", *owned])
+    filter_col, search_col = st.columns(2)
+    choice = filter_col.selectbox("Filter by platform", ["All", *owned])
+    query = search_col.text_input("Search", key="lib_search", placeholder="Title or genre…").strip()
     view = all_records
     if choice != "All":
-        view = [r for r in all_records if any(platforms_match(choice, p) for p in r.platforms)]
+        view = [r for r in view if any(platforms_match(choice, p) for p in r.platforms)]
+    if query:
+        needle = query.casefold()
+        view = [
+            r
+            for r in view
+            if needle in r.title.casefold() or (r.genre and needle in r.genre.casefold())
+        ]
     st.caption(f"{len(view)} game(s) · 🕹️ set/change platform · ✨ enrich details")
     suggestions = _platform_suggestions(owned, all_records)
 
@@ -124,7 +138,8 @@ def _render_library(memory: object, user_id: str) -> None:
         )
         info, plat_col, enrich_col = st.columns([6, 1, 1])
         info.markdown(
-            f'<div class="lib-line">🎮 <b>{record.title}</b> — {meta or "no details yet"}</div>',
+            f'<div class="lib-line">🎮 <b>{html.escape(record.title)}</b> — '
+            f"{html.escape(meta) or 'no details yet'}</div>",
             unsafe_allow_html=True,
         )
         _platform_control(plat_col, memory, user_id, all_records, record, index, suggestions)
@@ -183,31 +198,67 @@ def _platform_control(
             st.rerun()
 
 
+#: Feedback verdict -> the badge shown next to a pick that carries it.
+_VERDICT_BADGES = {"loved": "💚 loved", "not_for_me": "🚫 not for me"}
+
+
 def _render_history(memory: object, user_id: str) -> None:
-    """Show recent recommendations, each addable to the library with one click (Req 9.4)."""
+    """Show recent recommendations with one-tap feedback and add-to-library (Req 9.4).
+
+    👍/👎 record whether a pick landed ("loved" / "not_for_me") — tapping the same
+    verdict again clears it. The agent reads this feedback via
+    ``get_recent_recommendations`` and weighs it as a taste signal on future picks.
+    """
     st.subheader("🏆 Recent Picks")
     recs = memory.get_recent_recommendations(user_id, 10)  # type: ignore[attr-defined]
     if not recs:
         st.caption("No recommendations yet — head to the chat and ask for one.")
         return
-    st.caption("Tap ➕ to add a pick to your library")
+    st.caption("👍 loved it · 👎 not for me (the agent learns from this) · ➕ add to library")
     owned = {r.title.casefold() for r in memory.get_records(user_id)}  # type: ignore[attr-defined]
+    feedback = memory.get_feedback(user_id)  # type: ignore[attr-defined]
     seen: set[str] = set()
     for index, rec in enumerate(recs):
-        key = rec.game_title.casefold()
+        key = rec.game_title.strip().casefold()
         if key in seen:  # the same game may be recommended across sessions; show it once
             continue
         seen.add(key)
-        cols = st.columns([5, 1])
-        cols[0].markdown(
-            f'<div class="hist-line">🎯 <b>{rec.game_title}</b></div>', unsafe_allow_html=True
+        verdict = (feedback.get(key) or {}).get("verdict")
+        badge = f" <small>{_VERDICT_BADGES[verdict]}</small>" if verdict else ""
+        info, up_col, down_col, add_col = st.columns([4, 1, 1, 1])
+        info.markdown(
+            f'<div class="hist-line">🎯 <b>{html.escape(rec.game_title)}</b>{badge}</div>',
+            unsafe_allow_html=True,
         )
+        if up_col.button(
+            "👍",
+            key=f"fb_up_{index}",
+            help="Loved it — recommend more like this",
+            use_container_width=True,
+        ):
+            _set_feedback(memory, user_id, rec.game_title, "loved", verdict)
+        if down_col.button(
+            "👎",
+            key=f"fb_down_{index}",
+            help="Not for me — steer away from picks like this",
+            use_container_width=True,
+        ):
+            _set_feedback(memory, user_id, rec.game_title, "not_for_me", verdict)
         if key in owned:
-            cols[1].markdown('<div class="gg-added">✓</div>', unsafe_allow_html=True)
-        elif cols[1].button(
+            add_col.markdown('<div class="gg-added">✓</div>', unsafe_allow_html=True)
+        elif add_col.button(
             "➕",
             key=f"pickadd_{index}_{rec.game_title}",
             help="Add to your library",
             use_container_width=True,
         ):
             _add_game(memory, user_id, rec.game_title, [])
+
+
+def _set_feedback(
+    memory: object, user_id: str, title: str, verdict: str, current: str | None
+) -> None:
+    """Set or (when tapped again) clear a pick's feedback verdict, then rerun."""
+    new_verdict = None if current == verdict else verdict
+    memory.set_feedback(user_id, title, new_verdict)  # type: ignore[attr-defined]
+    st.rerun()

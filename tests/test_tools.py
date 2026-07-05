@@ -181,7 +181,10 @@ def test_recommendation_persistence_and_recency() -> None:
     assert saved == {"ok": True}
 
     recent = reg.dispatch("get_recent_recommendations", {"n": 5})
-    assert recent == {"titles": ["Hades"]}
+    assert recent == {
+        "recommendations": [{"title": "Hades", "feedback": None}],
+        "older_feedback": [],
+    }
 
 
 def test_unknown_tool_is_reported_not_raised() -> None:
@@ -211,3 +214,17 @@ def test_specs_cover_all_handlers() -> None:
     spec_names = {s["toolSpec"]["name"] for s in reg.specs()}
     handler_names = set(reg._handlers)  # noqa: SLF001 - registry internals under test
     assert spec_names == handler_names
+
+
+def test_recent_recommendations_carry_feedback() -> None:
+    """The agent reads the user's 👍/👎 verdicts alongside recent picks, plus
+    feedback left on older (out-of-window) recommendations."""
+    reg, memory = _registry()
+    reg.dispatch("save_recommendation", {"game_title": "Hades", "reasoning": "fits"})
+    memory.set_feedback(USER_ID, "Hades", "loved")
+    memory.set_feedback(USER_ID, "Older Pick", "not_for_me")
+
+    out = reg.dispatch("get_recent_recommendations", {"n": 5})
+
+    assert out["recommendations"] == [{"title": "Hades", "feedback": "loved"}]
+    assert out["older_feedback"] == [{"title": "Older Pick", "feedback": "not_for_me"}]

@@ -13,6 +13,7 @@ RETRO_ARCADE_CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
 :root {
     --arcade-bg: #0d0221;
     --arcade-bg-2: #1a0540;
@@ -35,6 +36,15 @@ p, div, span, label, li, input, textarea, select, button {
    breaks into raw text. */
 [data-testid="stIconMaterial"] {
     font-family: 'Material Symbols Rounded' !important;
+}
+/* Long-form READING text gets a cleaner terminal face: multi-paragraph replies in
+   VT323 are dense and tiring, so the message bubbles (and the working-notes
+   expander body) use Share Tech Mono while VT323/Press Start 2P stay for the
+   chrome — headings, marquee, buttons, labels. Placed after the global override;
+   the descendant selectors outweigh its bare element selectors. */
+.rec-card, .rec-card *, .user-bubble, .user-bubble *,
+[data-testid="stExpander"] p, [data-testid="stExpander"] li {
+    font-family: 'Share Tech Mono', monospace !important;
 }
 html, body { font-size: 18px; }
 /* Press Start 2P is reserved for short hero text (marquee title, buttons). It is
@@ -118,7 +128,8 @@ h3 { font-size: 1.8rem; }
 .rec-card {
     border: 3px solid var(--arcade-neon-cyan); border-radius: 14px 14px 14px 2px;
     box-shadow: 0 0 12px var(--arcade-neon-cyan), inset 0 0 14px rgba(45,226,230,0.22);
-    padding: 1rem 1.1rem; background: rgba(13,2,33,0.88); font-size: 1.3rem; line-height: 1.5;
+    /* Share Tech Mono runs wider than VT323, so it reads well smaller. */
+    padding: 1rem 1.1rem; background: rgba(13,2,33,0.88); font-size: 1.02rem; line-height: 1.6;
 }
 /* User speech bubble (right side). */
 .user-bubble {
@@ -126,7 +137,7 @@ h3 { font-size: 1.8rem; }
     background: linear-gradient(180deg, rgba(255,46,151,0.28), rgba(255,46,151,0.12));
     border: 2px solid var(--arcade-neon-pink); border-radius: 14px 14px 2px 14px;
     box-shadow: 0 0 8px rgba(255,46,151,0.45); padding: 0.5rem 0.85rem;
-    color: var(--arcade-neon-yellow); font-size: 1.25rem; line-height: 1.4;
+    color: var(--arcade-neon-yellow); font-size: 1.0rem; line-height: 1.5;
 }
 /* Conversation alignment: a message containing a user bubble flips to the right. */
 [data-testid="stChatMessage"]:has(.user-bubble) { flex-direction: row-reverse; }

@@ -378,3 +378,51 @@ def test_stateless_flag_reflects_memory_health() -> None:
     reply = runtime.send("hi")
 
     assert reply.is_stateless_mode is True
+
+
+def test_seed_transcript_restores_context_for_the_next_turn() -> None:
+    """After a page refresh the persisted UI transcript re-seeds the model-side
+    history (text only), so the agent keeps conversational continuity."""
+    bedrock = _ScriptedBedrock([_final("Then try Celeste.")])
+    runtime, _ = _runtime(bedrock)
+
+    runtime.seed_transcript(
+        [
+            {"role": "user", "content": "recommend a roguelike"},
+            {"role": "assistant", "content": "🎯 Hades", "notes": ["ignored"]},
+        ]
+    )
+    reply = runtime.send("something else")
+
+    assert reply.message == "Then try Celeste."
+    history = bedrock.calls[0]
+    assert [m["role"] for m in history] == ["user", "assistant", "user"]
+    assert history[0]["content"][0]["text"] == "recommend a roguelike"
+    assert history[1]["content"][0]["text"] == "🎯 Hades"
+
+
+def test_seed_transcript_repairs_shape_and_never_overwrites() -> None:
+    """Seeding merges consecutive same-role entries, opens on a user message, drops a
+    trailing unanswered user message (Converse-valid shape), and is a no-op once a
+    conversation is in progress."""
+    bedrock = _ScriptedBedrock([_final("ok"), _final("ok2")])
+    runtime, _ = _runtime(bedrock)
+
+    runtime.seed_transcript(
+        [
+            {"role": "assistant", "content": "stray greeting"},  # cannot open the history
+            {"role": "user", "content": "hi"},
+            {"role": "user", "content": "are you there?"},  # merged into the turn above
+            {"role": "assistant", "content": "yes!"},
+            {"role": "user", "content": "unanswered tail"},  # dropped
+        ]
+    )
+    assert [m["role"] for m in runtime._messages] == ["user", "assistant"]  # noqa: SLF001
+    assert runtime._messages[0]["content"][0]["text"] == "hi\n\nare you there?"  # noqa: SLF001
+
+    runtime.send("next")
+    runtime.seed_transcript(
+        [{"role": "user", "content": "x"}, {"role": "assistant", "content": "y"}]
+    )
+    # Still the live conversation, not the re-seed.
+    assert runtime._messages[0]["content"][0]["text"] == "hi\n\nare you there?"  # noqa: SLF001

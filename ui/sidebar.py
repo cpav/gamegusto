@@ -18,8 +18,10 @@ def render_sidebar() -> str:
         st.markdown("### 🎯 GameGusto")
         view = st.radio("View", ["chat", "library"], horizontal=True, format_func=str.capitalize)
         if st.button("🔄 New conversation"):
-            get_context().runtime.reset()
+            ctx = get_context()
+            ctx.runtime.reset()
             st.session_state["messages"] = []
+            ctx.memory.store_conversation(get_user_id(), [])  # clear the persisted transcript
             st.rerun()
         _render_gmail_import()
     return view

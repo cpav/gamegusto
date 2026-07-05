@@ -245,3 +245,59 @@ def test_session_persistence_round_trip(sessions: list[SessionData], limit: int)
     retrieved = service.get_recent_recommendations(USER_ID, limit)
 
     assert retrieved == expected
+
+
+def test_conversation_round_trip_and_clear() -> None:
+    """The chat transcript round-trips (so a page refresh resumes the conversation),
+    is trimmed to the newest messages, and clears with an empty list."""
+    service = MemoryService(FakeMemoryClient())
+    assert service.get_conversation(USER_ID) == []
+
+    transcript: list[dict[str, Any]] = [
+        {"role": "user", "content": "recommend a roguelike"},
+        {"role": "assistant", "content": "🎯 Hades", "notes": ["checked the library"]},
+    ]
+    assert service.store_conversation(USER_ID, transcript) is True
+    assert service.get_conversation(USER_ID) == transcript
+
+    # Trimmed to the newest MAX_CONVERSATION_MESSAGES (bounds the DynamoDB item).
+    long = [{"role": "user", "content": f"m{i}"} for i in range(60)]
+    service.store_conversation(USER_ID, long)
+    stored = service.get_conversation(USER_ID)
+    assert len(stored) == MemoryService.MAX_CONVERSATION_MESSAGES
+    assert stored[-1] == {"role": "user", "content": "m59"}
+
+    # Clearing (the "New conversation" action).
+    service.store_conversation(USER_ID, [])
+    assert service.get_conversation(USER_ID) == []
+
+
+def test_conversation_skips_malformed_entries() -> None:
+    service = MemoryService(FakeMemoryClient())
+    service.store_conversation(
+        USER_ID,
+        [
+            {"role": "user", "content": "hello"},
+            {"role": "assistant"},  # no content
+            {"content": "orphan"},  # no role
+            "not a dict",  # type: ignore[list-item]
+        ],
+    )
+    assert service.get_conversation(USER_ID) == [{"role": "user", "content": "hello"}]
+
+
+def test_feedback_set_get_and_clear() -> None:
+    """Feedback keys are casefolded titles; setting None clears a verdict."""
+    service = MemoryService(FakeMemoryClient())
+    assert service.get_feedback(USER_ID) == {}
+
+    assert service.set_feedback(USER_ID, "Hades", "loved") is True
+    assert service.set_feedback(USER_ID, "  Celeste ", "not_for_me") is True
+    feedback = service.get_feedback(USER_ID)
+    assert feedback["hades"] == {"title": "Hades", "verdict": "loved"}
+    assert feedback["celeste"] == {"title": "Celeste", "verdict": "not_for_me"}
+
+    # Tapping the same verdict again clears it (the UI toggle).
+    assert service.set_feedback(USER_ID, "HADES", None) is True
+    assert "hades" not in service.get_feedback(USER_ID)
+    assert "celeste" in service.get_feedback(USER_ID)
