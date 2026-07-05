@@ -122,7 +122,9 @@ answer. Don't open the reply with a horizontal rule (---) or divider either.
 On "I already played it" / "something else" / "shorter", exclude the prior pick \
 and offer the next best WITHOUT re-asking everything you already know.
 - Across sessions, call get_recent_recommendations to avoid repeating recent \
-picks unless the user asks to revisit one.
+picks unless the user asks to revisit one. It also carries the user's feedback on \
+past picks ("loved" / "not_for_me") — treat that as a strong taste signal: lean \
+toward what loved picks have in common and away from what rejected ones share.
 - After you present a recommendation, call save_recommendation once to persist it.
 - If a tool reports an error or returns nothing, adapt and be honest about what \
 you couldn't verify; never invent ratings, platforms, or availability — confirm \
@@ -235,6 +237,35 @@ class AgentRuntime:
     def reset(self) -> None:
         """Clear the conversation history to start a fresh session."""
         self._messages = []
+
+    def seed_transcript(self, transcript: list[dict[str, Any]]) -> None:
+        """Restore model-side context from a persisted UI transcript.
+
+        Used after a page refresh: the UI transcript (role/content text pairs) is
+        replayed as plain text messages so the agent keeps conversational
+        continuity without the original toolUse/toolResult blocks (which are not
+        persisted). Consecutive same-role entries are merged and the history must
+        open with a user message, keeping the sequence Converse-valid. No-op when
+        a conversation is already in progress.
+        """
+        if self._messages:
+            return
+        merged: list[dict[str, Any]] = []
+        for entry in transcript:
+            role = entry.get("role")
+            text = str(entry.get("content", "")).strip()
+            if role not in ("user", "assistant") or not text:
+                continue
+            if not merged and role != "user":
+                continue  # Converse requires the history to open with a user message
+            if merged and merged[-1]["role"] == role:
+                merged[-1]["content"][0]["text"] += f"\n\n{text}"
+            else:
+                merged.append({"role": role, "content": [{"text": text}]})
+        if merged and merged[-1]["role"] == "user":
+            merged.pop()  # an unanswered user message would break role alternation
+        self._messages = merged
+        self._trim_history()
 
     def send(self, user_text: str) -> AgentReply:
         """Send one user message and run the tool loop until a final answer.

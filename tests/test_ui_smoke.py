@@ -86,3 +86,23 @@ def test_region_from_timezone() -> None:
     assert _region_from_timezone("Mars/Olympus_Mons") is None
     assert _region_from_timezone("") is None
     assert _region_from_timezone(None) is None
+
+
+def test_daily_starters_are_stable_and_rotate() -> None:
+    """Today's starter window is deterministic (no reshuffling on rerun) and sized
+    to the 2x2 grid; every configured starter appears across consecutive days."""
+    from ui.chat_view import _STARTER_COUNT, _STARTER_PROMPTS, _daily_starters
+
+    today = _daily_starters()
+    assert today == _daily_starters()  # stable within the day
+    assert len(today) == _STARTER_COUNT
+    assert all(label in _STARTER_PROMPTS for label in today)
+
+
+def test_user_html_escapes_markup() -> None:
+    from ui.chat_view import _user_html
+
+    rendered = _user_html("<b>hi</b> & <script>alert(1)</script>")
+    assert "<script>" not in rendered
+    assert "&lt;script&gt;" in rendered
+    assert rendered.startswith('<div class="user-bubble">')

@@ -59,6 +59,12 @@ class MemoryService:
     RECORDS_KEY = "records"
     PLATFORMS_KEY = "platforms"
     SESSIONS_KEY = "sessions"
+    CONVERSATION_KEY = "conversation"
+    FEEDBACK_KEY = "feedback"
+
+    #: Cap on persisted transcript messages, bounding the conversation document
+    #: (DynamoDB items are limited to 400KB) while keeping plenty of context.
+    MAX_CONVERSATION_MESSAGES = 40
 
     def __init__(self, client: MemoryClient) -> None:
         """Build the service around an injected memory ``client`` (DynamoDB-backed)."""
@@ -175,6 +181,73 @@ class MemoryService:
         except Exception as exc:
             self._mark_unavailable(exc)
             return []
+
+    # --- conversation transcript (survives a page refresh) ---
+
+    def get_conversation(self, user_id: str) -> list[dict[str, Any]]:
+        """Return the persisted chat transcript, or ``[]`` when absent/unreachable.
+
+        Each message is ``{"role", "content"}`` plus an optional ``"notes"`` list
+        (the transient working notes kept for the "how I picked this" expander).
+        """
+        try:
+            document = self._client.get_value(user_id, self.CONVERSATION_KEY)
+            self._mark_available()
+            if not document:
+                return []
+            return [
+                message
+                for message in document.get("messages", [])
+                if isinstance(message, dict) and message.get("role") and message.get("content")
+            ]
+        except Exception as exc:
+            self._mark_unavailable(exc)
+            return []
+
+    def store_conversation(self, user_id: str, messages: list[dict[str, Any]]) -> bool:
+        """Persist the chat transcript (trimmed to the newest messages).
+
+        Pass ``[]`` to clear it (the "New conversation" action).
+        """
+        try:
+            payload = {"messages": messages[-self.MAX_CONVERSATION_MESSAGES :]}
+            self._client.put_value(user_id, self.CONVERSATION_KEY, payload)
+            self._mark_available()
+            return True
+        except Exception as exc:
+            self._mark_unavailable(exc)
+            return False
+
+    # --- recommendation feedback (loved / not for me) ---
+
+    def set_feedback(self, user_id: str, game_title: str, verdict: str | None) -> bool:
+        """Record the user's verdict on a recommended title (``None`` clears it)."""
+        feedback = self.get_feedback(user_id)
+        key = game_title.strip().casefold()
+        if verdict is None:
+            feedback.pop(key, None)
+        else:
+            feedback[key] = {"title": game_title.strip(), "verdict": verdict}
+        try:
+            self._client.put_value(user_id, self.FEEDBACK_KEY, {"feedback": feedback})
+            self._mark_available()
+            return True
+        except Exception as exc:
+            self._mark_unavailable(exc)
+            return False
+
+    def get_feedback(self, user_id: str) -> dict[str, dict[str, str]]:
+        """Return feedback keyed by casefolded title: ``{key: {"title", "verdict"}}``."""
+        try:
+            document = self._client.get_value(user_id, self.FEEDBACK_KEY)
+            self._mark_available()
+            if not document:
+                return {}
+            raw = document.get("feedback", {})
+            return {k: v for k, v in raw.items() if isinstance(v, dict) and v.get("verdict")}
+        except Exception as exc:
+            self._mark_unavailable(exc)
+            return {}
 
     @property
     def is_available(self) -> bool:

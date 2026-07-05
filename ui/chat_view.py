@@ -13,14 +13,17 @@ The LLM is a hard dependency: a failure surfaces as a sanitized message (Req 10.
 
 from __future__ import annotations
 
+import html
 import re
 import time
+from datetime import date
+from typing import Any
 
 import streamlit as st
 import streamlit.components.v1 as components
 
 from services.bedrock_service import BedrockServiceError
-from ui.bootstrap import get_memory_service, get_runtime
+from ui.bootstrap import get_memory_service, get_runtime, get_user_id
 
 #: Space-invaders avatars: the agent is the invader, the user a fellow alien.
 _AVATARS = {"assistant": "👾", "user": "👽"}
@@ -33,8 +36,9 @@ _CHIP_PROMPTS = {
 }
 
 #: Conversation starters (short labels -> the text sent) shown on the empty screen.
-#: Kept genre-agnostic — about *ways in*, not specific tastes — and a fresh handful
-#: is sampled per session to keep the empty state lively.
+#: Kept genre-agnostic — about *ways in*, not specific tastes. A deterministic
+#: day-based window of _STARTER_COUNT rotates through all of them: stable within a
+#: day (no reshuffling on rerun) while every starter gets its turn across days.
 _STARTER_PROMPTS = {
     "🤔 Help me decide": "I'm not sure what I feel like — help me figure out what to play next",
     "🎯 Match my taste": "Recommend something new based on the taste in my library",
@@ -79,8 +83,9 @@ def _card_html(message: str) -> str:
 
 
 def _user_html(message: str) -> str:
-    """Wrap a user ``message`` in the right-aligned speech bubble."""
-    return f'<div class="user-bubble">{message}</div>'
+    """Wrap a user ``message`` in the right-aligned speech bubble (HTML-escaped —
+    the bubble is raw HTML, so typed ``<``/``&`` must render literally)."""
+    return f'<div class="user-bubble">{html.escape(message)}</div>'
 
 
 def _tool_label(name: str) -> str:
@@ -182,7 +187,7 @@ def render_chat_view() -> None:
     reply at that position, Streamlit has no prior answer to show ghosted under the
     "thinking…" line while the model works.
     """
-    history = st.session_state.setdefault("messages", [])
+    history = _load_history()
 
     # The intro + starters live in ONE persistent placeholder so leaving the empty
     # state actively *clears* them (an emptied node) rather than leaving the starter
@@ -203,15 +208,21 @@ def render_chat_view() -> None:
         intro_slot.empty()
 
     for msg in history:
-        _render_message(msg["role"], msg["content"])
+        _render_message(msg)
 
     # An answer queued by the previous run: stream it now, below the rendered history.
     pending = st.session_state.pop("_pending_answer", None)
     if pending is not None:
         with st.chat_message("assistant", avatar=_AVATARS["assistant"]):
-            message = _stream_turn(pending)
+            message, notes = _stream_turn(pending)
         if message:
-            history.append({"role": "assistant", "content": message})
+            entry: dict[str, Any] = {"role": "assistant", "content": message}
+            if notes:
+                entry["notes"] = notes
+            history.append(entry)
+            # Persist the transcript so a page refresh (or phone tab reload) resumes
+            # the conversation instead of losing it.
+            get_memory_service().store_conversation(get_user_id(), history)
 
     typed = st.chat_input("Insert coin… what should I play?")  # pinned to viewport bottom
     prompt = typed or st.session_state.pop("_pending_prompt", None)
@@ -230,11 +241,39 @@ def render_chat_view() -> None:
         st.markdown('<div class="gg-spacer"></div>', unsafe_allow_html=True)
 
 
-def _render_message(role: str, content: str) -> None:
-    """Render one message as a speech bubble (agent left, user right)."""
+def _load_history() -> list[dict[str, Any]]:
+    """Return the session transcript, restoring it from memory on a fresh session.
+
+    The runtime is (re)seeded from the transcript every run — a no-op while a
+    conversation is in progress, but it restores the agent's context after a page
+    refresh and after the service graph is rebuilt (e.g. when the browser-timezone
+    region resolves and ``get_context`` constructs a fresh runtime).
+    """
+    if "messages" not in st.session_state:
+        st.session_state["messages"] = get_memory_service().get_conversation(get_user_id())
+    history: list[dict[str, Any]] = st.session_state["messages"]
+    get_runtime().seed_transcript(history)
+    return history
+
+
+def _render_message(msg: dict[str, Any]) -> None:
+    """Render one message as a speech bubble (agent left, user right), with any
+    saved working notes behind a collapsed "how I picked this" expander."""
+    role = msg["role"]
     with st.chat_message(role, avatar=_AVATARS.get(role)):
-        html = _card_html(content) if role == "assistant" else _user_html(content)
-        st.markdown(html, unsafe_allow_html=True)
+        content = msg["content"]
+        body = _card_html(content) if role == "assistant" else _user_html(content)
+        st.markdown(body, unsafe_allow_html=True)
+        if role == "assistant" and msg.get("notes"):
+            _render_notes(msg["notes"])
+
+
+def _render_notes(notes: list[str]) -> None:
+    """Show the turn's transient working notes behind a collapsed expander —
+    the agent's reasoning trail, kept for trust/debuggability without cluttering
+    the reply."""
+    with st.expander("🔍 how I picked this"):
+        st.markdown("\n".join(f"- {_collapse_ws(note)}" for note in notes))
 
 
 def _render_chips() -> None:
@@ -282,13 +321,18 @@ def _pin_to_top() -> None:
     )
 
 
-def _render_starters() -> None:
-    """Show a fixed set of conversation-starter chips on the empty screen.
+def _daily_starters() -> list[str]:
+    """Return today's window of starter labels: stable all day (no reshuffling on
+    rerun), rotating one step per day so every starter gets shown across days."""
+    labels = list(_STARTER_PROMPTS)
+    offset = date.today().toordinal() % len(labels)
+    return [labels[(offset + i) % len(labels)] for i in range(_STARTER_COUNT)]
 
-    A fixed (not random) handful so they don't change on every reload, laid out
-    two-per-row to read well on a phone. A click queues that starter as the first turn.
-    """
-    starters = list(_STARTER_PROMPTS)[:_STARTER_COUNT]
+
+def _render_starters() -> None:
+    """Show today's conversation-starter chips on the empty screen, two-per-row so
+    they read well on a phone. A click queues that starter as the first turn."""
+    starters = _daily_starters()
     for row in range(0, len(starters), 2):
         pair = starters[row : row + 2]
         cols = st.columns(len(pair))
@@ -298,15 +342,16 @@ def _render_starters() -> None:
                 st.rerun()
 
 
-def _stream_turn(prompt: str) -> str:
-    """Stream one agent turn: a transient "thinking" line, then the reply word-by-word.
+def _stream_turn(prompt: str) -> tuple[str, list[str]]:
+    """Stream one agent turn; return ``(reply, working_notes)``.
 
     A SINGLE placeholder carries the turn: it shows the "thinking"/tool line and is
     then overwritten in place by the reply. Using one slot (not a separate empty
     card) matters — an empty placeholder left below the thinking line reuses the
     previous turn's reply at that delta path and shows it ghosted until written, so
     the prior answer would flash under "thinking…". Writing the slot immediately
-    avoids that.
+    avoids that. The working notes are returned so the caller can persist them for
+    the "how I picked this" expander.
     """
     runtime = get_runtime()
     slot = st.empty()
@@ -331,17 +376,20 @@ def _stream_turn(prompt: str) -> str:
     except BedrockServiceError as exc:
         slot.empty()
         st.error(str(exc))
-        return ""
+        return "", []
 
     # Persist only the final answer; fall back to the notes if there was no final text.
     message = _clean_reply("\n\n".join(answer) or "\n\n".join(thinking))
+    notes = thinking if answer else []  # notes ARE the reply in the fallback case
     if message:
         _typewriter(slot, message)
+        if notes:
+            _render_notes(notes)  # reruns render it via _render_message
     else:
         slot.empty()  # no text this turn — don't leave the "thinking…" line behind
     if not get_memory_service().is_available:
         st.caption("⚠️ memory unavailable — personalization is limited this session")
-    return message
+    return message, notes
 
 
 def _typewriter(placeholder: object, text: str) -> None:

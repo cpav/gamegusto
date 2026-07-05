@@ -204,7 +204,22 @@ class ToolRegistry:
     def _get_recent_recommendations(self, tool_input: dict[str, Any]) -> dict[str, Any]:
         n = _opt_int(tool_input.get("n")) or 5
         recs = self._memory.get_recent_recommendations(self._user_id, n)
-        return {"titles": [r.game_title for r in recs]}
+        feedback = self._memory.get_feedback(self._user_id)
+        recommendations = [
+            {
+                "title": r.game_title,
+                "feedback": (feedback.get(r.game_title.strip().casefold()) or {}).get("verdict"),
+            }
+            for r in recs
+        ]
+        # Feedback on older picks (outside the recency window) is still a taste signal.
+        listed = {r.game_title.strip().casefold() for r in recs}
+        older = [
+            {"title": item["title"], "feedback": item["verdict"]}
+            for key, item in feedback.items()
+            if key not in listed
+        ]
+        return {"recommendations": recommendations, "older_feedback": older}
 
     def _save_recommendation(self, tool_input: dict[str, Any]) -> dict[str, Any]:
         title = str(tool_input.get("game_title", "")).strip()
@@ -361,7 +376,9 @@ _TOOL_SPECS: list[dict[str, Any]] = [
     ),
     _spec(
         "get_recent_recommendations",
-        "List titles recommended in recent sessions, to avoid repeats.",
+        "List titles recommended in recent sessions (to avoid repeats), each with the "
+        "user's feedback if given ('loved' or 'not_for_me' — a strong taste signal), "
+        "plus feedback on older picks.",
         {"n": {"type": "integer", "description": "How many recent sessions to look back."}},
         [],
     ),
