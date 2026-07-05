@@ -180,8 +180,11 @@ input:focus-visible, textarea:focus-visible, select:focus-visible,
    the full-width ➕ button it replaces. */
 .gg-added { color: var(--arcade-neon-green); font-size: 2.4rem; line-height: 2.4rem;
     text-align: center; text-shadow: 0 0 8px var(--arcade-neon-green); }
+/* No delimiter bar over the pinned input area: the input pill's focus glow used to
+   overlap it and the two fought visually. The opaque bottom area plus the neon pill
+   already read as the input zone; a bit of top padding gives the glow room instead. */
 .stChatInputContainer, [data-testid="stChatInput"] {
-    border-top: 2px solid var(--arcade-neon-pink); }
+    border-top: none; padding-top: 0.55rem; }
 /* Arcade-style chat input: a neon-framed box that glows cyan on focus, matching the
    bumper buttons instead of looking like a default dark field. Streamlit >= 1.58
    stacks the textarea and the send button as two ROWS inside the widget; laying the
