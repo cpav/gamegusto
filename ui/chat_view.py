@@ -80,6 +80,12 @@ def _tool_label(name: str) -> str:
     return _TOOL_LABELS.get(name, f"🔧 {name.replace('_', ' ')}")
 
 
+def _one_line(text: str, limit: int = 90) -> str:
+    """Collapse ``text`` to a single trimmed line for the transient 'thinking' display."""
+    line = " ".join(text.split())
+    return line if len(line) <= limit else line[:limit].rstrip() + "…"
+
+
 def render_chat_view() -> None:
     """Render the conversation, handle a new turn, follow-up chips, and auto-scroll.
 
@@ -219,7 +225,8 @@ def _stream_turn(prompt: str) -> str:
     runtime = get_runtime()
     slot = st.empty()
     slot.markdown('<div class="gg-thinking">🕹️ thinking…</div>', unsafe_allow_html=True)
-    parts: list[str] = []
+    answer: list[str] = []
+    thinking: list[str] = []
     try:
         for event in runtime.stream(prompt):
             if event.kind == "tool":
@@ -227,14 +234,22 @@ def _stream_turn(prompt: str) -> str:
                     f'<div class="gg-thinking">{_tool_label(event.tool)}…</div>',
                     unsafe_allow_html=True,
                 )
-            elif event.text:
-                parts.append(event.text)
+            elif event.kind == "thinking":
+                # Working notes: flash them transiently (one line), then discard.
+                thinking.append(event.text)
+                slot.markdown(
+                    f'<div class="gg-thinking">💭 {_one_line(event.text)}</div>',
+                    unsafe_allow_html=True,
+                )
+            elif event.text:  # final answer — this is what we keep
+                answer.append(event.text)
     except BedrockServiceError as exc:
         slot.empty()
         st.error(str(exc))
         return ""
 
-    message = "\n\n".join(parts)
+    # Persist only the final answer; fall back to the notes if there was no final text.
+    message = "\n\n".join(answer) or "\n\n".join(thinking)
     if message:
         _typewriter(slot, message)
     else:

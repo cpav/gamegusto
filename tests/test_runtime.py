@@ -109,9 +109,10 @@ def test_tool_round_trip_executes_tool_and_returns_answer() -> None:
 
     reply = runtime.send("I own a Switch")
 
-    # Text from both turns is preserved, not just the final turn's.
-    assert "Adding that." in reply.message
-    assert "Done — try Hades." in reply.message
+    # Only the final turn's text is the persisted answer; the tool-turn note ("Adding
+    # that.") is transient "thinking" and is not baked into the reply.
+    assert reply.message == "Done — try Hades."
+    assert "Adding that." not in reply.message
     assert reply.tool_calls == ["add_platform"]
     # The tool actually ran against memory.
     assert [p.name for p in memory.get_platform_list(USER_ID)] == ["Nintendo Switch"]
@@ -120,34 +121,46 @@ def test_tool_round_trip_executes_tool_and_returns_answer() -> None:
     assert second_call_history[-1]["content"][0]["toolResult"]["toolUseId"] == "t1"
 
 
-def test_text_emitted_before_a_tool_call_is_not_dropped() -> None:
-    """Regression: the model's answer in a tool-use turn (e.g. alongside
-    save_recommendation) must survive even when the final turn is just a closer."""
+def test_tool_turn_text_is_thinking_not_persisted() -> None:
+    """Text written in a tool-calling turn is transient 'thinking'; only the final
+    turn's text is persisted as the answer (the prompt steers the model to write its
+    full reply in that final turn)."""
     save = ToolUse("s1", "save_recommendation", {"game_title": "Hades", "reasoning": "fits"})
-    recommendation_text = "I recommend Hades — a fast roguelike. Alternatives: Celeste, Tunic."
     bedrock = _ScriptedBedrock(
-        [_tool_call(save, recommendation_text), _final("Let me know if any catch your eye!")]
+        [_tool_call(save, "Let me note that."), _final("I recommend Hades — a fast roguelike.")]
     )
     runtime, _ = _runtime(bedrock)
 
     reply = runtime.send("recommend a roguelike")
 
-    assert "I recommend Hades" in reply.message  # the substantive answer is kept
-    assert "Let me know if any catch your eye!" in reply.message
+    assert reply.message == "I recommend Hades — a fast roguelike."
+    assert "Let me note that" not in reply.message  # the tool-turn note is not kept
 
 
-def test_stream_yields_text_and_tool_events_in_order() -> None:
-    """stream() exposes per-turn text chunks and tool-call events for the UI."""
+def test_falls_back_to_thinking_when_final_turn_is_silent() -> None:
+    """If the final turn produces no text, the working notes are used so the reply is
+    never empty (safety net for a model that answered mid-loop)."""
+    save = ToolUse("s1", "save_recommendation", {"game_title": "Hades", "reasoning": "fits"})
+    bedrock = _ScriptedBedrock([_tool_call(save, "I recommend Hades."), _final("")])
+    runtime, _ = _runtime(bedrock)
+
+    reply = runtime.send("recommend a roguelike")
+
+    assert "I recommend Hades" in reply.message
+
+
+def test_stream_yields_thinking_tool_and_answer_events_in_order() -> None:
+    """stream() marks tool-turn text as 'thinking' and the final text as 'text'."""
     add = ToolUse("t1", "add_platform", {"name": "Nintendo Switch"})
     bedrock = _ScriptedBedrock([_tool_call(add, "Adding that."), _final("Done — try a new RPG.")])
     runtime, _ = _runtime(bedrock)
 
     events = list(runtime.stream("I own a Switch"))
 
-    assert [e.kind for e in events] == ["text", "tool", "text"]
-    assert events[0].text == "Adding that."
+    assert [e.kind for e in events] == ["thinking", "tool", "text"]
+    assert events[0].text == "Adding that."  # transient working note
     assert events[1].tool == "add_platform"
-    assert events[2].text == "Done — try a new RPG."
+    assert events[2].text == "Done — try a new RPG."  # final answer
 
 
 def test_iteration_cap_returns_fallback() -> None:
