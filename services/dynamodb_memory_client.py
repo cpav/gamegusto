@@ -11,6 +11,12 @@ UI path, the Gmail import, and the agent all read and write the same store:
 DynamoDB's document API rejects ``float`` and requires ``Decimal`` for numbers,
 so values are converted to ``Decimal`` on write and back to ``int``/``float`` on
 read at this boundary; callers keep working with plain Python types.
+
+Scale note: each keyed document (e.g. the whole game library under
+``DOC#records``) is ONE DynamoDB item, and items are capped at 400KB — roughly
+400-800 enriched game records. Fine for a personal library; if the library ever
+approaches that, split records across per-game items (``SK = REC#<dedup_key>``)
+behind this same client interface.
 """
 
 from __future__ import annotations

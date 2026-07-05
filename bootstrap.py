@@ -74,7 +74,10 @@ def build_app(
         bedrock=bedrock,
         tools=tools,
         memory=memory,
-        system_prompt=system_prompt_for_region(region, today=date.today()),
+        # A callable so "today" is resolved at each turn, not baked in at build time —
+        # a cached Streamlit session can outlive midnight, and the agent uses the date
+        # to judge whether store deals are still live.
+        system_prompt=lambda: system_prompt_for_region(region, today=date.today()),
     )
 
     return AppContext(

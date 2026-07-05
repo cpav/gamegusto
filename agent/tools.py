@@ -14,6 +14,7 @@ and the underlying services already degrade gracefully rather than raising.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from typing import Any
 
@@ -26,6 +27,8 @@ from models.recommendation import Recommendation
 from models.session import SessionData
 from services.memory_service import MemoryService
 from services.tavily_service import TavilyService
+
+logger = logging.getLogger(__name__)
 
 #: One registered tool: its Converse spec plus the handler that executes it.
 ToolHandler = Callable[[dict[str, Any]], dict[str, Any]]
@@ -84,15 +87,23 @@ class ToolRegistry:
         return _TOOL_SPECS
 
     def dispatch(self, name: str, tool_input: dict[str, Any]) -> dict[str, Any]:
-        """Execute the tool ``name`` with ``tool_input``; never raises a KeyError.
+        """Execute the tool ``name`` with ``tool_input``; never raises.
 
-        An unknown tool name returns an error result so a hallucinated tool name
-        is surfaced to the model rather than crashing the loop.
+        An unknown tool name returns an error result so a hallucinated tool name is
+        surfaced to the model rather than crashing the loop. The services behind the
+        handlers already degrade gracefully by contract, so an exception here is an
+        unexpected bug — it is logged with its traceback (server-side only) and
+        reported to the model as an error result, keeping the "tools never raise"
+        promise true by construction rather than by convention.
         """
         handler = self._handlers.get(name)
         if handler is None:
             return {"ok": False, "error": f"unknown tool: {name}"}
-        return handler(tool_input)
+        try:
+            return handler(tool_input)
+        except Exception:
+            logger.exception("tool %s failed (input keys: %s)", name, sorted(tool_input))
+            return {"ok": False, "error": f"{name} failed unexpectedly; continue without it"}
 
     # --- platform tools (Req 6) ---
 
