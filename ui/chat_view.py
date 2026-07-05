@@ -81,10 +81,13 @@ def _tool_label(name: str) -> str:
     return _TOOL_LABELS.get(name, f"🔧 {name.replace('_', ' ')}")
 
 
-def _one_line(text: str, limit: int = 90) -> str:
-    """Collapse ``text`` to a single trimmed line for the transient 'thinking' display."""
-    line = " ".join(text.split())
-    return line if len(line) <= limit else line[:limit].rstrip() + "…"
+def _collapse_ws(text: str) -> str:
+    """Collapse runs of whitespace/newlines to single spaces for the transient note.
+
+    The full note is kept (not truncated) — CSS wraps it over as many lines as needed,
+    so the user reads the model's whole working thought, not a cut-off fragment.
+    """
+    return " ".join(text.split())
 
 
 def _strip_leading_rule(text: str) -> str:
@@ -241,8 +244,8 @@ def _stream_turn(prompt: str) -> str:
     try:
         for event in runtime.stream(prompt):
             if event.kind == "thinking":
-                # Show the model's actual working note (its words), not a generic label.
-                note = _one_line(event.text)
+                # Show the model's actual working note (its words), in full, not a label.
+                note = _collapse_ws(event.text)
                 thinking.append(event.text)
                 slot.markdown(f'<div class="gg-thinking">💭 {note}</div>', unsafe_allow_html=True)
             elif event.kind == "tool":

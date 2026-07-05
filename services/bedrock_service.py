@@ -120,7 +120,7 @@ class BedrockService:
             "messages": messages,
             "inferenceConfig": {"maxTokens": self._reasoning_budget + _ANSWER_TOKEN_HEADROOM},
         }
-        if tools:  # Converse rejects an empty toolConfig; omit it to force a text-only turn
+        if tools:  # Converse rejects an empty toolConfig ({"tools": []}); set only when non-empty
             kwargs["toolConfig"] = {"tools": tools}
         try:
             response = self._client.converse(**kwargs)

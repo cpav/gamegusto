@@ -153,9 +153,11 @@ input:focus-visible, textarea:focus-visible, select:focus-visible,
 [data-testid*="vatar" i] {
     background: transparent !important; border: none !important; box-shadow: none !important; }
 [data-testid*="vatar" i] > * { font-size: 2rem !important; line-height: 1 !important; }
-/* Transient "thinking"/tool line shown while the agent works, then cleared. */
-.gg-thinking { color: var(--arcade-neon-cyan); font-size: 1.1rem; opacity: 0.85;
-    padding: 0.2rem 0; }
+/* Transient "thinking" note shown while the agent works, then cleared. Smaller and
+   italic so the model's full working thought reads as an aside; wraps over as many
+   lines as it needs (no truncation) within a comfortable measure. */
+.gg-thinking { color: var(--arcade-neon-cyan); font-size: 0.95rem; opacity: 0.8;
+    font-style: italic; line-height: 1.35; padding: 0.2rem 0; max-width: 60ch; }
 /* Big, glowing "added to library" check, centered in the column to line up with
    the full-width ➕ button it replaces. */
 .gg-added { color: var(--arcade-neon-green); font-size: 2.4rem; line-height: 2.4rem;
