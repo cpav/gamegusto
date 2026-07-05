@@ -2,11 +2,13 @@
 name = "gamegusto"
 version = "0.1.0"
 description = "GameGusto - a mood-aware game recommendation agent."
-requires-python = ">=3.9"
+# Deployment (Streamlit Cloud, runtime.txt) runs 3.13; 3.11 is the compatibility
+# floor so the code also runs on any recent interpreter. Python 3.9 is EOL.
+requires-python = ">=3.11"
 
 [tool.ruff]
 line-length = 100
-target-version = "py39"
+target-version = "py311"
 extend-exclude = [".venv"]
 
 [tool.ruff.lint]
@@ -18,7 +20,10 @@ quote-style = "double"
 indent-style = "space"
 
 [tool.mypy]
-python_version = "3.9"
+# Checked against the version that actually runs (local venv + Streamlit Cloud).
+# Kept >= 3.12 regardless: third-party stubs (numpy) use `type` statements that
+# older typecheck targets refuse to parse.
+python_version = "3.13"
 warn_return_any = true
 warn_unused_configs = true
 warn_redundant_casts = true

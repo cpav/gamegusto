@@ -22,7 +22,7 @@ behind this same client interface.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -104,7 +104,7 @@ class DynamoDBMemoryClient:
         The sort key embeds a UTC timestamp plus a uuid suffix so events order
         chronologically and never collide within the same millisecond.
         """
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%f")
+        timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%f")
         self._table.put_item(
             Item={
                 "pk": _pk(user_id),

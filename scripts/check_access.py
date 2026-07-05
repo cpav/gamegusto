@@ -18,7 +18,7 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 import boto3
 from botocore.config import Config as BotoConfig
@@ -39,7 +39,7 @@ _BOTO_CONFIG = BotoConfig(
 )
 
 
-class Status(str, Enum):
+class Status(StrEnum):
     """Outcome of a single service check."""
 
     PASS = "PASS"
