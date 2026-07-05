@@ -8,7 +8,13 @@ CSS, the chat card/label helpers, and the secrets→env mapping.
 from __future__ import annotations
 
 from ui.bootstrap import _region_from_timezone, _secrets_to_env
-from ui.chat_view import _card_html, _strip_leading_rule, _tool_label
+from ui.chat_view import (
+    _card_html,
+    _clean_reply,
+    _strip_leading_narration,
+    _strip_leading_rule,
+    _tool_label,
+)
 from ui.theme import MARQUEE_HTML, RETRO_ARCADE_CSS
 
 
@@ -26,6 +32,31 @@ def test_strip_leading_rule() -> None:
     # a rule in the middle (a real divider) is left alone
     assert _strip_leading_rule("Intro\n---\nMore") == "Intro\n---\nMore"
     assert _strip_leading_rule("No rule here") == "No rule here"
+
+
+def test_strip_leading_narration() -> None:
+    # The real case: a process-narration preamble is dropped, the answer kept.
+    reply = (
+        "I now have a solid picture of both sales. Let me now cross-reference the "
+        "on-sale titles against your library.\n\nHere's what I found:\n\n🛒 Deals"
+    )
+    assert _strip_leading_narration(reply) == "Here's what I found:\n\n🛒 Deals"
+    # A conversational lead-in before the opener is peeled too.
+    assert _strip_leading_narration("Good — let me pull up the list.\n\n🎯 Hades") == "🎯 Hades"
+    # A genuine intro is NOT narration and stays.
+    intro = "Based on your library, your taste is clear.\n\n🎯 Pick: Hades"
+    assert _strip_leading_narration(intro) == intro
+    # "Let me recommend…" is the answer, not gathering — never stripped.
+    rec = "Let me recommend Hades — a fast roguelike.\n\nAlternatives: Dead Cells"
+    assert _strip_leading_narration(rec) == rec
+    # An all-narration reply is left intact (never stripped to empty).
+    solo = "Let me check your platforms."
+    assert _strip_leading_narration(solo) == solo
+
+
+def test_clean_reply_strips_rule_then_narration() -> None:
+    raw = "---\nI now have enough. Let me compile the picks.\n\n🎮 Tonight's Pick"
+    assert _clean_reply(raw) == "🎮 Tonight's Pick"
 
 
 def test_card_html_wraps_message() -> None:

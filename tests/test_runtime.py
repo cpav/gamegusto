@@ -12,7 +12,13 @@ from typing import Any
 
 from agent.enricher import Enricher
 from agent.library_service import LibraryService
-from agent.runtime import _ITERATION_LIMIT_MESSAGE, AgentReply, AgentRuntime
+from agent.runtime import (
+    _ITERATION_LIMIT_MESSAGE,
+    _MAX_TOOL_ITERATIONS,
+    _MAX_WRAPUP_ROUNDS,
+    AgentReply,
+    AgentRuntime,
+)
 from agent.tools import ToolRegistry
 from services.bedrock_service import ConverseResult, ToolUse
 from services.memory_service import MemoryService
@@ -173,11 +179,32 @@ def test_iteration_cap_returns_fallback() -> None:
     reply = runtime.send("loop please")
 
     assert reply.message == _ITERATION_LIMIT_MESSAGE
-    assert len(reply.tool_calls) == 8  # _MAX_TOOL_ITERATIONS rounds
-    # The forced wrap-up call must STILL carry tool specs: once the history holds
+    # Main cap rounds plus the bounded closing rounds, since the wrap-up now dispatches
+    # tools too (so the model can finish e.g. a save before answering).
+    assert len(reply.tool_calls) == _MAX_TOOL_ITERATIONS + _MAX_WRAPUP_ROUNDS
+    # Every wrap-up call must STILL carry tool specs: once the history holds
     # toolUse/toolResult blocks, Converse rejects a request with no toolConfig
     # ("toolConfig field must be defined"). Regression guard for that engine crash.
     assert bedrock.tool_args[-1], "wrap-up call dropped tools -> Converse ValidationException"
+
+
+def test_wrap_up_completes_pending_save_then_answers() -> None:
+    """On cap-hit, if the model responds to the wrap-up by saving (a tool call) plus
+    narrating, the closing round dispatches the save and the NEXT round's text is the
+    real answer — the 'let me save…' narration is never mistaken for the reply."""
+    ping = _tool_call(ToolUse("t", "get_owned_platforms", {}))
+    save = _tool_call(
+        ToolUse("s", "save_recommendation", {"game_title": "Hades", "reasoning": "fits"}),
+        preface="Now I have everything — let me save this.",
+    )
+    turns = [ping] * _MAX_TOOL_ITERATIONS + [save, _final("🎮 Play Hades — a superb roguelike.")]
+    bedrock = _ScriptedBedrock(turns)
+    runtime, _ = _runtime(bedrock)
+
+    reply = runtime.send("recommend under pressure")
+
+    assert reply.message == "🎮 Play Hades — a superb roguelike."
+    assert "let me save" not in reply.message.lower()
 
 
 def test_reset_clears_history() -> None:

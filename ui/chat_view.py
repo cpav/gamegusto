@@ -67,8 +67,15 @@ _TOOL_LABELS = {
 
 
 def _card_html(message: str) -> str:
-    """Wrap an assistant ``message`` (markdown/text) in the retro rec-card bubble."""
-    return f'<div class="rec-card">{message}</div>'
+    """Wrap an assistant ``message`` (markdown) in the retro rec-card bubble.
+
+    The blank lines around ``message`` are load-bearing: Streamlit renders this via
+    markdown, and a raw ``<div>`` opens a CommonMark HTML block that swallows every
+    following line up to the next blank line as literal text — so a reply whose first
+    paragraph held markdown (``**bold**``, ``~~strike~~``, ``- bullets``) showed those
+    characters raw. Separating the div from the content with blank lines makes the WHOLE
+    message parse as markdown, not just the part after its first blank line."""
+    return f'<div class="rec-card">\n\n{message}\n\n</div>'
 
 
 def _user_html(message: str) -> str:
@@ -97,6 +104,72 @@ def _strip_leading_rule(text: str) -> str:
     while lines and (not lines[0].strip() or re.fullmatch(r"\s*([-*_])(?:\s*\1){2,}\s*", lines[0])):
         lines.pop(0)
     return "\n".join(lines)
+
+
+#: Conversational lead-ins peeled before testing an opener ("Good — let me pull up…").
+_NARRATION_LEAD_INS = ("okay", "ok", "alright", "great", "good", "perfect", "excellent")
+
+#: Openers that mark a leading paragraph as process/tool narration ("let me now
+#: cross-reference…", "I now have enough…") rather than the recommendation itself.
+#: Deliberately tied to gathering verbs — never "let me recommend/suggest/tell" — so a
+#: real answer is never mistaken for narration and stripped.
+_NARRATION_OPENERS = (
+    "i now have",
+    "i have everything",
+    "i have enough",
+    "i've got everything",
+    "now let me",
+    "let me now",
+    "let me check",
+    "let me search",
+    "let me look",
+    "let me pull",
+    "let me verify",
+    "let me confirm",
+    "let me save",
+    "let me cross",
+    "let me compile",
+    "let me gather",
+    "let me quickly",
+    "let me also",
+    "let me start by",
+    "let me dig",
+    "let me assemble",
+    "let me review",
+    "let me put together",
+)
+
+
+def _is_process_narration(paragraph: str) -> bool:
+    """True if ``paragraph`` opens by narrating the gathering process, not the answer."""
+    head = paragraph.strip().lower()
+    for lead in _NARRATION_LEAD_INS:  # peel one interjection so "Good — let me check…" matches
+        if head.startswith(lead):
+            head = head[len(lead) :].lstrip(" ,.:!—–-").strip()
+            break
+    return head.startswith(_NARRATION_OPENERS)
+
+
+def _strip_leading_narration(text: str) -> str:
+    """Drop leading paragraphs that narrate the *process* instead of the answer.
+
+    On its final turn the model sometimes prefixes the recommendation with a line like
+    "I now have a solid picture — let me cross-reference your library…". That planning
+    belongs in the transient notes, not the kept reply. Only leading paragraphs that
+    *open* with a known gathering phrase are removed, and never the last paragraph, so a
+    genuine intro ("Based on your library, your taste is clear…") and an all-narration
+    reply are both left intact.
+    """
+    paras = re.split(r"\n\s*\n", text)
+    i = 0
+    while i < len(paras) - 1 and _is_process_narration(paras[i]):
+        i += 1
+    return "\n\n".join(paras[i:]) if i else text
+
+
+def _clean_reply(text: str) -> str:
+    """Trim a reply's leading process-narration and any stray leading horizontal rule."""
+    return _strip_leading_rule(_strip_leading_narration(_strip_leading_rule(text)))
 
 
 def render_chat_view() -> None:
@@ -261,7 +334,7 @@ def _stream_turn(prompt: str) -> str:
         return ""
 
     # Persist only the final answer; fall back to the notes if there was no final text.
-    message = _strip_leading_rule("\n\n".join(answer) or "\n\n".join(thinking))
+    message = _clean_reply("\n\n".join(answer) or "\n\n".join(thinking))
     if message:
         _typewriter(slot, message)
     else:
