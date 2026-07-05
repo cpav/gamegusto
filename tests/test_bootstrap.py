@@ -50,17 +50,19 @@ def _with_region(region: str | None) -> Config:
 def test_region_resolves_config_then_detected_then_default() -> None:
     # Explicit config region wins over a detected one, and reaches the prompt.
     ctx = build_app(_with_region("France"), detected_region="Sweden")
-    assert "based in France" in ctx.runtime._system  # noqa: SLF001 - wiring under test
+    assert "based in France" in ctx.runtime.system_prompt()
 
     # Detected region is used when config leaves it unset.
     ctx = build_app(_with_region(None), detected_region="Sweden")
-    assert "based in Sweden" in ctx.runtime._system  # noqa: SLF001
+    assert "based in Sweden" in ctx.runtime.system_prompt()
 
     # Falls back to the default when neither is given.
     ctx = build_app(_with_region(None))
-    assert "based in Denmark" in ctx.runtime._system  # noqa: SLF001
+    assert "based in Denmark" in ctx.runtime.system_prompt()
 
 
 def test_system_prompt_includes_today_for_deal_staleness() -> None:
+    # Resolved at call time (not baked at build time), so a session that lives past
+    # midnight still tells the agent the right "today" for deal-freshness checks.
     ctx = build_app(CONFIG)
-    assert date.today().isoformat() in ctx.runtime._system  # noqa: SLF001 - wiring under test
+    assert date.today().isoformat() in ctx.runtime.system_prompt()

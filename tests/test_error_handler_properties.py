@@ -7,6 +7,9 @@ of the finite set of known-safe generic messages.
 
 from __future__ import annotations
 
+import logging
+
+import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
@@ -111,3 +114,18 @@ def test_unknown_services_fall_back_to_generic_message(service: str) -> None:
     result = ErrorHandler.sanitize_error(RuntimeError("Traceback secret"), service)
 
     assert result == ErrorHandler.GENERIC_MESSAGES["unknown"]
+
+
+def test_real_error_is_logged_server_side(caplog: pytest.LogCaptureFixture) -> None:
+    """Sanitized for users, diagnosable for operators: the raw exception (message +
+    traceback) is logged at the sanitize choke point. Without this, every deployed
+    failure is a mystery 'temporarily unavailable'."""
+    try:
+        raise ValueError("ThrottlingException: rate exceeded")
+    except ValueError as exc:
+        with caplog.at_level(logging.ERROR, logger="services.error_handler"):
+            ErrorHandler.sanitize_error(exc, "llm")
+
+    record = next(r for r in caplog.records if "llm service failure" in r.getMessage())
+    assert "ThrottlingException" in record.getMessage()
+    assert record.exc_info is not None  # full traceback captured for the server log

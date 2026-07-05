@@ -190,6 +190,22 @@ def test_unknown_tool_is_reported_not_raised() -> None:
     assert result["ok"] is False and "unknown tool" in result["error"]
 
 
+def test_crashing_handler_is_reported_not_raised() -> None:
+    """An unexpected bug inside a handler surfaces to the model as an error result,
+    never as an exception that would kill the whole agent turn."""
+
+    def _boom(_: dict[str, Any]) -> dict[str, Any]:
+        raise RuntimeError("unexpected bug in a handler")
+
+    reg, _ = _registry()
+    reg._handlers["get_library"] = _boom  # noqa: SLF001 - inject a broken handler
+
+    result = reg.dispatch("get_library", {})
+
+    assert result["ok"] is False
+    assert "get_library" in result["error"]
+
+
 def test_specs_cover_all_handlers() -> None:
     reg, _ = _registry()
     spec_names = {s["toolSpec"]["name"] for s in reg.specs()}

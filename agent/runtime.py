@@ -15,7 +15,7 @@ Memory and Tavily degrade gracefully via the tools they back.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Literal
@@ -186,14 +186,25 @@ class AgentRuntime:
         bedrock: BedrockService,
         tools: ToolRegistry,
         memory: MemoryService,
-        system_prompt: str = SYSTEM_PROMPT,
+        system_prompt: str | Callable[[], str] = SYSTEM_PROMPT,
     ) -> None:
-        """Build the runtime around the model, the tool registry, and memory."""
+        """Build the runtime around the model, the tool registry, and memory.
+
+        ``system_prompt`` may be a plain string or a zero-arg callable returning one.
+        A callable is resolved fresh at the start of every turn — the prompt embeds
+        "today's date" for deal-freshness checks, and a Streamlit session (which caches
+        this runtime) can live past midnight, so baking the date in at build time
+        would quietly go stale.
+        """
         self._bedrock = bedrock
         self._tools = tools
         self._memory = memory
         self._system = system_prompt
         self._messages: list[dict[str, Any]] = []
+
+    def system_prompt(self) -> str:
+        """Return the current system prompt (resolving a callable prompt source)."""
+        return self._system() if callable(self._system) else self._system
 
     def reset(self) -> None:
         """Clear the conversation history to start a fresh session."""
@@ -228,10 +239,24 @@ class AgentRuntime:
         The prompt steers the model to write its full answer only in that final turn.
         Raises ``BedrockServiceError`` (sanitized) if the model fails.
         """
+        checkpoint = len(self._messages)
         self._messages.append({"role": "user", "content": [{"text": user_text}]})
+        try:
+            yield from self._turn()
+        except BaseException:
+            # A failed (or abandoned mid-run) turn must not leave partial state in the
+            # history — an orphaned user message or a toolUse without its toolResult
+            # makes Converse reject the NEXT call ("roles must alternate" / "toolConfig
+            # must be defined"), so one transient failure would brick every subsequent
+            # turn. Roll back to the pre-turn state; a retry then starts clean.
+            del self._messages[checkpoint:]
+            raise
 
+    def _turn(self) -> Iterator[AgentEvent]:
+        """Run one turn's tool loop over the already-appended user message."""
+        system = self.system_prompt()  # resolved once per turn (keeps the date fresh)
         for _ in range(_MAX_TOOL_ITERATIONS):
-            result = self._bedrock.converse_tools(self._messages, self._tools.specs(), self._system)
+            result = self._bedrock.converse_tools(self._messages, self._tools.specs(), system)
             final = result.stop_reason != "tool_use" or not result.tool_uses
             if result.text.strip():
                 yield AgentEvent(kind="text" if final else "thinking", text=result.text.strip())
@@ -253,7 +278,7 @@ class AgentRuntime:
         # rather than mistaking its "let me save…" narration for the final recommendation.
         self._messages[-1]["content"].append({"text": _WRAP_UP_NUDGE})
         for _ in range(_MAX_WRAPUP_ROUNDS):
-            result = self._bedrock.converse_tools(self._messages, self._tools.specs(), self._system)
+            result = self._bedrock.converse_tools(self._messages, self._tools.specs(), system)
             final = result.stop_reason != "tool_use" or not result.tool_uses
             if result.assistant_content:
                 self._messages.append({"role": "assistant", "content": result.assistant_content})

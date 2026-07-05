@@ -10,6 +10,8 @@ from __future__ import annotations
 import copy
 from typing import Any
 
+import pytest
+
 from agent.enricher import Enricher
 from agent.library_service import LibraryService
 from agent.runtime import (
@@ -20,7 +22,7 @@ from agent.runtime import (
     AgentRuntime,
 )
 from agent.tools import ToolRegistry
-from services.bedrock_service import ConverseResult, ToolUse
+from services.bedrock_service import BedrockServiceError, ConverseResult, ToolUse
 from services.memory_service import MemoryService
 from services.sources.manual_source import ManualSource
 from services.tavily_service import TavilyService
@@ -29,24 +31,33 @@ USER_ID = "runtime-user"
 
 
 class _ScriptedBedrock:
-    """Returns preset ConverseResults in order; records the history it receives."""
+    """Returns preset ConverseResults in order; records the history it receives.
 
-    def __init__(self, turns: list[ConverseResult], loop_last: bool = False) -> None:
+    An entry may also be an ``Exception`` instance, which is raised instead of
+    returned (to script transient model failures).
+    """
+
+    def __init__(self, turns: list[Any], loop_last: bool = False) -> None:
         self._turns = list(turns)
         self._loop_last = loop_last
         self.calls: list[list[dict[str, Any]]] = []
         self.tool_args: list[list[dict[str, Any]]] = []
+        self.systems: list[str] = []
 
     def converse_tools(
         self, messages: list[dict[str, Any]], tools: list[dict[str, Any]], system: str
     ) -> ConverseResult:
         self.calls.append(copy.deepcopy(messages))
         self.tool_args.append(tools)
+        self.systems.append(system)
         if not self._turns:
             raise AssertionError("script exhausted")
         turn = self._turns[0]
         if not (self._loop_last and len(self._turns) == 1):
             self._turns.pop(0)
+        if isinstance(turn, Exception):
+            raise turn
+        assert isinstance(turn, ConverseResult)
         return turn
 
 
@@ -205,6 +216,65 @@ def test_wrap_up_completes_pending_save_then_answers() -> None:
 
     assert reply.message == "🎮 Play Hades — a superb roguelike."
     assert "let me save" not in reply.message.lower()
+
+
+def test_failed_turn_rolls_back_history_so_next_turn_works() -> None:
+    """A transient model failure must not leave an orphaned user message behind:
+    Converse rejects two consecutive user messages, so without rollback one failure
+    would brick every subsequent turn of the conversation."""
+    bedrock = _ScriptedBedrock([BedrockServiceError("model down"), _final("Play Hades!")])
+    runtime, _ = _runtime(bedrock)
+
+    with pytest.raises(BedrockServiceError):
+        runtime.send("first try")
+    reply = runtime.send("second try")
+
+    assert reply.message == "Play Hades!"
+    # The failed turn left no trace: the successful call saw exactly one user message.
+    assert len(bedrock.calls[-1]) == 1
+    assert bedrock.calls[-1][0]["content"][0]["text"] == "second try"
+
+
+def test_failure_mid_tool_round_rolls_back_dangling_tool_use() -> None:
+    """A failure AFTER a tool round must roll back the toolUse/toolResult messages too
+    (a dangling toolUse without toolConfig also fails Converse validation)."""
+    add = ToolUse("t1", "add_platform", {"name": "Switch"})
+    bedrock = _ScriptedBedrock(
+        [_tool_call(add), BedrockServiceError("model down"), _final("All good now.")]
+    )
+    runtime, _ = _runtime(bedrock)
+
+    with pytest.raises(BedrockServiceError):
+        runtime.send("first try")
+    reply = runtime.send("second try")
+
+    assert reply.message == "All good now."
+    history = bedrock.calls[-1]
+    assert len(history) == 1  # no leftover assistant/toolResult messages
+    assert "toolUse" not in str(history)
+
+
+def test_callable_system_prompt_is_resolved_fresh_each_turn() -> None:
+    """A callable system prompt is re-evaluated per turn (keeps the embedded date
+    fresh in a long-lived session)."""
+    stamps = iter(["day one", "day two"])
+    bedrock = _ScriptedBedrock([_final("one"), _final("two")])
+    tavily = TavilyService(api_key="x", client=_NoopTavilyClient())
+    memory = MemoryService(_InMemoryClient())
+    enricher = Enricher(bedrock, tavily)  # type: ignore[arg-type]
+    library = LibraryService([ManualSource(memory, USER_ID)], enricher, memory)
+    tools = ToolRegistry(memory, library, tavily, enricher, USER_ID)
+    runtime = AgentRuntime(
+        bedrock,  # type: ignore[arg-type]
+        tools,
+        memory,
+        system_prompt=lambda: next(stamps),
+    )
+
+    runtime.send("hi")
+    runtime.send("again")
+
+    assert bedrock.systems == ["day one", "day two"]
 
 
 def test_reset_clears_history() -> None:
