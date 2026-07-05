@@ -33,6 +33,13 @@ _ITERATION_LIMIT_MESSAGE = (
     "give me a bit more to go on?"
 )
 
+#: Sent once the tool-round cap is hit, to force a final answer (no more tools) rather
+#: than leaving the turn as half-gathered working notes.
+_WRAP_UP_NUDGE = (
+    "You've gathered enough — stop using tools and give the user your complete "
+    "recommendation now, in your normal format."
+)
+
 SYSTEM_PROMPT = """\
 You are GameGusto, a friendly expert that recommends the single best video game \
 for the user to play next. You converse naturally — there is no fixed script.
@@ -92,7 +99,8 @@ in their library) and up to THREE alternatives with brief reasons.
 only transiently (a passing status line) and then discarded — so keep those working \
 notes to a short phrase, and do NOT put your recommendation or any answer content \
 there. Write your COMPLETE reply only in your FINAL message, once you have everything; \
-never split the answer across earlier tool-calling turns.
+never split the answer across earlier tool-calling turns. Don't open that reply with \
+a horizontal rule (---) or divider.
 - Follow-ups: within this conversation, remember what you've already suggested. \
 On "I already played it" / "something else" / "shorter", exclude the prior pick \
 and offer the next best WITHOUT re-asking everything you already know.
@@ -236,6 +244,17 @@ class AgentRuntime:
                     }
                 )
             self._messages.append({"role": "user", "content": tool_results})
+
+        # Cap reached without a final answer — force one text-only turn (no tools) so
+        # the model gives its recommendation now, instead of leaving the turn as a pile
+        # of half-gathered working notes. The nudge is folded into the last (user)
+        # toolResult message rather than appended as a second user turn in a row, which
+        # Converse rejects (messages must alternate user/assistant).
+        self._messages[-1]["content"].append({"text": _WRAP_UP_NUDGE})
+        result = self._bedrock.converse_tools(self._messages, [], self._system)
+        if result.assistant_content:
+            self._messages.append({"role": "assistant", "content": result.assistant_content})
+        yield AgentEvent(kind="text", text=result.text.strip() or _ITERATION_LIMIT_MESSAGE)
 
     def _reply(self, message: str, called: list[str]) -> AgentReply:
         """Wrap ``message`` in an :class:`AgentReply`, reflecting memory health."""

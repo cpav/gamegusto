@@ -114,14 +114,16 @@ class BedrockService:
         ``toolSpec`` list; ``system`` is the system prompt. Raises
         ``BedrockServiceError`` (sanitized) on transport failure.
         """
+        kwargs: dict[str, Any] = {
+            "modelId": self._model_id,
+            "system": [{"text": system}],
+            "messages": messages,
+            "inferenceConfig": {"maxTokens": self._reasoning_budget + _ANSWER_TOKEN_HEADROOM},
+        }
+        if tools:  # Converse rejects an empty toolConfig; omit it to force a text-only turn
+            kwargs["toolConfig"] = {"tools": tools}
         try:
-            response = self._client.converse(
-                modelId=self._model_id,
-                system=[{"text": system}],
-                messages=messages,
-                toolConfig={"tools": tools},
-                inferenceConfig={"maxTokens": self._reasoning_budget + _ANSWER_TOKEN_HEADROOM},
-            )
+            response = self._client.converse(**kwargs)
         except Exception as exc:
             raise BedrockServiceError(ErrorHandler.sanitize_error(exc, "llm")) from exc
         return self._parse_tool_turn(response)
