@@ -2,14 +2,14 @@
 # Run `pre-commit install` once to enable on commit.
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.8.3
+    rev: v0.15.20
     hooks:
       - id: ruff-format
       - id: ruff
         args: ["--fix"]
 
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.13.0
+    rev: v2.1.0
     hooks:
       - id: mypy
         args: ["--config-file", "pyproject.toml"]
@@ -18,4 +18,4 @@ repos:
         # info (py.typed); without it the UI's st.* returns degrade to Any and
         # mypy flags no-any-return where the local run is clean.
         additional_dependencies:
-          ["hypothesis==6.122.3", "pytest==8.3.4", "streamlit==1.40.1"]
+          ["hypothesis==6.156.1", "pytest==9.1.1", "streamlit==1.58.0"]

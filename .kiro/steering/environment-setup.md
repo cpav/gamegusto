@@ -8,20 +8,20 @@ Before writing or running any code, ensure the development environment is provis
 
 ## First-time setup (run once per machine)
 
-1. Use a Python virtual environment at the repo root. Never install into the system interpreter.
+1. Use a Python virtual environment at the repo root, on **Python 3.13** (the version the
+   deployment runs; 3.11 is the minimum — see `requires-python`). Never install into the
+   system interpreter; macOS's bundled `/usr/bin/python3` is an EOL 3.9 and must not be used.
+   `uv` manages the interpreter and venv on this machine:
    ```bash
-   python3 -m venv .venv
+   uv venv --python 3.13 .venv
    source .venv/bin/activate   # macOS/Linux (zsh)
    ```
-2. Upgrade packaging tools inside the venv:
+2. Install runtime and dev dependencies:
    ```bash
-   python -m pip install --upgrade pip
+   uv pip install -r requirements.txt -r requirements-dev.txt
    ```
-3. Install runtime and dev dependencies:
-   ```bash
-   pip install -r requirements.txt
-   pip install -r requirements-dev.txt
-   ```
+   (`pip install` works identically in a non-uv venv. On Intel macOS, add
+   `--only-binary cryptography` — the newest cryptography no longer ships x86_64 wheels.)
 4. Install the pre-commit hooks (see git-workflow steering):
    ```bash
    pre-commit install

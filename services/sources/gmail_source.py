@@ -17,9 +17,10 @@ from __future__ import annotations
 
 import base64
 import re
+from collections.abc import Callable
 from datetime import date
 from email.utils import parsedate_to_datetime
-from typing import Any, Callable
+from typing import Any
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials

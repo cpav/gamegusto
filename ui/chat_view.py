@@ -241,7 +241,7 @@ def _render_chips() -> None:
     """Render one-tap follow-up chips; a click queues that text as the next turn."""
     chips = list(_CHIP_PROMPTS)
     cols = st.columns(len(chips))
-    for col, chip in zip(cols, chips):
+    for col, chip in zip(cols, chips, strict=True):
         if col.button(chip, key=f"chip_{chip}", use_container_width=True):
             st.session_state["_pending_prompt"] = _CHIP_PROMPTS[chip]
             st.rerun()
@@ -292,7 +292,7 @@ def _render_starters() -> None:
     for row in range(0, len(starters), 2):
         pair = starters[row : row + 2]
         cols = st.columns(len(pair))
-        for col, label in zip(cols, pair):
+        for col, label in zip(cols, pair, strict=True):
             if col.button(label, key=f"starter_{label}", use_container_width=True):
                 st.session_state["_pending_prompt"] = _STARTER_PROMPTS[label]
                 st.rerun()

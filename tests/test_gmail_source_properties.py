@@ -24,7 +24,8 @@ from __future__ import annotations
 import base64
 import dataclasses
 import string
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st

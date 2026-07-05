@@ -19,8 +19,10 @@ for the full requirements/design.
 
 ## Run locally
 
+Requires Python 3.11+ (the deployment runs 3.13 — see `runtime.txt`):
+
 ```bash
-python3 -m venv .venv && source .venv/bin/activate
+python3.13 -m venv .venv && source .venv/bin/activate   # or: uv venv --python 3.13 .venv
 pip install -r requirements.txt -r requirements-dev.txt
 cp .env.example .env   # fill in the values
 ```

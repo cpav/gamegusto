@@ -29,6 +29,13 @@ html, body, [class*="css"], [class*="st-"], .stApp, .stMarkdown,
 p, div, span, label, li, input, textarea, select, button {
     font-family: 'VT323', monospace !important;
 }
+/* Streamlit renders its icons as Material Symbols ligature text (e.g. the sidebar
+   toggle is the literal string "keyboard_double_arrow_right" in an icon font);
+   the global font override above must not catch those spans or the ligature
+   breaks into raw text. */
+[data-testid="stIconMaterial"] {
+    font-family: 'Material Symbols Rounded' !important;
+}
 html, body { font-size: 18px; }
 /* Press Start 2P is reserved for short hero text (marquee title, buttons). It is
    too coarse for headings at phone sizes, so headings use VT323 (see below). */
