@@ -93,18 +93,53 @@ def test_converse_tools_drops_unrepresentable_thinking_block() -> None:
     assert result.assistant_content == [{"text": "Play Hades."}]  # unknown block dropped
 
 
-def test_converse_tools_sends_system_and_tool_config() -> None:
+_CACHE_POINT = {"cachePoint": {"type": "default"}}
+
+
+def test_converse_tools_sends_system_tool_config_and_cache_points() -> None:
     response = {
         "stopReason": "end_turn",
         "output": {"message": {"content": [{"text": "ok"}]}},
     }
     svc = _service(response)
     client = svc._client
-    svc.converse_tools([{"role": "user", "content": [{"text": "hi"}]}], [{"toolSpec": {}}], "sys")
-    assert client.last_kwargs["system"] == [{"text": "sys"}]
+    history = [{"role": "user", "content": [{"text": "hi"}]}]
+    svc.converse_tools(history, [{"toolSpec": {}}], "sys")
+    # Static cache point after the system prompt; moving one at the end of the
+    # last message — so each tool round re-reads the previous round's prefix.
+    assert client.last_kwargs["system"] == [{"text": "sys"}, _CACHE_POINT]
+    assert client.last_kwargs["messages"][-1]["content"] == [{"text": "hi"}, _CACHE_POINT]
     assert client.last_kwargs["toolConfig"] == {"tools": [{"toolSpec": {}}]}
     # The tool loop runs without extended thinking (no reasoningContent to echo back).
     assert "additionalModelRequestFields" not in client.last_kwargs
+    # The caller's history is NEVER mutated: cache points are request-time only.
+    assert history == [{"role": "user", "content": [{"text": "hi"}]}]
+
+
+def test_converse_tools_degrades_when_cache_points_are_rejected() -> None:
+    """A model/region without prompt caching flips the service to uncached calls
+    for the rest of the process instead of failing the turn."""
+
+    class _RejectsCacheOnce:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
+
+        def converse(self, **kwargs: Any) -> dict[str, Any]:
+            self.calls.append(kwargs)
+            if any("cachePoint" in block for block in kwargs["system"]):
+                raise RuntimeError("ValidationException: cachePoint is not supported")
+            return {"stopReason": "end_turn", "output": {"message": {"content": [{"text": "ok"}]}}}
+
+    client = _RejectsCacheOnce()
+    svc = BedrockService(CONFIG, client=client)
+
+    first = svc.converse_tools([{"role": "user", "content": [{"text": "hi"}]}], [], "sys")
+    assert first.text == "ok"
+    assert len(client.calls) == 2  # cached attempt, then the uncached retry
+
+    svc.converse_tools([{"role": "user", "content": [{"text": "again"}]}], [], "sys")
+    assert len(client.calls) == 3  # no cached attempt the second time
+    assert client.calls[-1]["system"] == [{"text": "sys"}]
 
 
 def test_converse_tools_sanitizes_transport_error() -> None:

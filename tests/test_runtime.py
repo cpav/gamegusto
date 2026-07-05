@@ -141,12 +141,12 @@ def test_tool_round_trip_executes_tool_and_returns_answer() -> None:
 
 
 def test_tool_turn_text_is_thinking_not_persisted() -> None:
-    """Text written in a tool-calling turn is transient 'thinking'; only the final
-    turn's text is persisted as the answer (the prompt steers the model to write its
-    full reply in that final turn)."""
-    save = ToolUse("s1", "save_recommendation", {"game_title": "Hades", "reasoning": "fits"})
+    """Text written in a research tool-calling turn is transient 'thinking'; only the
+    final turn's text is persisted as the answer (the prompt steers the model to write
+    its full reply in that final turn)."""
+    lookup = ToolUse("t1", "get_library", {})
     bedrock = _ScriptedBedrock(
-        [_tool_call(save, "Let me note that."), _final("I recommend Hades — a fast roguelike.")]
+        [_tool_call(lookup, "Let me note that."), _final("I recommend Hades — a fast roguelike.")]
     )
     runtime, _ = _runtime(bedrock)
 
@@ -156,11 +156,37 @@ def test_tool_turn_text_is_thinking_not_persisted() -> None:
     assert "Let me note that" not in reply.message  # the tool-turn note is not kept
 
 
+def test_save_turn_text_is_the_answer() -> None:
+    """The model often presents the recommendation and calls save_recommendation in
+    ONE turn. That (substantial) text is the answer — it must be kept, with the final
+    turn's short follow-up appended, not discarded as thinking (which kept only the
+    follow-up). Short save narration is covered by the wrap-up test below."""
+    presented = (
+        "🎯 Play Hades — a superb roguelike.\n\n"
+        "It matches your love of fast, skill-based action: every run is short enough "
+        "for a weeknight, the combat is razor sharp, and the story actually rewards "
+        "dying. Reception is stellar (93 on Metacritic), it's on the Switch you own, "
+        "and it isn't in your library.\n\nAlternatives: Dead Cells, Rogue Legacy 2."
+    )
+    save = ToolUse("s1", "save_recommendation", {"game_title": "Hades", "reasoning": "fits"})
+    bedrock = _ScriptedBedrock(
+        [
+            _tool_call(save, presented),
+            _final("A demo is also available if you want to try first!"),
+        ]
+    )
+    runtime, _ = _runtime(bedrock)
+
+    reply = runtime.send("recommend a roguelike")
+
+    assert reply.message == (presented + "\n\nA demo is also available if you want to try first!")
+
+
 def test_falls_back_to_thinking_when_final_turn_is_silent() -> None:
     """If the final turn produces no text, the working notes are used so the reply is
     never empty (safety net for a model that answered mid-loop)."""
-    save = ToolUse("s1", "save_recommendation", {"game_title": "Hades", "reasoning": "fits"})
-    bedrock = _ScriptedBedrock([_tool_call(save, "I recommend Hades."), _final("")])
+    lookup = ToolUse("t1", "get_library", {})
+    bedrock = _ScriptedBedrock([_tool_call(lookup, "I recommend Hades."), _final("")])
     runtime, _ = _runtime(bedrock)
 
     reply = runtime.send("recommend a roguelike")
@@ -275,6 +301,50 @@ def test_callable_system_prompt_is_resolved_fresh_each_turn() -> None:
     runtime.send("again")
 
     assert bedrock.systems == ["day one", "day two"]
+
+
+def test_history_is_windowed_at_turn_boundaries() -> None:
+    """Long sessions drop the oldest whole turns: each Bedrock round re-sends the
+    entire history, so an unbounded session grows cost quadratically."""
+    from agent.runtime import _MAX_HISTORY_TURNS
+
+    turns = _MAX_HISTORY_TURNS + 2
+    bedrock = _ScriptedBedrock([_final(f"reply {n}") for n in range(turns)])
+    runtime, _ = _runtime(bedrock)
+
+    for n in range(turns):
+        runtime.send(f"turn {n}")
+
+    last_history = bedrock.calls[-1]
+    first_texts = [m["content"][0]["text"] for m in last_history if m["role"] == "user"]
+    # The last request holds exactly the window: the newest turn plus the
+    # (_MAX_HISTORY_TURNS - 1) before it; "turn 0" and "turn 1" fell off.
+    assert first_texts == [f"turn {n}" for n in range(2, turns)]
+    assert len(first_texts) == _MAX_HISTORY_TURNS
+
+
+def test_windowing_never_splits_tool_pairs() -> None:
+    """The window cut lands on a turn boundary even when old turns contain
+    toolUse/toolResult pairs (splitting one would fail Converse validation)."""
+    from agent.runtime import _MAX_HISTORY_TURNS
+
+    add = ToolUse("t1", "add_platform", {"name": "Switch"})
+    script: list[Any] = []
+    for _ in range(_MAX_HISTORY_TURNS + 1):
+        script.extend([_tool_call(add), _final("done")])
+    bedrock = _ScriptedBedrock(script)
+    runtime, _ = _runtime(bedrock)
+
+    for n in range(_MAX_HISTORY_TURNS + 1):
+        runtime.send(f"turn {n}")
+
+    last_history = bedrock.calls[-1]
+    assert last_history[0]["role"] == "user"
+    assert "toolResult" not in str(last_history[0])  # window opens on a plain user turn
+    # Every toolUse in the window still has its toolResult in the next message.
+    for index, message in enumerate(last_history):
+        if message["role"] == "assistant" and "toolUse" in str(message):
+            assert "toolResult" in str(last_history[index + 1])
 
 
 def test_reset_clears_history() -> None:
