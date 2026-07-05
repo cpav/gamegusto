@@ -237,20 +237,19 @@ def _stream_turn(prompt: str) -> str:
     slot.markdown('<div class="gg-thinking">🕹️ thinking…</div>', unsafe_allow_html=True)
     answer: list[str] = []
     thinking: list[str] = []
+    note = ""  # the model's latest working note, kept visible while it acts on it
     try:
         for event in runtime.stream(prompt):
-            if event.kind == "tool":
-                slot.markdown(
-                    f'<div class="gg-thinking">{_tool_label(event.tool)}…</div>',
-                    unsafe_allow_html=True,
-                )
-            elif event.kind == "thinking":
-                # Working notes: flash them transiently (one line), then discard.
+            if event.kind == "thinking":
+                # Show the model's actual working note (its words), not a generic label.
+                note = _one_line(event.text)
                 thinking.append(event.text)
-                slot.markdown(
-                    f'<div class="gg-thinking">💭 {_one_line(event.text)}</div>',
-                    unsafe_allow_html=True,
-                )
+                slot.markdown(f'<div class="gg-thinking">💭 {note}</div>', unsafe_allow_html=True)
+            elif event.kind == "tool":
+                # Keep the latest note as the headline (it says what the model is doing);
+                # only fall back to the tool label if it called a tool without narrating.
+                line = f"💭 {note}" if note else f"{_tool_label(event.tool)}…"
+                slot.markdown(f'<div class="gg-thinking">{line}</div>', unsafe_allow_html=True)
             elif event.text:  # final answer — this is what we keep
                 answer.append(event.text)
     except BedrockServiceError as exc:
