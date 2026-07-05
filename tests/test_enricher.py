@@ -121,9 +121,7 @@ def test_model_failure_degrades_gracefully() -> None:
 
 def test_partial_classification_fills_only_known_fields() -> None:
     record = GameRecord(title="Mystery", source="manual")
-    partial = (
-        '{"genre": "Adventure", "estimated_playtime_minutes": null, ' '"community_review": null}'
-    )
+    partial = '{"genre": "Adventure", "estimated_playtime_minutes": null, "community_review": null}'
     result = _enricher(_FakeBedrock(partial)).enrich(record)
 
     assert result.genre == "Adventure"
