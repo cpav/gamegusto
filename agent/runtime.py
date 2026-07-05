@@ -37,7 +37,8 @@ _ITERATION_LIMIT_MESSAGE = (
 #: than leaving the turn as half-gathered working notes.
 _WRAP_UP_NUDGE = (
     "You've gathered enough — stop using tools and give the user your complete "
-    "recommendation now, in your normal format."
+    "recommendation now, in your usual rich format: a short title line with an emoji, "
+    "the pick with clear reasoning, and a few alternatives."
 )
 
 SYSTEM_PROMPT = """\
