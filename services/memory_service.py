@@ -52,6 +52,10 @@ class MemoryClient(Protocol):
         """Return up to ``limit`` most-recent events for ``key``, newest first."""
         ...
 
+    def clear_events(self, user_id: str, key: str) -> None:
+        """Delete all events stored under ``key`` for ``user_id``."""
+        ...
+
 
 class MemoryService:
     """Stores Game_Records, the Platform_List, and sessions in DynamoDB."""
@@ -181,6 +185,21 @@ class MemoryService:
         except Exception as exc:
             self._mark_unavailable(exc)
             return []
+
+    def clear_recent_recommendations(self, user_id: str) -> bool:
+        """Wipe the recommendation history so past picks become suggestible again.
+
+        Deliberately leaves the 👍/👎 feedback untouched: recency avoidance and
+        taste verdicts are separate signals, and a "loved"/"not for me" stays true
+        even when the pick itself is fair game to recommend again.
+        """
+        try:
+            self._client.clear_events(user_id, self.SESSIONS_KEY)
+            self._mark_available()
+            return True
+        except Exception as exc:
+            self._mark_unavailable(exc)
+            return False
 
     # --- conversation transcript (survives a page refresh) ---
 

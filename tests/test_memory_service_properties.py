@@ -54,6 +54,9 @@ class FakeMemoryClient:
         events = self._events.get((user_id, key), [])
         return copy.deepcopy(events[:limit])
 
+    def clear_events(self, user_id: str, key: str) -> None:
+        self._events.pop((user_id, key), None)
+
 
 # --- Hypothesis strategies ---
 
@@ -301,3 +304,24 @@ def test_feedback_set_get_and_clear() -> None:
     assert service.set_feedback(USER_ID, "HADES", None) is True
     assert "hades" not in service.get_feedback(USER_ID)
     assert "celeste" in service.get_feedback(USER_ID)
+
+
+def test_clear_recent_recommendations_frees_picks_but_keeps_feedback() -> None:
+    """Clearing the picks history empties the recency list (so titles become
+    suggestible again) while 👍/👎 verdicts survive — taste is not recency."""
+    service = MemoryService(FakeMemoryClient())
+    session = SessionData(
+        user_id=USER_ID,
+        mood="chill",
+        time_budget_minutes=30,
+        recommendation=Recommendation(game_title="Hades", reasoning="fits"),
+        alternatives=[],
+    )
+    service.store_session(USER_ID, session)
+    service.set_feedback(USER_ID, "Hades", "loved")
+    assert [r.game_title for r in service.get_recent_recommendations(USER_ID)] == ["Hades"]
+
+    assert service.clear_recent_recommendations(USER_ID) is True
+
+    assert service.get_recent_recommendations(USER_ID) == []
+    assert service.get_feedback(USER_ID)["hades"]["verdict"] == "loved"

@@ -46,6 +46,9 @@ class _InMemoryClient:
     def list_events(self, user_id: str, key: str, limit: int) -> list[dict[str, Any]]:
         return []
 
+    def clear_events(self, user_id: str, key: str) -> None:
+        pass  # this stub stores no events (append_event is a no-op)
+
 
 class _NoopTavilyClient:
     def search(self, query: str, **kwargs: Any) -> dict[str, Any]:

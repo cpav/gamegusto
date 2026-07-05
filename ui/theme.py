@@ -183,13 +183,27 @@ input:focus-visible, textarea:focus-visible, select:focus-visible,
 .stChatInputContainer, [data-testid="stChatInput"] {
     border-top: 2px solid var(--arcade-neon-pink); }
 /* Arcade-style chat input: a neon-framed box that glows cyan on focus, matching the
-   bumper buttons instead of looking like a default dark field. */
-[data-testid="stChatInput"] textarea {
-    border: 2px solid rgba(255,46,151,0.6) !important; border-radius: 10px !important;
-    box-shadow: 0 0 10px rgba(255,46,151,0.22) !important; }
-[data-testid="stChatInput"]:focus-within textarea {
-    border-color: var(--arcade-neon-cyan) !important;
-    box-shadow: 0 0 14px rgba(45,226,230,0.5) !important; }
+   bumper buttons instead of looking like a default dark field. Streamlit >= 1.58
+   stacks the textarea and the send button as two ROWS inside the widget; laying the
+   inner wrapper out as a row puts them side by side again, and the neon frame moves
+   from the textarea to that wrapper so it encloses input + button as one pill. */
+[data-testid="stChatInput"] > div > div {
+    flex-direction: row !important; align-items: center !important; gap: 0.4rem;
+    border: 2px solid rgba(255,46,151,0.6); border-radius: 10px;
+    box-shadow: 0 0 10px rgba(255,46,151,0.22); padding: 0.15rem 0.3rem;
+}
+[data-testid="stChatInput"] > div > div > div:first-child { flex: 1 1 auto; }
+[data-testid="stChatInput"] > div > div > div:last-child { flex: 0 0 auto; width: auto !important; }
+[data-testid="stChatInput"]:focus-within > div > div {
+    border-color: var(--arcade-neon-cyan);
+    box-shadow: 0 0 14px rgba(45,226,230,0.5);
+}
+/* No inner frames competing with the pill: the textarea and its baseweb wrappers
+   sit borderless inside it. */
+[data-testid="stChatInput"] textarea,
+[data-testid="stChatInput"] [data-baseweb="textarea"],
+[data-testid="stChatInput"] [data-baseweb="base-input"] {
+    border: none !important; box-shadow: none !important; background: transparent !important; }
 /* Opaque purple under the pinned input. It must span the FULL viewport width
    (the outer stBottom), not just the centered block — otherwise the gutters show
    through as black boxes at the bottom corners. */
