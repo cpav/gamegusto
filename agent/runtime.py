@@ -246,13 +246,17 @@ class AgentRuntime:
                 )
             self._messages.append({"role": "user", "content": tool_results})
 
-        # Cap reached without a final answer — force one text-only turn (no tools) so
-        # the model gives its recommendation now, instead of leaving the turn as a pile
-        # of half-gathered working notes. The nudge is folded into the last (user)
-        # toolResult message rather than appended as a second user turn in a row, which
-        # Converse rejects (messages must alternate user/assistant).
+        # Cap reached without a final answer — nudge the model to answer now instead of
+        # leaving the turn as a pile of half-gathered working notes. The nudge is folded
+        # into the last (user) toolResult message rather than appended as a second user
+        # turn in a row, which Converse rejects (messages must alternate user/assistant).
+        # Tools STAY in the request: once the history holds toolUse/toolResult blocks,
+        # Converse requires toolConfig, so a bare (toolless) call fails validation with
+        # "toolConfig field must be defined". The nudge — not the absence of tools — is
+        # what steers it to a final text answer; if it still only calls a tool (which we
+        # don't dispatch), result.text is empty and we fall back to the limit message.
         self._messages[-1]["content"].append({"text": _WRAP_UP_NUDGE})
-        result = self._bedrock.converse_tools(self._messages, [], self._system)
+        result = self._bedrock.converse_tools(self._messages, self._tools.specs(), self._system)
         if result.assistant_content:
             self._messages.append({"role": "assistant", "content": result.assistant_content})
         yield AgentEvent(kind="text", text=result.text.strip() or _ITERATION_LIMIT_MESSAGE)

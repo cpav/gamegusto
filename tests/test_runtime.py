@@ -29,11 +29,13 @@ class _ScriptedBedrock:
         self._turns = list(turns)
         self._loop_last = loop_last
         self.calls: list[list[dict[str, Any]]] = []
+        self.tool_args: list[list[dict[str, Any]]] = []
 
     def converse_tools(
         self, messages: list[dict[str, Any]], tools: list[dict[str, Any]], system: str
     ) -> ConverseResult:
         self.calls.append(copy.deepcopy(messages))
+        self.tool_args.append(tools)
         if not self._turns:
             raise AssertionError("script exhausted")
         turn = self._turns[0]
@@ -172,6 +174,10 @@ def test_iteration_cap_returns_fallback() -> None:
 
     assert reply.message == _ITERATION_LIMIT_MESSAGE
     assert len(reply.tool_calls) == 8  # _MAX_TOOL_ITERATIONS rounds
+    # The forced wrap-up call must STILL carry tool specs: once the history holds
+    # toolUse/toolResult blocks, Converse rejects a request with no toolConfig
+    # ("toolConfig field must be defined"). Regression guard for that engine crash.
+    assert bedrock.tool_args[-1], "wrap-up call dropped tools -> Converse ValidationException"
 
 
 def test_reset_clears_history() -> None:
