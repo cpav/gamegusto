@@ -88,6 +88,11 @@ against today; and if you can't confirm even a nearby-region live price, say so 
 - Recommend ONE primary new game with clear reasoning (why it fits mood, time, \
 taste, and platform, plus a note on community reception and that it's not already \
 in their library) and up to THREE alternatives with brief reasons.
+- Turn structure: everything you write BEFORE your final message is shown to the user \
+only transiently (a passing status line) and then discarded — so keep those working \
+notes to a short phrase, and do NOT put your recommendation or any answer content \
+there. Write your COMPLETE reply only in your FINAL message, once you have everything; \
+never split the answer across earlier tool-calling turns.
 - Follow-ups: within this conversation, remember what you've already suggested. \
 On "I already played it" / "something else" / "shorter", exclude the prior pick \
 and offer the next best WITHOUT re-asking everything you already know.
@@ -142,12 +147,14 @@ class AgentReply:
 class AgentEvent:
     """One streamed step of a turn (see :meth:`AgentRuntime.stream`).
 
-    ``kind == "text"`` carries a chunk of the model's reply in ``text`` (append it
-    to the assistant message); ``kind == "tool"`` names a tool the model is about
-    to run in ``tool`` (show it transiently, e.g. "🔧 searching the web…").
+    ``kind == "text"`` carries the model's FINAL answer in ``text`` (persist it);
+    ``kind == "thinking"`` carries working notes from an intermediate tool-calling
+    turn in ``text`` (show transiently, then discard — don't persist); ``kind ==
+    "tool"`` names a tool the model is about to run in ``tool`` (show it transiently,
+    e.g. "🔧 searching the web…").
     """
 
-    kind: Literal["text", "tool"]
+    kind: Literal["text", "tool", "thinking"]
     text: str = ""
     tool: str = ""
 
@@ -179,35 +186,40 @@ class AgentRuntime:
         Raises ``BedrockServiceError`` (sanitized) if the model is unavailable —
         the LLM is a hard dependency with no canned fallback.
         """
-        texts: list[str] = []
+        answer: list[str] = []
+        thinking: list[str] = []
         called: list[str] = []
         for event in self.stream(user_text):
             if event.kind == "text":
-                texts.append(event.text)
+                answer.append(event.text)
+            elif event.kind == "thinking":
+                thinking.append(event.text)
             else:
                 called.append(event.tool)
-        return self._reply("\n\n".join(texts), called)
+        # The final answer is what we keep; fall back to the working notes only if the
+        # model produced no final message.
+        return self._reply("\n\n".join(answer) or "\n\n".join(thinking), called)
 
     def stream(self, user_text: str) -> Iterator[AgentEvent]:
-        """Run the tool loop, yielding text chunks and tool-call events as they occur.
+        """Run the tool loop, yielding thinking/answer text and tool-call events.
 
-        Lets a UI render the model's narration progressively and show tool use
-        transiently, while the persisted reply is the concatenation of the text
-        events. Text is yielded from every turn (not just the last): the model
-        often writes its recommendation in the same turn it calls a tool and ends
-        with only a closing line, so the substantive answer would otherwise be
-        dropped. Raises ``BedrockServiceError`` (sanitized) if the model fails.
+        Text from an intermediate turn (one that still calls tools) is the model's
+        working notes and is yielded as ``kind="thinking"`` (shown transiently, not
+        persisted); text from the FINAL turn is the answer, yielded as ``kind="text"``.
+        The prompt steers the model to write its full answer only in that final turn.
+        Raises ``BedrockServiceError`` (sanitized) if the model fails.
         """
         self._messages.append({"role": "user", "content": [{"text": user_text}]})
 
         for _ in range(_MAX_TOOL_ITERATIONS):
             result = self._bedrock.converse_tools(self._messages, self._tools.specs(), self._system)
+            final = result.stop_reason != "tool_use" or not result.tool_uses
             if result.text.strip():
-                yield AgentEvent(kind="text", text=result.text.strip())
+                yield AgentEvent(kind="text" if final else "thinking", text=result.text.strip())
             if result.assistant_content:
                 self._messages.append({"role": "assistant", "content": result.assistant_content})
 
-            if result.stop_reason != "tool_use" or not result.tool_uses:
+            if final:
                 return
 
             tool_results: list[dict[str, Any]] = []
