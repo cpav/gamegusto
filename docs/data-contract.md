@@ -1,6 +1,6 @@
 # GameGusto Data Contract
 
-**Contract version:** `2.0.0`
+**Contract version:** `3.0.0` (v3: `estimated_playtime` minutes -> `estimated_playtime_hours` hours; legacy values convert on read)
 **Status:** Locked
 **Last updated:** 2026-06-14
 **Owns:** `models/game_record.py` (`GameRecord`, `CommunityReview`)
@@ -119,7 +119,7 @@ Tavily returns a search envelope. We do **not** keyword-parse it directly;
 instead `agent.enricher.Enricher` feeds the `answer` + `results[].content`
 snippets to the Bedrock model, which (using its own knowledge of the title plus
 the snippets) returns a structured JSON classification — `genre`,
-`estimated_playtime_minutes` (main-story completion time), `platform_availability`,
+`estimated_playtime_hours` (main-story completion time), `platform_availability`,
 and `community_review {score, summary}`. This reliably classifies titles that
 keyword matching mislabels (e.g. Metal Slug as a run-and-gun shooter, not
 "Puzzle"). The Tavily fields below are the raw inputs to that step:
@@ -127,7 +127,7 @@ keyword matching mislabels (e.g. Metal Slug as a run-and-gun shooter, not
 | Exposed field | Type (raw) | Description | Decision | Mapped to contract | Rationale |
 |---|---|---|---|---|---|
 | `query` | string | Echo of the search query | **Exclude** | — | Diagnostic only. |
-| `answer` | string | LLM-synthesized answer | **Include (to LLM)** | feeds the model's `genre`, `estimated_playtime`, `community_review` classification | Primary snippet fed to the enrichment model. |
+| `answer` | string | LLM-synthesized answer | **Include (to LLM)** | feeds the model's `genre`, `estimated_playtime_hours`, `community_review` classification | Primary snippet fed to the enrichment model. |
 | `results[].title` | string | Result page title | **Include (parsed)** | autocomplete suggestions; cross-check | Used for manual-entry autocomplete (Req 3.4) and to corroborate the game title. |
 | `results[].url` | string | Source URL | **Exclude** | — | Provenance only; not a contract field. |
 | `results[].content` | string | Snippet text | **Include (parsed)** | `community_review.sentiment_summary`, `platform_availability` | Mined for platform availability and review sentiment. |
@@ -135,7 +135,7 @@ keyword matching mislabels (e.g. Metal Slug as a run-and-gun shooter, not
 | `images` | list | Optional images | **Exclude** | — | Presentation-only. |
 | `response_time` | float | API latency | **Exclude** | — | Diagnostic only. |
 | — (LLM) genre | — | Model-classified from snippets + own knowledge | **Include** | `genre` | Req 5.1. |
-| — (LLM) estimated playtime | — | Model-estimated main-story completion, in minutes | **Include** | `estimated_playtime` (int, minutes) | Req 5.1. Completion time, not a session length — the agent reasons about session fit. |
+| — (LLM) estimated playtime | — | Model-estimated main-story completion, in hours | **Include** | `estimated_playtime_hours` (number, hours) | Req 5.1. Completion time, not a session length — the agent reasons about session fit. |
 | — (LLM) platform availability | — | Model-listed platforms | **Include** | `platform_availability` | Req 5.3 — drives the family-aware playable filter. |
 | — (LLM) review score | — | Model-normalized 0.0–10.0 | **Include** | `community_review.score` | Req 7.2 ranking. |
 | — (derived) review source count | — | Count of snippets fed to the model | **Include** | `community_review.source_count` | Confidence signal. |
@@ -195,7 +195,7 @@ exploration task; all sources and consumers conform to it from this point on.
 | `source` | `Literal["gmail","manual","enrichment"]` | no | `"manual"` | — | Provenance; the only permitted values (Req 2.2). |
 | `purchase_date` | `date \| None` | no | `None` | gmail | Set for Gmail imports (Req 3.3); `None` otherwise. |
 | `genre` | `str \| None` | no | `None` | enrichment | Tavily (Req 5.1). |
-| `estimated_playtime` | `int \| None` | no | `None` | enrichment | Minutes; Tavily (Req 5.1). Normalized to minutes to compare against the Time_Budget. |
+| `estimated_playtime_hours` | `float \| None` | no | `None` | enrichment | HOURS (e.g. `12.5`); Tavily (Req 5.1). Contract v2 stored minutes as `estimated_playtime`; the store converts legacy values on read (minutes/60, 1 decimal). |
 | `community_review` | `CommunityReview \| None` | no | `None` | enrichment | Tavily (Req 5.1, 7.2). |
 | `platform_availability` | `list[str]` | no | `[]` | enrichment | Platforms the game is available on (Req 5.3); drives the playable filter. |
 | `external_ids` | `dict[str, str]` | no | `{}` | — | Reserved/optional. Currently **unused** (formerly held the Xbox `titleId`); retained for future source-specific IDs. Defaults to `{}`. |
@@ -226,7 +226,7 @@ Which source can populate which field (✓ = populates, — = leaves at default)
 | `source` | ✓ | ✓ | ✓ |
 | `purchase_date` | ✓ | optional | — |
 | `genre` | — | optional | ✓ |
-| `estimated_playtime` | — | optional | ✓ |
+| `estimated_playtime_hours` | — | optional | ✓ |
 | `community_review` | — | — | ✓ |
 | `platform_availability` | — | — | ✓ |
 | `external_ids` | — | — | — |

@@ -15,7 +15,7 @@ from models.game_record import GameRecord
 from services.bedrock_service import BedrockServiceError
 
 _GOOD_JSON = (
-    '{"genre": "Run-and-gun shooter", "estimated_playtime_minutes": 240, '
+    '{"genre": "Run-and-gun shooter", "estimated_playtime_hours": 4, '
     '"platform_availability": ["Nintendo Switch", "PlayStation 4"], '
     '"community_review": {"score": 8.7, "summary": "A frenetic arcade classic."}}'
 )
@@ -59,7 +59,7 @@ def test_successful_enrichment_populates_fields() -> None:
     enriched = _enricher(_FakeBedrock(_GOOD_JSON)).enrich(record)
 
     assert enriched.genre == "Run-and-gun shooter"
-    assert enriched.estimated_playtime == 240
+    assert enriched.estimated_playtime_hours == 4.0
     assert enriched.platform_availability == ["Nintendo Switch", "PlayStation 4"]
     assert enriched.community_review is not None
     assert enriched.community_review.score == 8.7
@@ -69,7 +69,7 @@ def test_successful_enrichment_populates_fields() -> None:
 def test_review_uses_model_aggregate_source_count_when_present() -> None:
     """The aggregated review prefers the model's own source_count (outlets averaged)."""
     reply = (
-        '{"genre": "Action RPG", "estimated_playtime_minutes": 3000, '
+        '{"genre": "Action RPG", "estimated_playtime_hours": 50, '
         '"platform_availability": ["PC"], '
         '"community_review": {"score": 9.1, "summary": "Acclaimed.", "source_count": 27}}'
     )
@@ -121,10 +121,10 @@ def test_model_failure_degrades_gracefully() -> None:
 
 def test_partial_classification_fills_only_known_fields() -> None:
     record = GameRecord(title="Mystery", source="manual")
-    partial = '{"genre": "Adventure", "estimated_playtime_minutes": null, "community_review": null}'
+    partial = '{"genre": "Adventure", "estimated_playtime_hours": null, "community_review": null}'
     result = _enricher(_FakeBedrock(partial)).enrich(record)
 
     assert result.genre == "Adventure"
-    assert result.estimated_playtime is None
+    assert result.estimated_playtime_hours is None
     assert result.platform_availability == []
     assert result.community_review is None

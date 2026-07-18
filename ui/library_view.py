@@ -130,7 +130,9 @@ def _render_library(memory: object, user_id: str) -> None:
             part
             for part in (
                 record.genre,
-                f"~{record.estimated_playtime} min" if record.estimated_playtime else "",
+                f"~{record.estimated_playtime_hours:g} h"
+                if record.estimated_playtime_hours
+                else "",
                 f"⭐{review.score:.1f}/10 ({review.source_count} sources)" if review else "",
                 ", ".join(record.platforms),
             )

@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Literal
 
-CONTRACT_VERSION = "2.0.0"
+CONTRACT_VERSION = "3.0.0"
 
 Source = Literal["gmail", "manual", "enrichment"]
 
@@ -52,14 +52,17 @@ class CommunityReview:
 
 @dataclass
 class GameRecord:
-    """A single owned game, normalized across all sources (data contract v1.0.0)."""
+    """A single owned game, normalized across all sources (data contract v3.0.0)."""
 
     title: str
     platforms: list[str] = field(default_factory=list)
     source: Source = "manual"
     purchase_date: date | None = None
     genre: str | None = None
-    estimated_playtime: int | None = None
+    estimated_playtime_hours: float | None = None
+    """Approximate main-story completion time in HOURS (e.g. 12.5). Was minutes
+    under contract v2 (``estimated_playtime``); the store converts legacy values
+    on read. Hours are the unit people actually think in for game lengths."""
     community_review: CommunityReview | None = None
     platform_availability: list[str] = field(default_factory=list)
     external_ids: dict[str, str] = field(default_factory=dict)

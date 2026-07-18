@@ -76,7 +76,9 @@ _game_records = st.builds(
     source=st.sampled_from(["gmail", "manual", "enrichment"]),
     purchase_date=st.one_of(st.none(), st.dates()),
     genre=st.one_of(st.none(), _text),
-    estimated_playtime=st.one_of(st.none(), st.integers(min_value=0, max_value=100_000)),
+    estimated_playtime_hours=st.one_of(
+        st.none(), st.floats(min_value=0.1, max_value=2000, allow_nan=False)
+    ),
     community_review=st.one_of(st.none(), _community_reviews),
     platform_availability=st.lists(_nonempty_text, max_size=3),
     external_ids=st.dictionaries(_nonempty_text, _text, max_size=3),
@@ -107,7 +109,7 @@ _CONTRACT_FIELDS = frozenset(
         "source",
         "purchase_date",
         "genre",
-        "estimated_playtime",
+        "estimated_playtime_hours",
         "community_review",
         "platform_availability",
         "external_ids",
@@ -325,3 +327,41 @@ def test_clear_recent_recommendations_frees_picks_but_keeps_feedback() -> None:
 
     assert service.get_recent_recommendations(USER_ID) == []
     assert service.get_feedback(USER_ID)["hades"]["verdict"] == "loved"
+
+
+def test_legacy_minutes_records_convert_to_hours_on_read() -> None:
+    """Contract v2 stored playtime as MINUTES under ``estimated_playtime``; v3 reads
+    it back in HOURS (minutes/60, one decimal, floored at 0.1h) and rewrites the new
+    shape on the next store — a live table migrates without a manual step."""
+    client = FakeMemoryClient()
+    client.put_value(
+        USER_ID,
+        MemoryService.RECORDS_KEY,
+        {
+            "records": [
+                {"title": "Hades", "platforms": ["Switch"], "estimated_playtime": 2400},
+                {"title": "Celeste", "platforms": ["PC"], "estimated_playtime": 90},
+                {"title": "Tiny", "platforms": [], "estimated_playtime": 1},
+                {"title": "Unknown", "platforms": []},
+            ]
+        },
+    )
+    service = MemoryService(client)
+
+    by_title = {r.title: r for r in service.get_records(USER_ID)}
+    assert by_title["Hades"].estimated_playtime_hours == 40.0
+    assert by_title["Celeste"].estimated_playtime_hours == 1.5
+    assert by_title["Tiny"].estimated_playtime_hours == 0.1  # never rounds to zero
+    assert by_title["Unknown"].estimated_playtime_hours is None
+
+    # Storing what was read persists the v3 shape (legacy key gone, hours kept).
+    service.store_records(USER_ID, list(by_title.values()))
+    stored = client.get_value(USER_ID, MemoryService.RECORDS_KEY)
+    assert stored is not None
+    assert all("estimated_playtime" not in item for item in stored["records"])
+    assert {item["title"]: item["estimated_playtime_hours"] for item in stored["records"]} == {
+        "Hades": 40.0,
+        "Celeste": 1.5,
+        "Tiny": 0.1,
+        "Unknown": None,
+    }

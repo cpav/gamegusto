@@ -138,7 +138,7 @@ class ToolRegistry:
             needle = genre.strip().casefold()
             records = [r for r in records if r.genre and needle in r.genre.casefold()]
         if has_playtime is True:
-            records = [r for r in records if r.estimated_playtime is not None]
+            records = [r for r in records if r.estimated_playtime_hours is not None]
         return {"games": [_record_to_dict(r) for r in records]}
 
     def _add_manual_game(self, tool_input: dict[str, Any]) -> dict[str, Any]:
@@ -151,7 +151,7 @@ class ToolRegistry:
             platforms=[platform],
             source="manual",
             genre=_opt_str(tool_input.get("genre")),
-            estimated_playtime=_opt_int(tool_input.get("estimated_playtime")),
+            estimated_playtime_hours=_opt_hours(tool_input.get("estimated_playtime_hours")),
         )
         ok = self._memory.upsert_record(self._user_id, record)
         return {"ok": ok, "title": title}
@@ -165,8 +165,8 @@ class ToolRegistry:
         record = _find(records, title)
         if record is None:
             return {"ok": False, "error": f"no game titled {title!r} in the library"}
-        if "estimated_playtime" in tool_input:
-            record.estimated_playtime = _opt_int(tool_input.get("estimated_playtime"))
+        if "estimated_playtime_hours" in tool_input:
+            record.estimated_playtime_hours = _opt_hours(tool_input.get("estimated_playtime_hours"))
         if "genre" in tool_input:
             record.genre = _opt_str(tool_input.get("genre"))
         ok = self._memory.store_records(self._user_id, records)
@@ -270,7 +270,7 @@ def _record_to_dict(record: GameRecord) -> dict[str, Any]:
         "platforms": list(record.platforms),
         "source": record.source,
         "genre": record.genre,
-        "estimated_playtime": record.estimated_playtime,
+        "estimated_playtime_hours": record.estimated_playtime_hours,
         "platform_availability": list(record.platform_availability),
         "community_review": review.as_dict() if review is not None else None,
     }
@@ -282,6 +282,17 @@ def _opt_str(value: Any) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _opt_hours(value: Any) -> float | None:
+    """Coerce ``value`` to a positive hours figure (one decimal), or ``None``."""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        hours = round(float(value), 1)
+    except (TypeError, ValueError):
+        return None
+    return hours if hours > 0 else None
 
 
 def _opt_int(value: Any) -> int | None:
@@ -327,17 +338,23 @@ _TOOL_SPECS: list[dict[str, Any]] = [
         {
             "title": {"type": "string"},
             "platform": {"type": "string"},
-            "estimated_playtime": {"type": "integer", "description": "Minutes, optional."},
+            "estimated_playtime_hours": {
+                "type": "number",
+                "description": "Main-story completion time in hours, e.g. 12.5. Optional.",
+            },
             "genre": {"type": "string"},
         },
         ["title", "platform"],
     ),
     _spec(
         "set_game_fields",
-        "Update fields on an existing owned game (e.g. fill in estimated_playtime or genre).",
+        "Update fields on an existing owned game (e.g. fill in estimated_playtime_hours or genre).",
         {
             "title": {"type": "string"},
-            "estimated_playtime": {"type": "integer", "description": "Minutes."},
+            "estimated_playtime_hours": {
+                "type": "number",
+                "description": "Main-story completion time in hours, e.g. 12.5.",
+            },
             "genre": {"type": "string"},
         },
         ["title"],

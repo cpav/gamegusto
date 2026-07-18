@@ -324,13 +324,30 @@ class MemoryService:
             "source": record.source,
             "purchase_date": record.purchase_date.isoformat() if record.purchase_date else None,
             "genre": record.genre,
-            "estimated_playtime": record.estimated_playtime,
+            "estimated_playtime_hours": record.estimated_playtime_hours,
             "community_review": record.community_review.as_dict()
             if record.community_review
             else None,
             "platform_availability": list(record.platform_availability),
             "external_ids": dict(record.external_ids),
         }
+
+    @staticmethod
+    def _playtime_hours_from(data: dict[str, Any]) -> float | None:
+        """Read the playtime in hours, converting a legacy v2 minutes value.
+
+        Contract v2 stored ``estimated_playtime`` in MINUTES; v3 stores
+        ``estimated_playtime_hours``. Legacy records convert on read (minutes/60,
+        one decimal, floored at 0.1h so a known playtime never rounds to zero)
+        and are rewritten in the new shape on their next store.
+        """
+        hours = data.get("estimated_playtime_hours")
+        if hours is not None:
+            return float(hours)
+        minutes = data.get("estimated_playtime")
+        if minutes is None:
+            return None
+        return max(round(float(minutes) / 60, 1), 0.1)
 
     @staticmethod
     def _record_from_dict(data: dict[str, Any]) -> GameRecord:
@@ -342,7 +359,7 @@ class MemoryService:
             source=data.get("source", "manual"),
             purchase_date=date.fromisoformat(raw_date) if raw_date else None,
             genre=data.get("genre"),
-            estimated_playtime=data.get("estimated_playtime"),
+            estimated_playtime_hours=MemoryService._playtime_hours_from(data),
             community_review=CommunityReview.from_dict(data.get("community_review")),
             platform_availability=list(data.get("platform_availability", [])),
             external_ids=dict(data.get("external_ids", {})),
