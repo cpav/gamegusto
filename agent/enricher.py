@@ -77,8 +77,8 @@ class Enricher:
             "with exactly this shape:\n"
             '{"genre": "<concise primary genre, e.g. \'Run-and-gun shooter\', '
             "'Action RPG', 'Cozy simulation'>\", "
-            '"estimated_playtime_minutes": <integer approximate main-story '
-            "completion time in minutes, or null>, "
+            '"estimated_playtime_hours": <approximate main-story completion time '
+            "in hours as a number, e.g. 12.5, or null>, "
             '"platform_availability": ["<platforms it is available on>"], '
             '"community_review": {"score": <number 0-10>, "summary": "<one sentence>", '
             '"source_count": <integer>} or null}\n'
@@ -100,11 +100,11 @@ class Enricher:
         if record.genre is None and isinstance(genre, str) and genre.strip():
             record.genre = genre.strip()
 
-        playtime = data.get("estimated_playtime_minutes")
-        if record.estimated_playtime is None and isinstance(playtime, (int, float)):
-            minutes = int(playtime)
-            if minutes > 0:
-                record.estimated_playtime = minutes
+        playtime = data.get("estimated_playtime_hours")
+        if record.estimated_playtime_hours is None and isinstance(playtime, (int, float)):
+            hours = round(float(playtime), 1)
+            if hours > 0:
+                record.estimated_playtime_hours = hours
 
         platforms = data.get("platform_availability")
         if not record.platform_availability and isinstance(platforms, list):

@@ -134,7 +134,7 @@ def test_memory_service_records_round_trip_over_dynamodb() -> None:
         source="manual",
         purchase_date=date(2025, 6, 10),
         genre="Roguelike",
-        estimated_playtime=40,
+        estimated_playtime_hours=0.7,
         community_review=CommunityReview(9.3, "Beloved.", 42),
         platform_availability=["Nintendo Switch", "PC"],
     )

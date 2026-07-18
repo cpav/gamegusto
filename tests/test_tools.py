@@ -22,7 +22,7 @@ USER_ID = "tools-user"
 
 # What the fake model returns when the enricher asks it to classify a title.
 _ENRICH_JSON = (
-    '{"genre": "Run-and-gun shooter", "estimated_playtime_minutes": 120, '
+    '{"genre": "Run-and-gun shooter", "estimated_playtime_hours": 2, '
     '"platform_availability": ["Nintendo Switch", "PlayStation 4"], '
     '"community_review": {"score": 8.5, "summary": "Frenetic and acclaimed."}}'
 )
@@ -106,7 +106,12 @@ def test_add_manual_game_and_library_filters() -> None:
     reg, _ = _registry()
     reg.dispatch(
         "add_manual_game",
-        {"title": "Hades", "platform": "Switch", "genre": "Roguelike", "estimated_playtime": 40},
+        {
+            "title": "Hades",
+            "platform": "Switch",
+            "genre": "Roguelike",
+            "estimated_playtime_hours": 40,
+        },
     )
     reg.dispatch("add_manual_game", {"title": "Celeste", "platform": "PC"})
 
@@ -128,12 +133,12 @@ def test_set_game_fields_fills_playtime() -> None:
     reg, _ = _registry()
     reg.dispatch("add_manual_game", {"title": "Tunic", "platform": "PC"})
 
-    missing = reg.dispatch("set_game_fields", {"title": "Nope", "estimated_playtime": 10})
+    missing = reg.dispatch("set_game_fields", {"title": "Nope", "estimated_playtime_hours": 10})
     assert missing["ok"] is False
 
-    ok = reg.dispatch("set_game_fields", {"title": "tunic", "estimated_playtime": 600})
+    ok = reg.dispatch("set_game_fields", {"title": "tunic", "estimated_playtime_hours": 10.5})
     assert ok["ok"] is True
-    assert ok["game"]["estimated_playtime"] == 600
+    assert ok["game"]["estimated_playtime_hours"] == 10.5
 
 
 def test_enrich_and_web_search() -> None:

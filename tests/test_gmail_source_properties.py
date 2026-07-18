@@ -56,7 +56,7 @@ CONTRACT_FIELDS = {
     "source",
     "purchase_date",
     "genre",
-    "estimated_playtime",
+    "estimated_playtime_hours",
     "community_review",
     "platform_availability",
     "external_ids",
@@ -358,7 +358,7 @@ def test_parsed_record_retains_only_contract_fields(
     # Only the legitimately parsed title is retained; raw content is dropped.
     assert record.title == title
     assert record.genre is None
-    assert record.estimated_playtime is None
+    assert record.estimated_playtime_hours is None
     assert record.community_review is None
     assert record.platform_availability == []
     assert record.external_ids == {}
