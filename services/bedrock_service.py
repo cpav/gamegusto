@@ -77,13 +77,16 @@ class ConverseResult:
 
     ``assistant_content`` is the raw Converse content-block list, returned so the
     runtime can append the assistant message back onto the history verbatim
-    before sending tool results.
+    before sending tool results. ``usage`` carries the response's token counters
+    (inputTokens / outputTokens / cacheReadInputTokens / cacheWriteInputTokens)
+    so callers can account for what each round actually cost.
     """
 
     stop_reason: str
     text: str
     tool_uses: list[ToolUse] = field(default_factory=list)
     assistant_content: list[dict[str, Any]] = field(default_factory=list)
+    usage: dict[str, int] = field(default_factory=dict)
 
 
 class BedrockService:
@@ -219,11 +222,24 @@ class BedrockService:
                 )
                 assistant_content.append({"toolUse": use})
 
+        raw_usage = response.get("usage", {})
+        usage = {k: v for k, v in raw_usage.items() if isinstance(v, int)}
+        if usage:
+            # One line per round, server-side: makes cost regressions visible in the
+            # app logs instead of only on the monthly bill.
+            logger.info(
+                "converse usage: in=%s out=%s cache_read=%s cache_write=%s",
+                usage.get("inputTokens", 0),
+                usage.get("outputTokens", 0),
+                usage.get("cacheReadInputTokens", 0),
+                usage.get("cacheWriteInputTokens", 0),
+            )
         return ConverseResult(
             stop_reason=stop_reason,
             text="".join(text_parts),
             tool_uses=tool_uses,
             assistant_content=assistant_content,
+            usage=usage,
         )
 
     @staticmethod
