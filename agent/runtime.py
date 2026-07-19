@@ -15,6 +15,7 @@ Memory and Tavily degrade gracefully via the tools they back.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import date
@@ -32,6 +33,18 @@ _MAX_TOOL_ITERATIONS = 8
 #: unbounded session grows cost quadratically; older turns are dropped whole — never
 #: splitting a toolUse from its toolResult — so the window is always Converse-valid.
 _MAX_HISTORY_TURNS = 8
+
+#: A completed turn's tool result larger than this (JSON chars) is replaced by
+#: ``_ELIDED_NOTE`` at the next turn's start (see ``_compact_history``). Small
+#: results (a platform list, a save confirmation) are kept as cheap context.
+_ELIDE_THRESHOLD_CHARS = 600
+
+#: What a stale, bulky tool result is replaced with. Tells the model the data was
+#: removed — not empty — so it re-fetches instead of concluding e.g. "no results".
+_ELIDED_NOTE = (
+    "[stale tool output from an earlier turn was removed to save context; "
+    "call the tool again if you need this data]"
+)
 
 #: Extra "closing" rounds allowed after the cap, so the model can finish a cheap pending
 #: action (e.g. save_recommendation) and THEN write its answer, instead of stopping at a
@@ -229,6 +242,10 @@ class AgentRuntime:
         self._memory = memory
         self._system = system_prompt
         self._messages: list[dict[str, Any]] = []
+        #: Converse ``usage`` counters summed over the LAST turn's rounds (keys like
+        #: inputTokens / outputTokens / cacheReadInputTokens / cacheWriteInputTokens).
+        #: The UI reads this after a turn to show what the turn actually cost.
+        self.last_turn_usage: dict[str, int] = {}
 
     def system_prompt(self) -> str:
         """Return the current system prompt (resolving a callable prompt source)."""
@@ -296,9 +313,11 @@ class AgentRuntime:
         The prompt steers the model to write its full answer only in that final turn.
         Raises ``BedrockServiceError`` (sanitized) if the model fails.
         """
+        self._compact_history()
         self._trim_history()
         checkpoint = len(self._messages)
         self._messages.append({"role": "user", "content": [{"text": user_text}]})
+        self.last_turn_usage = {}
         try:
             yield from self._turn()
         except BaseException:
@@ -309,6 +328,30 @@ class AgentRuntime:
             # turn. Roll back to the pre-turn state; a retry then starts clean.
             del self._messages[checkpoint:]
             raise
+
+    def _compact_history(self) -> None:
+        """Shrink completed turns' bulky tool results down to a stub.
+
+        Raw tool payloads (a library dump is ~5K tokens, a deep web search up to
+        ~5K) stay in the history and are RE-SENT on every round of every later
+        turn — measured on a real session, ~90% of a ~100K-token request was stale
+        tool output whose conclusions were already in the assistant's answers. The
+        toolResult *blocks* must remain (Converse pairs them with the preceding
+        toolUse ids), so only their content is replaced. Run at turn start, when
+        the prior turn is complete and the 5-minute prompt cache has typically
+        expired anyway — so the rewrite costs nothing extra in cache churn. Small
+        results are kept: eliding them saves little and context is context.
+        """
+        for message in self._messages:
+            if message["role"] != "user":
+                continue
+            for block in message["content"]:
+                result = block.get("toolResult")
+                if not result:
+                    continue
+                content = result.get("content")
+                if content and len(json.dumps(content)) > _ELIDE_THRESHOLD_CHARS:
+                    result["content"] = [{"text": _ELIDED_NOTE}]
 
     def _trim_history(self) -> None:
         """Drop the oldest whole turns so at most ``_MAX_HISTORY_TURNS`` (including
@@ -325,11 +368,18 @@ class AgentRuntime:
         if excess > 0:
             del self._messages[: starts[excess]]
 
+    def _add_usage(self, result: Any) -> None:
+        """Fold one round's Converse ``usage`` counters into the turn total."""
+        for key, value in getattr(result, "usage", {}).items():
+            if isinstance(value, int):
+                self.last_turn_usage[key] = self.last_turn_usage.get(key, 0) + value
+
     def _turn(self) -> Iterator[AgentEvent]:
         """Run one turn's tool loop over the already-appended user message."""
         system = self.system_prompt()  # resolved once per turn (keeps the date fresh)
         for _ in range(_MAX_TOOL_ITERATIONS):
             result = self._bedrock.converse_tools(self._messages, self._tools.specs(), system)
+            self._add_usage(result)
             final = result.stop_reason != "tool_use" or not result.tool_uses
             if result.text.strip():
                 keep = final or _presents_answer(result)
@@ -353,6 +403,7 @@ class AgentRuntime:
         self._messages[-1]["content"].append({"text": _WRAP_UP_NUDGE})
         for _ in range(_MAX_WRAPUP_ROUNDS):
             result = self._bedrock.converse_tools(self._messages, self._tools.specs(), system)
+            self._add_usage(result)
             final = result.stop_reason != "tool_use" or not result.tool_uses
             if result.assistant_content:
                 self._messages.append({"role": "assistant", "content": result.assistant_content})

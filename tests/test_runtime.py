@@ -429,3 +429,67 @@ def test_seed_transcript_repairs_shape_and_never_overwrites() -> None:
     )
     # Still the live conversation, not the re-seed.
     assert runtime._messages[0]["content"][0]["text"] == "hi\n\nare you there?"  # noqa: SLF001
+
+
+def test_completed_turns_tool_results_are_compacted_next_turn() -> None:
+    """Bulky tool results from finished turns shrink to a stub at the next turn's
+    start (they dominated request size: ~90% of a real 100K-token payload), while
+    the toolResult blocks themselves survive for Converse toolUse pairing."""
+    from agent.runtime import _ELIDED_NOTE
+
+    lookup = ToolUse("t1", "get_library", {})
+    bedrock = _ScriptedBedrock(
+        [_tool_call(lookup), _final("Pick: Hades."), _final("Sure, alternatives are…")]
+    )
+    runtime, _ = _runtime(bedrock)
+    big_payload = {"games": ["x" * 3000]}
+    runtime._tools._handlers["get_library"] = lambda _: big_payload  # noqa: SLF001
+
+    runtime.send("recommend something")
+    runtime.send("what else?")
+
+    final_history = bedrock.calls[-1]
+    tool_result_msgs = [m for m in final_history if "toolResult" in str(m)]
+    assert len(tool_result_msgs) == 1
+    result_block = tool_result_msgs[0]["content"][0]["toolResult"]
+    assert result_block["toolUseId"] == "t1"  # pairing preserved
+    assert result_block["content"] == [{"text": _ELIDED_NOTE}]
+    assert "xxx" not in str(final_history)  # the 3K payload is gone
+
+
+def test_small_tool_results_are_kept_across_turns() -> None:
+    """Compact results (a platform list, a save ack) stay — eliding them saves
+    nothing meaningful and they are useful context."""
+    add = ToolUse("t1", "add_platform", {"name": "Switch"})
+    bedrock = _ScriptedBedrock([_tool_call(add), _final("Added!"), _final("ok")])
+    runtime, _ = _runtime(bedrock)
+
+    runtime.send("I own a Switch")
+    runtime.send("thanks")
+
+    final_history = bedrock.calls[-1]
+    tool_result = next(m for m in final_history if "toolResult" in str(m))
+    assert "Switch" in str(tool_result)  # original small payload intact
+
+
+def test_turn_usage_is_accumulated_and_reset() -> None:
+    """Converse usage counters sum across a turn's rounds and reset per turn."""
+    lookup = ToolUse("t1", "get_owned_platforms", {})
+    round1 = _tool_call(lookup)
+    round1.usage = {"inputTokens": 100, "outputTokens": 10, "cacheReadInputTokens": 1000}
+    round2 = _final("Here you go.")
+    round2.usage = {"inputTokens": 40, "outputTokens": 200, "cacheReadInputTokens": 2000}
+    turn2 = _final("Again!")
+    turn2.usage = {"inputTokens": 7, "outputTokens": 3}
+    bedrock = _ScriptedBedrock([round1, round2, turn2])
+    runtime, _ = _runtime(bedrock)
+
+    runtime.send("platforms?")
+    assert runtime.last_turn_usage == {
+        "inputTokens": 140,
+        "outputTokens": 210,
+        "cacheReadInputTokens": 3000,
+    }
+
+    runtime.send("again")
+    assert runtime.last_turn_usage == {"inputTokens": 7, "outputTokens": 3}

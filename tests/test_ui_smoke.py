@@ -106,3 +106,19 @@ def test_user_html_escapes_markup() -> None:
     assert "<script>" not in rendered
     assert "&lt;script&gt;" in rendered
     assert rendered.startswith('<div class="user-bubble">')
+
+
+def test_format_turn_cost() -> None:
+    from ui.chat_view import _format_turn_cost
+
+    assert _format_turn_cost({}) is None
+    line = _format_turn_cost(
+        {
+            "inputTokens": 1_000,
+            "outputTokens": 2_000,
+            "cacheReadInputTokens": 90_000,
+            "cacheWriteInputTokens": 9_000,
+        }
+    )
+    # 0.003 + 0.03 + 0.027 + 0.03375 = ~$0.09; 100k in, 90% cached, 2k out.
+    assert line == "~$0.09 this turn · 100.0k tokens in (90% cached) · 2.0k out"

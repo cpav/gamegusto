@@ -164,3 +164,26 @@ def test_invoke_conversational_rejects_empty_text() -> None:
     response = {"output": {"message": {"content": [{"text": "   "}]}}}
     with pytest.raises(BedrockServiceError):
         _service(response).invoke_conversational("ping", "s")
+
+
+def test_converse_tools_extracts_usage_counters() -> None:
+    response = {
+        "stopReason": "end_turn",
+        "output": {"message": {"content": [{"text": "ok"}]}},
+        "usage": {
+            "inputTokens": 12,
+            "outputTokens": 34,
+            "totalTokens": 46,
+            "cacheReadInputTokens": 500,
+            "cacheWriteInputTokens": 100,
+            "someFutureField": "ignored",
+        },
+    }
+    result = _service(response).converse_tools([], [], "sys")
+    assert result.usage == {
+        "inputTokens": 12,
+        "outputTokens": 34,
+        "totalTokens": 46,
+        "cacheReadInputTokens": 500,
+        "cacheWriteInputTokens": 100,
+    }

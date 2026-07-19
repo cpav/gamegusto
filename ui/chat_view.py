@@ -177,6 +177,38 @@ def _clean_reply(text: str) -> str:
     return _strip_leading_rule(_strip_leading_narration(_strip_leading_rule(text)))
 
 
+#: Claude Sonnet on Bedrock, $ per 1M tokens (standard cross-region rates): plain
+#: input, generated output, prompt-cache reads (0.1x) and writes (1.25x). Used only
+#: for the advisory per-turn cost caption — the bill is authoritative, not this.
+_PRICE_PER_MTOK = {"input": 3.00, "output": 15.00, "cache_read": 0.30, "cache_write": 3.75}
+
+
+def _format_turn_cost(usage: dict[str, int]) -> str | None:
+    """Render a turn's Converse usage as a short cost caption, or ``None`` if empty.
+
+    Shows the estimated dollar cost, total input volume with its cached share, and
+    output tokens — enough to notice a cost regression the moment it happens.
+    """
+    if not usage:
+        return None
+    inp = usage.get("inputTokens", 0)
+    out = usage.get("outputTokens", 0)
+    cache_read = usage.get("cacheReadInputTokens", 0)
+    cache_write = usage.get("cacheWriteInputTokens", 0)
+    cost = (
+        inp * _PRICE_PER_MTOK["input"]
+        + out * _PRICE_PER_MTOK["output"]
+        + cache_read * _PRICE_PER_MTOK["cache_read"]
+        + cache_write * _PRICE_PER_MTOK["cache_write"]
+    ) / 1_000_000
+    total_in = inp + cache_read + cache_write
+    cached_pct = round(100 * cache_read / total_in) if total_in else 0
+    return (
+        f"~${cost:.2f} this turn · {total_in / 1000:.1f}k tokens in "
+        f"({cached_pct}% cached) · {out / 1000:.1f}k out"
+    )
+
+
 def render_chat_view() -> None:
     """Render the conversation, handle a new turn, follow-up chips, and auto-scroll.
 
@@ -387,6 +419,9 @@ def _stream_turn(prompt: str) -> tuple[str, list[str]]:
             _render_notes(notes)  # reruns render it via _render_message
     else:
         slot.empty()  # no text this turn — don't leave the "thinking…" line behind
+    cost_line = _format_turn_cost(runtime.last_turn_usage)
+    if cost_line:
+        st.caption(cost_line)
     if not get_memory_service().is_available:
         st.caption("⚠️ memory unavailable — personalization is limited this session")
     return message, notes

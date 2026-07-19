@@ -263,17 +263,26 @@ def _record_on_platform(record: GameRecord, platform: str) -> bool:
 
 
 def _record_to_dict(record: GameRecord) -> dict[str, Any]:
-    """Serialize a record for tool output (the shape the model reasons over)."""
-    review = record.community_review
-    return {
-        "title": record.title,
-        "platforms": list(record.platforms),
-        "source": record.source,
-        "genre": record.genre,
-        "estimated_playtime_hours": record.estimated_playtime_hours,
-        "platform_availability": list(record.platform_availability),
-        "community_review": review.as_dict() if review is not None else None,
-    }
+    """Serialize a record for tool output (the shape the model reasons over).
+
+    Kept deliberately compact: null/empty fields are omitted and the review is
+    reduced to its score. A library dump lands in the conversation history and is
+    re-sent on every subsequent model round, so every field here is paid for many
+    times over — the model needs the signal, not the JSON ceremony. (Persistence
+    uses the full contract shape; this is only the tool-output view.)
+    """
+    data: dict[str, Any] = {"title": record.title}
+    if record.platforms:
+        data["platforms"] = list(record.platforms)
+    if record.genre:
+        data["genre"] = record.genre
+    if record.estimated_playtime_hours is not None:
+        data["estimated_playtime_hours"] = record.estimated_playtime_hours
+    if record.platform_availability:
+        data["platform_availability"] = list(record.platform_availability)
+    if record.community_review is not None:
+        data["review_score"] = record.community_review.score
+    return data
 
 
 def _opt_str(value: Any) -> str | None:
