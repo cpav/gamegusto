@@ -119,7 +119,7 @@ def _render_library(memory: object, user_id: str) -> None:
             for r in view
             if needle in r.title.casefold() or (r.genre and needle in r.genre.casefold())
         ]
-    st.caption(f"{len(view)} game(s) · 🕹️ set/change platform · ✨ enrich details · 🗑️ remove")
+    st.caption(f"{len(view)} game(s) · ⋯ opens each game's actions (platform · enrich · remove)")
     suggestions = _platform_suggestions(owned, all_records)
 
     # Mutating a record then persisting the WHOLE list keeps edits that change the
@@ -138,33 +138,13 @@ def _render_library(memory: object, user_id: str) -> None:
             )
             if part
         )
-        info, plat_col, enrich_col, del_col = st.columns([6, 1, 1, 1])
+        info, action_col = st.columns([7, 1])
         info.markdown(
             f'<div class="lib-line">🎮 <b>{html.escape(record.title)}</b> — '
             f"{html.escape(meta) or 'no details yet'}</div>",
             unsafe_allow_html=True,
         )
-        _platform_control(plat_col, memory, user_id, all_records, record, index, suggestions)
-        if not record.is_enriched() and enrich_col.button(
-            "✨",
-            key=f"enrich_{index}",
-            help="Enrich genre, playtime, platforms & reviews",
-            use_container_width=True,
-        ):
-            with st.spinner(f"Enriching {record.title}…"):
-                get_enricher().enrich(record)
-            memory.store_records(user_id, all_records)  # type: ignore[attr-defined]
-            st.rerun()
-        if del_col.button(
-            "🗑️",
-            key=f"delgame_{index}_{record.title}",
-            help="Remove this game from your library (duplicates, mis-adds)",
-            use_container_width=True,
-        ):
-            remaining = [r for r in all_records if r is not record]
-            memory.store_records(user_id, remaining)  # type: ignore[attr-defined]
-            st.toast(f"Removed “{record.title}” from your library")
-            st.rerun()
+        _row_actions(action_col, memory, user_id, all_records, record, index, suggestions)
 
 
 def _platform_suggestions(owned: list[str], records: list) -> list[str]:
@@ -175,7 +155,7 @@ def _platform_suggestions(owned: list[str], records: list) -> list[str]:
     return sorted(names, key=str.casefold)
 
 
-def _platform_control(
+def _row_actions(
     column: object,
     memory: object,
     user_id: str,
@@ -184,15 +164,21 @@ def _platform_control(
     index: int,
     suggestions: list[str],
 ) -> None:
-    """A 🕹️ popover to set or change a record's platform from the existing list.
+    """One ⋯ overflow menu with all of a row's occasional actions.
 
-    Picking from platforms you already use avoids typos; "Other…" allows a new one.
+    List-row best practice: only frequent actions earn an inline button; the rest
+    live behind one overflow trigger. All three actions here are occasional
+    (platform is one-time setup, enrich vanishes once done, remove is rare), so a
+    single menu keeps rows aligned — no phantom gap when enrich doesn't apply —
+    and gives one comfortable tap target on a phone. The platform picker lives
+    inline in the menu because Streamlit popovers cannot nest.
     """
-    current = record.platforms[0] if record.platforms else ""  # type: ignore[attr-defined]
     with column.popover(  # type: ignore[attr-defined]
-        "🕹️", help="Set or change the platform you own this on", use_container_width=True
+        "⋯", help="Platform, enrich & remove", use_container_width=True
     ):
-        st.caption(f"Current: {current}" if current else "No platform set yet")
+        # --- platform (pick from ones you already use; "Other…" for a new one) ---
+        current = record.platforms[0] if record.platforms else ""  # type: ignore[attr-defined]
+        st.caption(f"Platform: {current}" if current else "No platform set yet")
         options = [*suggestions, "Other…"]
         default = options.index(current) if current in suggestions else len(options) - 1
         pick = st.selectbox(
@@ -203,10 +189,34 @@ def _platform_control(
             value = st.text_input(
                 "New platform", key=f"setplatother_{index}", placeholder="e.g. Steam Deck"
             ).strip()
-        if st.button("Save", key=f"setplatsave_{index}", use_container_width=True) and value:
-            record.platforms = [value]  # type: ignore[attr-defined]
+        if st.button("💾 Save platform", key=f"setplatsave_{index}", use_container_width=True):
+            if value:
+                record.platforms = [value]  # type: ignore[attr-defined]
+                memory.store_records(user_id, all_records)  # type: ignore[attr-defined]
+                st.toast(f"Platform for “{record.title}”: {value}")  # type: ignore[attr-defined]
+                st.rerun()
+
+        # --- enrich (only while there is something left to fill in) ---
+        if not record.is_enriched() and st.button(  # type: ignore[attr-defined]
+            "✨ Enrich details",
+            key=f"enrich_{index}",
+            help="Look up genre, playtime, platforms & reviews",
+            use_container_width=True,
+        ):
+            with st.spinner(f"Enriching {record.title}…"):  # type: ignore[attr-defined]
+                get_enricher().enrich(record)
             memory.store_records(user_id, all_records)  # type: ignore[attr-defined]
-            st.toast(f"Platform for “{record.title}”: {value}")  # type: ignore[attr-defined]
+            st.rerun()
+
+        # --- remove (duplicates, mis-adds; recoverable by re-adding/re-importing) ---
+        if st.button(
+            "🗑️ Remove from library",
+            key=f"delgame_{index}_{record.title}",  # type: ignore[attr-defined]
+            use_container_width=True,
+        ):
+            remaining = [r for r in all_records if r is not record]
+            memory.store_records(user_id, remaining)  # type: ignore[attr-defined]
+            st.toast(f"Removed “{record.title}” from your library")  # type: ignore[attr-defined]
             st.rerun()
 
 
