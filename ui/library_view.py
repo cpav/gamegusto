@@ -119,7 +119,7 @@ def _render_library(memory: object, user_id: str) -> None:
             for r in view
             if needle in r.title.casefold() or (r.genre and needle in r.genre.casefold())
         ]
-    st.caption(f"{len(view)} game(s) · 🕹️ set/change platform · ✨ enrich details")
+    st.caption(f"{len(view)} game(s) · 🕹️ set/change platform · ✨ enrich details · 🗑️ remove")
     suggestions = _platform_suggestions(owned, all_records)
 
     # Mutating a record then persisting the WHOLE list keeps edits that change the
@@ -138,7 +138,7 @@ def _render_library(memory: object, user_id: str) -> None:
             )
             if part
         )
-        info, plat_col, enrich_col = st.columns([6, 1, 1])
+        info, plat_col, enrich_col, del_col = st.columns([6, 1, 1, 1])
         info.markdown(
             f'<div class="lib-line">🎮 <b>{html.escape(record.title)}</b> — '
             f"{html.escape(meta) or 'no details yet'}</div>",
@@ -154,6 +154,16 @@ def _render_library(memory: object, user_id: str) -> None:
             with st.spinner(f"Enriching {record.title}…"):
                 get_enricher().enrich(record)
             memory.store_records(user_id, all_records)  # type: ignore[attr-defined]
+            st.rerun()
+        if del_col.button(
+            "🗑️",
+            key=f"delgame_{index}_{record.title}",
+            help="Remove this game from your library (duplicates, mis-adds)",
+            use_container_width=True,
+        ):
+            remaining = [r for r in all_records if r is not record]
+            memory.store_records(user_id, remaining)  # type: ignore[attr-defined]
+            st.toast(f"Removed “{record.title}” from your library")
             st.rerun()
 
 
