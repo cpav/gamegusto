@@ -21,7 +21,7 @@ from agent.enricher import Enricher
 from agent.library_service import LibraryService
 from agent.runtime import AgentRuntime
 from agent.tools import ToolRegistry
-from api.app import create_app
+from api.app import TurnGuard, create_app
 from bootstrap import AppContext
 from config import Config
 from models.game_record import GameRecord
@@ -187,6 +187,17 @@ def test_add_list_and_remove_game() -> None:
 def test_add_game_rejects_blank_title() -> None:
     client, _, _ = make_app()
     assert client.post("/api/library", json={"title": ""}).status_code == 422
+    # Whitespace-only must not slip past validation as an empty-title record.
+    assert client.post("/api/library", json={"title": "   "}).status_code == 422
+
+
+def test_blank_platform_means_no_platform() -> None:
+    client, _, _ = make_app()
+    created = client.post("/api/library", json={"title": "Hades", "platform": "  "})
+    assert created.status_code == 201
+    assert created.json()["record"]["platforms"] == []
+    assert client.put("/api/library/hades|/platform", json={"platform": " "}).status_code == 422
+    assert client.post("/api/platforms", json={"name": "  "}).status_code == 422
 
 
 def test_set_platform_persists_and_rekeys() -> None:
@@ -376,6 +387,22 @@ def test_chat_second_turn_while_one_is_in_flight_is_409() -> None:
     # (the released event lets the fake answer immediately this time).
     follow_up = client.post("/api/chat", json={"message": "again"})
     assert follow_up.status_code == 200
+
+
+def test_turn_guard_stale_release_cannot_free_a_newer_turn() -> None:
+    """Turn N's late backstop release must not free the slot turn N+1 holds."""
+    guard = TurnGuard()
+    token1 = guard.begin(USER)
+    assert token1 is not None
+    guard.end(USER, token1)  # turn 1's normal release
+
+    token2 = guard.begin(USER)
+    assert token2 is not None
+    guard.end(USER, token1)  # turn 1's LATE backstop fires after turn 2 claimed
+    assert guard.begin(USER) is None  # turn 2 still holds the slot
+
+    guard.end(USER, token2)
+    assert guard.begin(USER) is not None  # a matching release frees it
 
 
 def test_reset_conversation_clears_agent_and_store() -> None:

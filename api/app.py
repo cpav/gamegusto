@@ -52,6 +52,38 @@ def _sse(event: str, payload: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(payload)}\n\n"
 
 
+class TurnGuard:
+    """One in-flight chat turn per user.
+
+    The runtime's conversation history is mutable per-user state, so a second
+    concurrent turn must be rejected. Release is token-matched and is invoked
+    from BOTH the stream generator's ``finally`` and a response
+    BackgroundTask: the double release covers the disconnect edge where a
+    never-started generator's ``finally`` never runs, and the token check
+    keeps the late BackgroundTask of turn N from freeing the slot that turn
+    N+1 has since claimed.
+    """
+
+    def __init__(self) -> None:
+        self._in_flight: dict[str, object] = {}
+        self._lock = threading.Lock()
+
+    def begin(self, user_id: str) -> object | None:
+        """Claim the user's turn slot; ``None`` when a turn is already running."""
+        with self._lock:
+            if user_id in self._in_flight:
+                return None
+            token = object()
+            self._in_flight[user_id] = token
+            return token
+
+    def end(self, user_id: str, token: object) -> None:
+        """Free the slot — only if ``token`` is the claim currently holding it."""
+        with self._lock:
+            if self._in_flight.get(user_id) is token:
+                del self._in_flight[user_id]
+
+
 def create_app(ctx: AppContext) -> FastAPI:
     """Build the API around an already-wired application graph."""
     app = FastAPI(title="GameGusto API", version="0.1.0")
@@ -70,24 +102,7 @@ def create_app(ctx: AppContext) -> FastAPI:
         """
         return ctx.user_id
 
-    # One in-flight chat turn per user: the runtime's conversation history is
-    # mutable per-user state, so a second concurrent turn must be rejected.
-    # A busy-set with an idempotent ``_end_turn`` (instead of a bare Lock)
-    # survives the disconnect edge where the response generator is closed
-    # before its first iteration and a Lock.release() would never run.
-    busy_users: set[str] = set()
-    busy_guard = threading.Lock()
-
-    def _begin_turn(user_id: str) -> bool:
-        with busy_guard:
-            if user_id in busy_users:
-                return False
-            busy_users.add(user_id)
-            return True
-
-    def _end_turn(user_id: str) -> None:
-        with busy_guard:
-            busy_users.discard(user_id)
+    turns = TurnGuard()
 
     # --- health ---
 
@@ -107,8 +122,8 @@ def create_app(ctx: AppContext) -> FastAPI:
 
     @app.post("/api/library", status_code=201)
     def add_game(body: AddGameRequest, user: str = Depends(current_user)) -> dict[str, Any]:
-        platforms = [body.platform.strip()] if body.platform and body.platform.strip() else []
-        record = GameRecord(title=body.title.strip(), platforms=platforms, source="manual")
+        platforms = [body.platform] if body.platform else []
+        record = GameRecord(title=body.title, platforms=platforms, source="manual")
         ctx.memory.upsert_record(user, record)
         return {"record": record_to_dict(record)}
 
@@ -124,7 +139,7 @@ def create_app(ctx: AppContext) -> FastAPI:
     ) -> dict[str, Any]:
         records = ctx.memory.get_records(user)
         record = _find_record(records, dedup_key)
-        record.platforms = [body.platform.strip()]
+        record.platforms = [body.platform]
         # Persist the WHOLE list: the edit changes the dedup key, and a full
         # store is what keeps the old-keyed duplicate from lingering.
         ctx.memory.store_records(user, records)
@@ -162,7 +177,7 @@ def create_app(ctx: AppContext) -> FastAPI:
 
     @app.post("/api/platforms", status_code=201)
     def add_platform(body: PlatformRequest, user: str = Depends(current_user)) -> dict[str, Any]:
-        platform = OwnedPlatform(name=body.name.strip())
+        platform = OwnedPlatform(name=body.name)
         ctx.memory.add_platform(user, platform)
         return {"platform": platform_to_dict(platform)}
 
@@ -170,9 +185,9 @@ def create_app(ctx: AppContext) -> FastAPI:
     def rename_platform(
         platform_id: str, body: PlatformRequest, user: str = Depends(current_user)
     ) -> dict[str, Any]:
-        if not ctx.memory.update_platform(user, platform_id, body.name.strip()):
+        if not ctx.memory.update_platform(user, platform_id, body.name):
             raise HTTPException(status_code=404, detail="platform not found")
-        return {"platform": {"platform_id": platform_id, "name": body.name.strip()}}
+        return {"platform": {"platform_id": platform_id, "name": body.name}}
 
     @app.delete("/api/platforms/{platform_id}", status_code=204)
     def remove_platform(platform_id: str, user: str = Depends(current_user)) -> Response:
@@ -225,7 +240,7 @@ def create_app(ctx: AppContext) -> FastAPI:
 
     # --- chat (SSE) ---
 
-    def _chat_events(user: str, message: str) -> Iterator[str]:
+    def _chat_events(user: str, message: str, token: object) -> Iterator[str]:
         """Stream one turn as SSE, then persist the transcript.
 
         Persistence mirrors the Streamlit flow: the user+assistant pair is
@@ -265,18 +280,19 @@ def create_app(ctx: AppContext) -> FastAPI:
                 },
             )
         finally:
-            _end_turn(user)
+            turns.end(user, token)
 
     @app.post("/api/chat")
     def chat(body: ChatRequest, user: str = Depends(current_user)) -> StreamingResponse:
-        if not _begin_turn(user):
+        token = turns.begin(user)
+        if token is None:
             raise HTTPException(status_code=409, detail="a turn is already in progress")
         return StreamingResponse(
-            _chat_events(user, body.message),
+            _chat_events(user, body.message, token),
             media_type="text/event-stream",
-            # Idempotent backstop for the disconnect edge above; normal turns
-            # already ended in the generator's ``finally``.
-            background=BackgroundTask(_end_turn, user),
+            # Token-matched backstop for the disconnect edge (see TurnGuard);
+            # normal turns already ended in the generator's ``finally``.
+            background=BackgroundTask(turns.end, user, token),
         )
 
     return app

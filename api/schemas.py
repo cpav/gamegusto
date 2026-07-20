@@ -7,45 +7,57 @@ are computed properties the client needs for row actions, not stored fields.
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, StringConstraints, field_validator
 
 from models.game_record import GameRecord
 from models.platform import OwnedPlatform
 from models.recommendation import Recommendation
 
+#: Required text field: stripped BEFORE the length check, so whitespace-only
+#: input is a 422 instead of quietly becoming an empty title/name downstream.
+TrimmedStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
 
 class AddGameRequest(BaseModel):
     """Add a manually-owned game to the library."""
 
-    title: str = Field(min_length=1)
+    title: TrimmedStr
     platform: str | None = None
+
+    @field_validator("platform")
+    @classmethod
+    def _blank_platform_is_absent(cls, value: str | None) -> str | None:
+        """Treat a blank platform as 'not provided' rather than a platform named ''."""
+        if value is None:
+            return None
+        return value.strip() or None
 
 
 class SetPlatformRequest(BaseModel):
     """Set the platform on a library record (single platform, like the UI)."""
 
-    platform: str = Field(min_length=1)
+    platform: TrimmedStr
 
 
 class PlatformRequest(BaseModel):
     """Add or rename an owned platform."""
 
-    name: str = Field(min_length=1)
+    name: TrimmedStr
 
 
 class FeedbackRequest(BaseModel):
     """Record a verdict on a recommended title; ``verdict: null`` clears it."""
 
-    title: str = Field(min_length=1)
+    title: TrimmedStr
     verdict: Literal["loved", "not_for_me"] | None = None
 
 
 class ChatRequest(BaseModel):
     """One user chat turn."""
 
-    message: str = Field(min_length=1)
+    message: TrimmedStr
 
 
 def record_to_dict(record: GameRecord) -> dict[str, Any]:
