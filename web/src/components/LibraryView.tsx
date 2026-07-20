@@ -34,6 +34,7 @@ export function LibraryView({ reloadKey }: { reloadKey: number }) {
   const [selected, setSelected] = useState<GameRecord | null>(null);
   const [adding, setAdding] = useState(false);
   const [memoryDown, setMemoryDown] = useState(false);
+  const [brokenCovers, setBrokenCovers] = useState<Set<string>>(new Set());
 
   async function reload() {
     try {
@@ -196,8 +197,20 @@ export function LibraryView({ reloadKey }: { reloadKey: number }) {
                   className="cover-art"
                   style={{ ["--hue" as string]: `${hue(record.title)}deg` }}
                 >
-                  {record.cover_url ? (
-                    <img src={record.cover_url} alt="" loading="lazy" />
+                  {record.cover_url && !brokenCovers.has(record.dedup_key) ? (
+                    <img
+                      src={record.cover_url}
+                      alt=""
+                      loading="lazy"
+                      // Cover URLs come from a third-party image search and rot
+                      // over time; a dead one falls back to the placeholder
+                      // tile rather than a broken-image icon. no-referrer keeps
+                      // the image host from learning where it is embedded.
+                      referrerPolicy="no-referrer"
+                      onError={() =>
+                        setBrokenCovers((prior) => new Set(prior).add(record.dedup_key))
+                      }
+                    />
                   ) : (
                     <span className="initials">{initials(record.title)}</span>
                   )}

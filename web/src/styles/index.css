@@ -511,6 +511,13 @@ textarea {
     0 0 calc(16px * var(--gg-glow)) color-mix(in srgb, var(--gg-charge) 18%, transparent),
     0 6px 18px rgba(0, 0, 0, 0.28);
 }
+/* While the answer is still arriving the card is provisional: no lit border,
+   so the glow becomes the signal that the pick has landed. */
+.rec-card.streaming {
+  border-color: var(--gg-line);
+  box-shadow: none;
+}
+
 .rec-card .kicker {
   display: flex;
   align-items: center;

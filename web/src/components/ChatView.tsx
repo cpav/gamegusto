@@ -92,8 +92,13 @@ export function ChatView({
    * with no matching pick (a clarifying question) correctly gets no header.
    */
   function pickFor(text: string): Pick | undefined {
-    const haystack = text.toLowerCase();
-    return picks.find((pick) => haystack.includes(pick.game_title.toLowerCase()));
+    // Only the opening paragraph counts. The agent leads with the pick it is
+    // making, while later paragraphs routinely name OTHER games ("unlike Hades,
+    // which you own…") — matching on the whole reply would put a
+    // "Tonight's pick" header on a game the turn merely mentioned. Picks arrive
+    // newest-first, so the most recent match wins.
+    const lead = text.split(/\n\s*\n/)[0]?.toLowerCase() ?? "";
+    return picks.find((pick) => lead.includes(pick.game_title.toLowerCase()));
   }
 
   async function setVerdict(pick: Pick, verdict: Verdict) {
