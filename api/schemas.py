@@ -73,6 +73,7 @@ def record_to_dict(record: GameRecord) -> dict[str, Any]:
         "community_review": review.as_dict() if review else None,
         "platform_availability": list(record.platform_availability),
         "external_ids": dict(record.external_ids),
+        "cover_url": record.cover_url,
         "dedup_key": record.dedup_key,
         "is_enriched": record.is_enriched(),
     }

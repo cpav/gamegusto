@@ -1,8 +1,8 @@
 # GameGusto Data Contract
 
-**Contract version:** `3.0.0` (v3: `estimated_playtime` minutes -> `estimated_playtime_hours` hours; legacy values convert on read)
+**Contract version:** `3.1.0` (v3.1: optional `cover_url` added for the v2 client's card grid; v3: `estimated_playtime` minutes -> `estimated_playtime_hours` hours, legacy values convert on read)
 **Status:** Locked
-**Last updated:** 2026-06-14
+**Last updated:** 2026-07-20
 **Owns:** `models/game_record.py` (`GameRecord`, `CommunityReview`)
 
 > Satisfies Requirement 2 (Source Data Exploration and Data Contract Definition).
@@ -132,7 +132,7 @@ keyword matching mislabels (e.g. Metal Slug as a run-and-gun shooter, not
 | `results[].url` | string | Source URL | **Exclude** | — | Provenance only; not a contract field. |
 | `results[].content` | string | Snippet text | **Include (parsed)** | `community_review.sentiment_summary`, `platform_availability` | Mined for platform availability and review sentiment. |
 | `results[].score` | float | Tavily relevance score | **Exclude** | — | Search relevance, not a game review score. Must not be confused with `community_review.score`. |
-| `images` | list | Optional images | **Exclude** | — | Presentation-only. |
+| `images` | list | Optional images (`include_images`) | **Include (first valid URL)** | `cover_url` | Presentation-only cover art for the v2 card grid (v3.1). Chosen over a dedicated art API (IGDB/RAWG) so no extra credential is needed; never affects matching or reasoning. |
 | `response_time` | float | API latency | **Exclude** | — | Diagnostic only. |
 | — (LLM) genre | — | Model-classified from snippets + own knowledge | **Include** | `genre` | Req 5.1. |
 | — (LLM) estimated playtime | — | Model-estimated main-story completion, in hours | **Include** | `estimated_playtime_hours` (number, hours) | Req 5.1. Completion time, not a session length — the agent reasons about session fit. |
@@ -199,6 +199,7 @@ exploration task; all sources and consumers conform to it from this point on.
 | `community_review` | `CommunityReview \| None` | no | `None` | enrichment | Tavily (Req 5.1, 7.2). |
 | `platform_availability` | `list[str]` | no | `[]` | enrichment | Platforms the game is available on (Req 5.3); drives the playable filter. |
 | `external_ids` | `dict[str, str]` | no | `{}` | — | Reserved/optional. Currently **unused** (formerly held the Xbox `titleId`); retained for future source-specific IDs. Defaults to `{}`. |
+| `cover_url` | `str \| None` | no | `None` | enrichment | Cover/key art URL for the v2 client's card grid (v3.1). **Presentation-only** — excluded from `is_enriched()`, dedup, and recommendation reasoning; a record without one renders a placeholder. |
 
 ### 6.3 Derived members
 
@@ -230,6 +231,7 @@ Which source can populate which field (✓ = populates, — = leaves at default)
 | `community_review` | — | — | ✓ |
 | `platform_availability` | — | — | ✓ |
 | `external_ids` | — | — | — |
+| `cover_url` | — | — | ✓ |
 
 ## 7. Versioning policy
 
@@ -251,6 +253,8 @@ Which source can populate which field (✓ = populates, — = leaves at default)
 |---|---|---|
 | `1.0.0` | Initial locked contract (sources: Xbox, Gmail, manual; enrichment via Tavily). | — |
 | `2.0.0` | Removed the `xbox` provenance value and the Xbox source exploration. Permitted `source` set narrowed to (`gmail`, `manual`, `enrichment`). This is a **MAJOR** bump because removing a permitted `source` value is a breaking change to the contract's permitted source set. | Major |
+| `3.0.0` | `estimated_playtime` (minutes, `int`) replaced by `estimated_playtime_hours` (hours, `float`). **MAJOR**: a field was renamed and its unit/type changed; legacy values convert on read. | Major |
+| `3.1.0` | Added optional `cover_url` (enrichment-populated, presentation-only) for the v2 client's card grid. **MINOR**: a backward-compatible new optional field — pre-v3.1 records simply read back as `None`. | Minor |
 
 ## 8. Traceability
 

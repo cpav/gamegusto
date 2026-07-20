@@ -317,7 +317,7 @@ class MemoryService:
 
     @staticmethod
     def _record_to_dict(record: GameRecord) -> dict[str, Any]:
-        """Serialize a record to its nine contract fields only (Req 4.2)."""
+        """Serialize a record to its ten contract fields only (Req 4.2)."""
         return {
             "title": record.title,
             "platforms": list(record.platforms),
@@ -330,6 +330,7 @@ class MemoryService:
             else None,
             "platform_availability": list(record.platform_availability),
             "external_ids": dict(record.external_ids),
+            "cover_url": record.cover_url,
         }
 
     @staticmethod
@@ -363,6 +364,7 @@ class MemoryService:
             community_review=CommunityReview.from_dict(data.get("community_review")),
             platform_availability=list(data.get("platform_availability", [])),
             external_ids=dict(data.get("external_ids", {})),
+            cover_url=data.get("cover_url"),  # absent on pre-v3.1 records
         )
 
     @staticmethod

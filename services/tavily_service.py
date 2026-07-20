@@ -101,6 +101,31 @@ class TavilyService:
             )
         return snippets
 
+    def find_image(self, query: str) -> str | None:
+        """Return the best image URL for ``query``, or ``None``.
+
+        Backs the library's cover art. Uses Tavily's ``include_images`` rather
+        than a dedicated art API so no additional credential is required; the
+        result is presentation-only, so a wrong or missing image never affects
+        matching or reasoning. Degrades to ``None`` on rate-limit or failure.
+        """
+        if not query.strip() or not self._available or not self._check_rate_limit():
+            return None
+        try:
+            data = self._client.search(query, include_images=True, max_results=3)
+        except Exception as exc:  # noqa: BLE001 - degrade on any Tavily failure (Req 10.3)
+            self._degrade(exc)
+            return None
+        images = data.get("images")
+        if not isinstance(images, list):
+            return None
+        for image in images:
+            # Tavily returns either bare URL strings or {"url", "description"}.
+            url = image.get("url") if isinstance(image, dict) else image
+            if isinstance(url, str) and url.startswith(("http://", "https://")):
+                return url
+        return None
+
     def autocomplete(self, query: str) -> list[str]:
         """Return title suggestions for manual entry, active only at >= 3 chars.
 

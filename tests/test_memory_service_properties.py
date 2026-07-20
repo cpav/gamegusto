@@ -113,6 +113,7 @@ _CONTRACT_FIELDS = frozenset(
         "community_review",
         "platform_availability",
         "external_ids",
+        "cover_url",
     }
 )
 
@@ -365,3 +366,28 @@ def test_legacy_minutes_records_convert_to_hours_on_read() -> None:
         "Tiny": 0.1,
         "Unknown": None,
     }
+
+
+def test_cover_url_survives_a_store_read_roundtrip() -> None:
+    """The v3.1 field persists like any other contract field."""
+    service = MemoryService(FakeMemoryClient())
+    record = GameRecord(title="Hades", cover_url="https://img.example/hades.jpg")
+    assert service.store_records(USER_ID, [record]) is True
+
+    (restored,) = service.get_records(USER_ID)
+    assert restored.cover_url == "https://img.example/hades.jpg"
+
+
+def test_pre_v31_records_read_back_with_no_cover() -> None:
+    """Records written before v3.1 carry no cover_url key and must still load."""
+    client = FakeMemoryClient()
+    service = MemoryService(client)
+    client.put_value(
+        USER_ID,
+        MemoryService.RECORDS_KEY,
+        {"records": [{"title": "Hades", "platforms": ["Switch"], "source": "manual"}]},
+    )
+
+    (restored,) = service.get_records(USER_ID)
+    assert restored.cover_url is None
+    assert restored.title == "Hades"

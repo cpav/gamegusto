@@ -41,6 +41,14 @@ class Enricher:
         Returns the record unchanged when it is already enriched, when Tavily
         yields no snippets, or when the model call/JSON parse fails (Req 5.5, 10.3).
         """
+        # Cover art is filled BEFORE the cache-first return: it is a v3.1 addition,
+        # so records enriched under an earlier contract are "enriched" yet have no
+        # cover. Fetching it here lets them gain one from a single cheap image
+        # search, without paying for a full LLM re-classification they don't need.
+        # It stays out of is_enriched(): art is presentation, never a data gate.
+        if record.cover_url is None:
+            record.cover_url = self._tavily.find_image(f"{record.title} video game cover art")
+
         if record.is_enriched():
             return record
         snippets = self._tavily.web_search(

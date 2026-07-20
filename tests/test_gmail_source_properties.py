@@ -60,6 +60,7 @@ CONTRACT_FIELDS = {
     "community_review",
     "platform_availability",
     "external_ids",
+    "cover_url",
 }
 
 
