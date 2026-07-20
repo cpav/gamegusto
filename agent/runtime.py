@@ -16,14 +16,18 @@ Memory and Tavily degrade gracefully via the tools they back.
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator, Iterator
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Literal
 
 from agent.tools import ToolRegistry
-from services.bedrock_service import BedrockService
+from services.bedrock_service import BedrockService, BedrockServiceError, ConverseResult
 from services.memory_service import MemoryService
+
+#: Raised if a streaming round ends without its final assembled result — a
+#: broken-stream condition the service normally surfaces itself.
+_STREAM_ENDED_EARLY_MESSAGE = "The recommendation service was interrupted — please try again."
 
 #: Hard cap on tool-call rounds per user turn, so a misbehaving loop terminates.
 _MAX_TOOL_ITERATIONS = 8
@@ -211,10 +215,13 @@ class AgentEvent:
     ``kind == "thinking"`` carries working notes from an intermediate tool-calling
     turn in ``text`` (show transiently, then discard — don't persist); ``kind ==
     "tool"`` names a tool the model is about to run in ``tool`` (show it transiently,
-    e.g. "🔧 searching the web…").
+    e.g. "🔧 searching the web…"); ``kind == "delta"`` (only when streaming with
+    ``deltas=True``) carries one token-level text fragment of the round in
+    progress — render it live, then let the round's closing ``thinking``/``text``
+    event replace the accumulated fragments (deltas alone are never authoritative).
     """
 
-    kind: Literal["text", "tool", "thinking"]
+    kind: Literal["text", "tool", "thinking", "delta"]
     text: str = ""
     tool: str = ""
 
@@ -298,20 +305,23 @@ class AgentRuntime:
                 answer.append(event.text)
             elif event.kind == "thinking":
                 thinking.append(event.text)
-            else:
+            elif event.kind == "tool":
                 called.append(event.tool)
         # The final answer is what we keep; fall back to the working notes only if the
         # model produced no final message.
         return self._reply("\n\n".join(answer) or "\n\n".join(thinking), called)
 
-    def stream(self, user_text: str) -> Iterator[AgentEvent]:
+    def stream(self, user_text: str, *, deltas: bool = False) -> Iterator[AgentEvent]:
         """Run the tool loop, yielding thinking/answer text and tool-call events.
 
         Text from an intermediate turn (one that still calls tools) is the model's
         working notes and is yielded as ``kind="thinking"`` (shown transiently, not
         persisted); text from the FINAL turn is the answer, yielded as ``kind="text"``.
         The prompt steers the model to write its full answer only in that final turn.
-        Raises ``BedrockServiceError`` (sanitized) if the model fails.
+        With ``deltas=True`` each round's text additionally streams token-by-token
+        as ``kind="delta"`` events ahead of that round's closing event (callers that
+        don't opt in keep the exact event sequence they always had). Raises
+        ``BedrockServiceError`` (sanitized) if the model fails.
         """
         self._compact_history()
         self._trim_history()
@@ -319,7 +329,7 @@ class AgentRuntime:
         self._messages.append({"role": "user", "content": [{"text": user_text}]})
         self.last_turn_usage = {}
         try:
-            yield from self._turn()
+            yield from self._turn(deltas)
         except BaseException:
             # A failed (or abandoned mid-run) turn must not leave partial state in the
             # history — an orphaned user message or a toolUse without its toolResult
@@ -374,11 +384,33 @@ class AgentRuntime:
             if isinstance(value, int):
                 self.last_turn_usage[key] = self.last_turn_usage.get(key, 0) + value
 
-    def _turn(self) -> Iterator[AgentEvent]:
+    def _converse_round(
+        self, system: str, deltas: bool
+    ) -> Generator[AgentEvent, None, ConverseResult]:
+        """Run one model round, yielding delta events when streaming is on.
+
+        Returns the round's :class:`ConverseResult` either way (callers take it
+        via ``yield from``), so the loop logic is identical for both modes.
+        """
+        if not deltas:
+            return self._bedrock.converse_tools(self._messages, self._tools.specs(), system)
+        result: ConverseResult | None = None
+        for item in self._bedrock.converse_tools_stream(
+            self._messages, self._tools.specs(), system
+        ):
+            if isinstance(item, str):
+                yield AgentEvent(kind="delta", text=item)
+            else:
+                result = item
+        if result is None:  # defensive: the stream contract ends with a result
+            raise BedrockServiceError(_STREAM_ENDED_EARLY_MESSAGE)
+        return result
+
+    def _turn(self, deltas: bool = False) -> Iterator[AgentEvent]:
         """Run one turn's tool loop over the already-appended user message."""
         system = self.system_prompt()  # resolved once per turn (keeps the date fresh)
         for _ in range(_MAX_TOOL_ITERATIONS):
-            result = self._bedrock.converse_tools(self._messages, self._tools.specs(), system)
+            result = yield from self._converse_round(system, deltas)
             self._add_usage(result)
             final = result.stop_reason != "tool_use" or not result.tool_uses
             if result.text.strip():
@@ -402,7 +434,7 @@ class AgentRuntime:
         # rather than mistaking its "let me save…" narration for the final recommendation.
         self._messages[-1]["content"].append({"text": _WRAP_UP_NUDGE})
         for _ in range(_MAX_WRAPUP_ROUNDS):
-            result = self._bedrock.converse_tools(self._messages, self._tools.specs(), system)
+            result = yield from self._converse_round(system, deltas)
             self._add_usage(result)
             final = result.stop_reason != "tool_use" or not result.tool_uses
             if result.assistant_content:

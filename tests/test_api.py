@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import threading
+from collections.abc import Iterator
 from typing import Any
 
 import pytest
@@ -65,7 +66,12 @@ class FakeMemoryClient:
 
 
 class FakeBedrock(BedrockService):
-    """Returns scripted ``ConverseResult``s (or raises a scripted error)."""
+    """Returns scripted ``ConverseResult``s (or raises a scripted error).
+
+    The streaming variant re-plays each scripted round as two text deltas
+    followed by the assembled result — the same contract the real
+    ``converse_tools_stream`` provides.
+    """
 
     def __init__(self, script: list[ConverseResult | BedrockServiceError]) -> None:
         self._script = list(script)
@@ -80,6 +86,19 @@ class FakeBedrock(BedrockService):
         if isinstance(step, BedrockServiceError):
             raise step
         return step
+
+    def converse_tools_stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        system: str,
+    ) -> Iterator[str | ConverseResult]:
+        result = self.converse_tools(messages, tools, system)
+        if result.text:
+            middle = max(1, len(result.text) // 2)
+            yield result.text[:middle]
+            yield result.text[middle:]
+        yield result
 
 
 class FakeEnricher(Enricher):
@@ -328,9 +347,12 @@ def test_chat_streams_events_and_persists_transcript() -> None:
 
     events = parse_sse(response.text)
     kinds = [name for name, _ in events]
-    assert kinds == ["thinking", "tool", "text", "done"]
-    assert events[1][1] == {"tool": "get_owned_platforms"}
-    done = events[3][1]
+    # Each round streams two deltas ahead of its closing thinking/text event.
+    assert kinds == ["delta", "delta", "thinking", "tool", "delta", "delta", "text", "done"]
+    assert events[3][1] == {"tool": "get_owned_platforms"}
+    final_text = events[6][1]["text"]
+    assert events[4][1]["text"] + events[5][1]["text"] == final_text
+    done = events[7][1]
     assert done["usage"] == {"inputTokens": 250, "outputTokens": 80}
     assert done["memory_available"] is True
 
@@ -349,21 +371,21 @@ def test_chat_error_is_streamed_and_not_persisted() -> None:
 
 
 class BlockingBedrock(BedrockService):
-    """Parks the first model round on an event so a turn stays in flight."""
+    """Parks the model round on an event so a turn stays in flight."""
 
     def __init__(self, started: threading.Event, release: threading.Event) -> None:
         self._started = started
         self._release = release
 
-    def converse_tools(
+    def converse_tools_stream(
         self,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]],
         system: str,
-    ) -> ConverseResult:
+    ) -> Iterator[str | ConverseResult]:
         self._started.set()
         assert self._release.wait(timeout=5), "test never released the blocked turn"
-        return _answer_round()
+        yield _answer_round()
 
 
 def test_chat_second_turn_while_one_is_in_flight_is_409() -> None:
