@@ -34,3 +34,8 @@ htmlcov/
 
 # Local Claude Code preview/run config (machine-specific paths)
 .claude/
+
+# Web client build output and dependencies
+web/node_modules/
+web/dist/
+web/*.tsbuildinfo

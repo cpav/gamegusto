@@ -36,8 +36,11 @@ Required env (see `.env.example`): `AWS_REGION`, `BEDROCK_MODEL_ID`,
 - **HTTP API** (v2 frontend backend; same env, `pip install -r requirements-api.txt`):
   `uvicorn --factory api.main:build --reload --port 8000` — JSON endpoints under
   `/api/*` plus an SSE chat stream at `POST /api/chat`. Single-user for now;
-  Cognito JWT identity lands with the v2 deployment. The v2 visual identity
-  (palette tokens + logo) lives in [`design/`](design/README.md).
+  Cognito JWT identity lands with the v2 deployment.
+- **Web client (v2 PWA):** `cd web && npm install && npm run dev` — see
+  [`web/README.md`](web/README.md). For frontend work without AWS or Bedrock
+  spend, run `python scripts/mock_api.py` instead of uvicorn. The visual
+  identity (palette tokens + logo) lives in [`design/`](design/README.md).
 
 ## Tests
 

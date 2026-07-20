@@ -1,0 +1,14 @@
+{
+  "name": "GameGusto",
+  "short_name": "GameGusto",
+  "description": "Your next game, picked for tonight.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0e101c",
+  "theme_color": "#0e101c",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}
