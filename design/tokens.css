@@ -1,0 +1,58 @@
+/* GameGusto v2 — "The Blend" design tokens (approved 2026-07-20).
+   Dark is the default ground; light is the same token set re-grounded
+   (never a second design). Switch by stamping data-theme on :root.
+   Roles are load-bearing: thrill = send/kickers/user bubbles;
+   charge = everything interactive; warmth = wordmark/lamps/prices/scores;
+   success = confirmations. Never mix roles. */
+
+:root,
+:root[data-theme="dark"] {
+  /* grounds & neutrals (Midnight Chrome) */
+  --gg-bg: #0e101c;
+  --gg-bg2: #181b2e;
+  --gg-surface: #1b1f36;
+  --gg-line: rgba(198, 207, 228, 0.16);
+  --gg-ink: #f0efe9;
+  --gg-sub: #9aa3b8;
+
+  /* roles (Neon Arcade voltage + Backglass warmth) */
+  --gg-thrill: #ff2e97;
+  --gg-charge: #2de2e6;
+  --gg-warmth: #ffc86a;
+  --gg-success: #5ce87f;
+
+  /* effects */
+  --gg-glow: 1.4; /* multiplier for glow blur radii */
+  --gg-scanline: 0.06; /* scanline overlay opacity */
+  --gg-vignette: 0.25; /* vignette overlay opacity */
+
+  /* shape */
+  --gg-radius-card: 14px;
+  --gg-radius-button: 10px;
+  --gg-radius-pill: 999px;
+
+  /* type */
+  --gg-font-brand: "Press Start 2P", monospace; /* brand/kickers ONLY */
+  --gg-font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --gg-font-data: "Share Tech Mono", monospace; /* meta, chips, prices, counters */
+}
+
+:root[data-theme="light"] {
+  --gg-bg: #f2ecdd;
+  --gg-bg2: #fbf6ea;
+  --gg-surface: #fdf9ef;
+  --gg-line: rgba(45, 52, 80, 0.22);
+  --gg-ink: #232b4a;
+  --gg-sub: #5f6480;
+
+  /* #ff2e97 fails text contrast on cream (~2.7:1); raspberry is the
+     text-safe value. Pure glows/halos may still use #ff2e97. */
+  --gg-thrill: #d6187f;
+  --gg-charge: #0b76d8;
+  --gg-warmth: #a9770e;
+  --gg-success: #2e7d43;
+
+  --gg-glow: 0.5;
+  --gg-scanline: 0;
+  --gg-vignette: 0;
+}

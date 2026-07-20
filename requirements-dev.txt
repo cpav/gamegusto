@@ -1,5 +1,6 @@
 # Development and tooling dependencies (pinned for reproducible installs)
 pytest==9.1.1
+httpx==0.28.1  # FastAPI TestClient transport (tests/test_api.py)
 pytest-cov==7.1.0
 hypothesis==6.156.1
 ruff==0.15.20
