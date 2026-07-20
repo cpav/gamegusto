@@ -24,7 +24,9 @@ sanitized message. Callers never fall back to mock/deterministic output.
 
 from __future__ import annotations
 
+import json
 import logging
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -154,6 +156,113 @@ class BedrockService:
                 return self.converse_tools(messages, tools, system)
             raise BedrockServiceError(ErrorHandler.sanitize_error(exc, "llm")) from exc
         return self._parse_tool_turn(response)
+
+    def converse_tools_stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        system: str,
+    ) -> Iterator[str | ConverseResult]:
+        """Streaming variant of :meth:`converse_tools` (ConverseStream API).
+
+        Yields answer-text deltas (``str``) as the model produces them, then —
+        always last — the fully assembled :class:`ConverseResult`, identical in
+        shape to what :meth:`converse_tools` returns, so callers can treat the
+        final item exactly like a non-streamed round. Prompt caching and the
+        cache-rejection fallback behave the same as the non-streaming call.
+        Raises ``BedrockServiceError`` (sanitized) on transport failure, before
+        or mid-stream.
+        """
+        kwargs = self._tool_turn_kwargs(messages, tools, system, cached=self._cache_supported)
+        try:
+            stream = self._client.converse_stream(**kwargs)["stream"]
+        except Exception as exc:
+            if self._cache_supported and _rejects_cache_points(exc):
+                logger.warning("prompt caching rejected; disabling for this process: %s", exc)
+                self._cache_supported = False  # degrade to uncached for this process
+                yield from self.converse_tools_stream(messages, tools, system)
+                return
+            raise BedrockServiceError(ErrorHandler.sanitize_error(exc, "llm")) from exc
+        yield from self._assemble_stream(stream)
+
+    @staticmethod
+    def _assemble_stream(stream: Iterator[dict[str, Any]]) -> Iterator[str | ConverseResult]:
+        """Re-assemble ConverseStream events into deltas + a ConverseResult.
+
+        Mirrors :meth:`_parse_tool_turn`: only ``text`` and ``toolUse`` blocks
+        are kept (indexed by ``contentBlockIndex``; tool input arrives as JSON
+        string fragments), anything else is ignored, and usage comes from the
+        trailing ``metadata`` event.
+        """
+        stop_reason = ""
+        usage: dict[str, int] = {}
+        blocks: dict[int, dict[str, Any]] = {}
+        try:
+            for event in stream:
+                if "contentBlockStart" in event:
+                    start = event["contentBlockStart"].get("start") or {}
+                    index = event["contentBlockStart"].get("contentBlockIndex", 0)
+                    if isinstance(start.get("toolUse"), dict):
+                        use = start["toolUse"]
+                        blocks[index] = {
+                            "toolUseId": use["toolUseId"],
+                            "name": use["name"],
+                            "input_parts": [],
+                        }
+                elif "contentBlockDelta" in event:
+                    index = event["contentBlockDelta"].get("contentBlockIndex", 0)
+                    delta = event["contentBlockDelta"].get("delta") or {}
+                    if isinstance(delta.get("text"), str):
+                        # Text blocks have no start event; create on first delta.
+                        block = blocks.setdefault(index, {"text_parts": []})
+                        block["text_parts"].append(delta["text"])
+                        yield delta["text"]
+                    elif isinstance(delta.get("toolUse"), dict) and index in blocks:
+                        blocks[index]["input_parts"].append(delta["toolUse"].get("input", ""))
+                elif "messageStop" in event:
+                    stop_reason = event["messageStop"].get("stopReason", "")
+                elif "metadata" in event:
+                    raw_usage = event["metadata"].get("usage") or {}
+                    usage = {k: v for k, v in raw_usage.items() if isinstance(v, int)}
+        except Exception as exc:
+            raise BedrockServiceError(ErrorHandler.sanitize_error(exc, "llm")) from exc
+
+        text_parts: list[str] = []
+        tool_uses: list[ToolUse] = []
+        assistant_content: list[dict[str, Any]] = []
+        for index in sorted(blocks):
+            block = blocks[index]
+            if "text_parts" in block:
+                text = "".join(block["text_parts"])
+                text_parts.append(text)
+                assistant_content.append({"text": text})
+            else:
+                raw_input = "".join(block["input_parts"]).strip()
+                try:
+                    tool_input = json.loads(raw_input) if raw_input else {}
+                except json.JSONDecodeError:
+                    tool_input = {}  # match converse_tools' lenient empty-input default
+                use = {"toolUseId": block["toolUseId"], "name": block["name"], "input": tool_input}
+                tool_uses.append(
+                    ToolUse(tool_use_id=use["toolUseId"], name=use["name"], input=tool_input)
+                )
+                assistant_content.append({"toolUse": use})
+
+        if usage:
+            logger.info(
+                "converse usage: in=%s out=%s cache_read=%s cache_write=%s",
+                usage.get("inputTokens", 0),
+                usage.get("outputTokens", 0),
+                usage.get("cacheReadInputTokens", 0),
+                usage.get("cacheWriteInputTokens", 0),
+            )
+        yield ConverseResult(
+            stop_reason=stop_reason or "end_turn",
+            text="".join(text_parts),
+            tool_uses=tool_uses,
+            assistant_content=assistant_content,
+            usage=usage,
+        )
 
     def _tool_turn_kwargs(
         self,

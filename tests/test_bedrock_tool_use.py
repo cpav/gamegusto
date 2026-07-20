@@ -166,6 +166,142 @@ def test_invoke_conversational_rejects_empty_text() -> None:
         _service(response).invoke_conversational("ping", "s")
 
 
+# --- converse_tools_stream (ConverseStream re-assembly) ---
+
+
+class _FakeStreamClient:
+    """Returns a preset ConverseStream event sequence or raises a preset error."""
+
+    def __init__(
+        self, events: list[dict[str, Any]] | None = None, error: Exception | None = None
+    ) -> None:
+        self._events = events or []
+        self._error = error
+        self.calls: list[dict[str, Any]] = []
+
+    def converse_stream(self, **kwargs: Any) -> dict[str, Any]:
+        self.calls.append(kwargs)
+        if self._error is not None:
+            raise self._error
+        return {"stream": iter(self._events)}
+
+
+def _stream_service(
+    events: list[dict[str, Any]] | None = None, error: Exception | None = None
+) -> tuple[BedrockService, _FakeStreamClient]:
+    client = _FakeStreamClient(events, error)
+    return BedrockService(CONFIG, client=client), client
+
+
+def test_stream_yields_deltas_then_assembled_result() -> None:
+    events: list[dict[str, Any]] = [
+        {"messageStart": {"role": "assistant"}},
+        {"contentBlockDelta": {"contentBlockIndex": 0, "delta": {"text": "Play "}}},
+        {"contentBlockDelta": {"contentBlockIndex": 0, "delta": {"text": "Hades."}}},
+        {"contentBlockStop": {"contentBlockIndex": 0}},
+        {
+            "contentBlockStart": {
+                "contentBlockIndex": 1,
+                "start": {"toolUse": {"toolUseId": "t1", "name": "get_library"}},
+            }
+        },
+        {"contentBlockDelta": {"contentBlockIndex": 1, "delta": {"toolUse": {"input": '{"ge'}}}},
+        {
+            "contentBlockDelta": {
+                "contentBlockIndex": 1,
+                "delta": {"toolUse": {"input": 'nre": "RPG"}'}},
+            }
+        },
+        {"contentBlockStop": {"contentBlockIndex": 1}},
+        {"messageStop": {"stopReason": "tool_use"}},
+        {"metadata": {"usage": {"inputTokens": 10, "outputTokens": 5, "latencyMs": "ignored"}}},
+    ]
+    svc, _ = _stream_service(events)
+    items = list(svc.converse_tools_stream([], [], "sys"))
+    assert items[:2] == ["Play ", "Hades."]
+    result = items[-1]
+    assert not isinstance(result, str)
+    assert result.stop_reason == "tool_use"
+    assert result.text == "Play Hades."
+    assert result.tool_uses == [ToolUse("t1", "get_library", {"genre": "RPG"})]
+    # assistant_content mirrors the non-streaming parse, in block order.
+    assert result.assistant_content == [
+        {"text": "Play Hades."},
+        {"toolUse": {"toolUseId": "t1", "name": "get_library", "input": {"genre": "RPG"}}},
+    ]
+    assert result.usage == {"inputTokens": 10, "outputTokens": 5}
+
+
+def test_stream_defaults_missing_stop_reason_and_bad_tool_input() -> None:
+    events = [
+        {
+            "contentBlockStart": {
+                "contentBlockIndex": 0,
+                "start": {"toolUse": {"toolUseId": "t1", "name": "get_library"}},
+            }
+        },
+        {"contentBlockDelta": {"contentBlockIndex": 0, "delta": {"toolUse": {"input": "{not-"}}}},
+    ]
+    svc, _ = _stream_service(events)
+    result = list(svc.converse_tools_stream([], [], "sys"))[-1]
+    assert not isinstance(result, str)
+    assert result.stop_reason == "end_turn"  # stream ended without messageStop
+    assert result.tool_uses == [ToolUse("t1", "get_library", {})]  # unparseable input -> {}
+
+
+def test_stream_degrades_when_cache_points_are_rejected() -> None:
+    class _RejectsCachedStream:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
+
+        def converse_stream(self, **kwargs: Any) -> dict[str, Any]:
+            self.calls.append(kwargs)
+            if any("cachePoint" in block for block in kwargs["system"]):
+                raise RuntimeError("ValidationException: cachePoint is not supported")
+            return {
+                "stream": iter(
+                    [
+                        {"contentBlockDelta": {"contentBlockIndex": 0, "delta": {"text": "ok"}}},
+                        {"messageStop": {"stopReason": "end_turn"}},
+                    ]
+                )
+            }
+
+    client = _RejectsCachedStream()
+    svc = BedrockService(CONFIG, client=client)
+    result = list(
+        svc.converse_tools_stream([{"role": "user", "content": [{"text": "hi"}]}], [], "s")
+    )[-1]
+    assert not isinstance(result, str)
+    assert result.text == "ok"
+    assert len(client.calls) == 2  # cached attempt, then the uncached retry
+    assert client.calls[-1]["system"] == [{"text": "s"}]
+
+
+def test_stream_sanitizes_mid_stream_error() -> None:
+    def _broken() -> Any:
+        yield {"contentBlockDelta": {"contentBlockIndex": 0, "delta": {"text": "Pla"}}}
+        raise RuntimeError("arn:aws:secret-endpoint exploded")
+
+    class _MidStreamError:
+        def converse_stream(self, **kwargs: Any) -> dict[str, Any]:
+            return {"stream": _broken()}
+
+    svc = BedrockService(CONFIG, client=_MidStreamError())
+    stream = svc.converse_tools_stream([], [], "sys")
+    assert next(stream) == "Pla"  # deltas before the break still arrive
+    with pytest.raises(BedrockServiceError) as exc:
+        list(stream)
+    assert "secret-endpoint" not in str(exc.value)
+
+
+def test_stream_sanitizes_request_error() -> None:
+    svc, _ = _stream_service(error=RuntimeError("AccessDen/arn:aws:secret-endpoint"))
+    with pytest.raises(BedrockServiceError) as exc:
+        list(svc.converse_tools_stream([], [], "sys"))
+    assert "secret-endpoint" not in str(exc.value)
+
+
 def test_converse_tools_extracts_usage_counters() -> None:
     response = {
         "stopReason": "end_turn",

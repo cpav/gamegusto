@@ -253,8 +253,12 @@ def create_app(ctx: AppContext) -> FastAPI:
             answer: list[str] = []
             notes: list[str] = []
             try:
-                for event in ctx.runtime.stream(message):
-                    if event.kind == "tool":
+                for event in ctx.runtime.stream(message, deltas=True):
+                    if event.kind == "delta":
+                        # Token-level fragment of the round in progress; the
+                        # round's closing thinking/text event is authoritative.
+                        yield _sse("delta", {"text": event.text})
+                    elif event.kind == "tool":
                         yield _sse("tool", {"tool": event.tool})
                     elif event.kind == "thinking":
                         notes.append(event.text)
