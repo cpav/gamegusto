@@ -1,7 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <!-- GameGusto "Panel" mark (approved 2026-07-20): stick + two buttons on one
        deck. Colors are the dark-mode tokens; when inlined, bind the deck/shaft
-       stroke to --gg-ink, ball to --gg-thrill, buttons to --gg-charge. -->
+       stroke to the ink token, ball to thrill, buttons to charge (see
+       design/tokens.css; token names can't appear here verbatim because XML
+       comments forbid double hyphens). -->
   <g fill="none" stroke="#f0efe9" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round">
     <rect x="8" y="44" width="48" height="10" rx="5"/>
     <path d="M22 44V28"/>
