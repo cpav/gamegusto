@@ -1,0 +1,1265 @@
+/* The approved token set is the repo-root design system — imported, never copied,
+   so the app and the spec can never drift. */
+@import "../../../design/tokens.css";
+
+/* Brand + data faces. Self-hosted so an offline/installed PWA keeps its identity
+   (and so no font CDN sees the user). */
+@font-face {
+  font-family: "Press Start 2P";
+  src: url("/fonts/press-start-2p.woff2") format("woff2");
+  font-display: swap;
+}
+@font-face {
+  font-family: "Share Tech Mono";
+  src: url("/fonts/share-tech-mono.woff2") format("woff2");
+  font-display: swap;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: radial-gradient(circle at 50% 0%, var(--gg-bg2) 0%, var(--gg-bg) 72%);
+  background-attachment: fixed;
+  color: var(--gg-ink);
+  font-family: var(--gg-font-ui);
+  font-size: 15px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+}
+
+/* The CRT whisper: dark only (the token is 0 in light). */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  pointer-events: none;
+  opacity: var(--gg-scanline);
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0.55) 0,
+    rgba(0, 0, 0, 0.55) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 2px solid var(--gg-charge);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+input,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+/* ---- app shell ---- */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  position: relative;
+}
+
+/* On phones the main column is transparent to layout — the shell is one
+   flex column. It becomes a real column beside the sidebar at desktop width. */
+.main {
+  display: contents;
+}
+
+/* Marquee: chrome bar with the lit edge underneath (Backglass trim). */
+.marquee {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: calc(env(safe-area-inset-top) + 12px) 16px 10px;
+  position: relative;
+  z-index: 5;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--gg-bg2) 75%, transparent), transparent);
+  border-bottom: 1px solid var(--gg-line);
+}
+.marquee::after {
+  content: "";
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(
+    90deg,
+    #c7cdd9 0%,
+    var(--gg-charge) 35%,
+    var(--gg-warmth) 65%,
+    #c7cdd9 100%
+  );
+  box-shadow:
+    0 0 calc(10px * var(--gg-glow)) color-mix(in srgb, var(--gg-charge) 70%, transparent),
+    0 0 calc(20px * var(--gg-glow)) color-mix(in srgb, var(--gg-warmth) 50%, transparent);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .marquee::after {
+    animation: gg-breathe 3.6s ease-in-out infinite;
+  }
+  @keyframes gg-breathe {
+    50% {
+      opacity: 0.55;
+    }
+  }
+}
+.marquee .wordmark {
+  font-family: var(--gg-font-brand);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  color: var(--gg-warmth);
+  text-shadow: 0 0 calc(9px * var(--gg-glow)) color-mix(in srgb, var(--gg-warmth) 65%, transparent);
+}
+.marquee .logo {
+  width: 16px;
+  height: 16px;
+}
+.marquee .theme-toggle {
+  position: absolute;
+  right: max(6px, env(safe-area-inset-right));
+  bottom: 2px;
+  background: none;
+  border: none;
+  font-size: 15px;
+  opacity: 0.65;
+  /* Comfortable touch target, not just the glyph's own size. */
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+}
+.marquee .theme-toggle:hover {
+  opacity: 1;
+}
+
+.screen {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 8px;
+}
+
+/* ---- bottom dock (composer + tabs) ---- */
+
+.dock {
+  flex: none;
+  padding: 8px 12px calc(env(safe-area-inset-bottom) + 8px);
+  background: linear-gradient(180deg, transparent, var(--gg-bg) 22%);
+  position: relative;
+  z-index: 45;
+}
+
+/* The composer and quick replies render outside .dock (the chat view supplies
+   them), so they carry their own gutters — including the safe-area inset, or
+   the send key sits under an iPhone's rounded corner. */
+.composer {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  margin-bottom: 8px;
+  padding-left: max(12px, env(safe-area-inset-left));
+  padding-right: max(12px, env(safe-area-inset-right));
+}
+.composer textarea {
+  flex: 1;
+  resize: none;
+  max-height: 108px;
+  padding: 10px 14px;
+  border-radius: var(--gg-radius-pill);
+  border: 1px solid var(--gg-line);
+  background: var(--gg-surface);
+  font-size: 15px; /* < 16px triggers iOS zoom-on-focus; keep at 15 with the meta lock */
+}
+.composer textarea::placeholder {
+  color: var(--gg-sub);
+}
+.composer .send {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: 50%;
+  border: none;
+  background: var(--gg-thrill);
+  color: #fff;
+  font-size: 15px;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 0 calc(13px * var(--gg-glow)) color-mix(in srgb, var(--gg-thrill) 55%, transparent);
+}
+.composer .send:disabled {
+  opacity: 0.45;
+  box-shadow: none;
+  cursor: default;
+}
+
+.tabbar {
+  display: flex;
+  border-top: 1px solid var(--gg-line);
+  padding-top: 7px;
+}
+.tabbar button {
+  flex: 1;
+  background: none;
+  border: none;
+  font-family: var(--gg-font-data);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--gg-sub);
+  position: relative;
+  padding: 2px 0 0;
+}
+.tabbar button i {
+  display: block;
+  font-style: normal;
+  font-size: 17px;
+  margin-bottom: 2px;
+  filter: grayscale(1) opacity(0.55);
+}
+.tabbar button[aria-current="page"] {
+  color: var(--gg-charge);
+}
+.tabbar button[aria-current="page"] i {
+  filter: none;
+}
+.tabbar button[aria-current="page"]::after {
+  content: "";
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 22px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--gg-charge);
+  box-shadow: 0 0 calc(8px * var(--gg-glow)) var(--gg-charge);
+}
+
+/* ---- chat ---- */
+
+.day-divider {
+  text-align: center;
+  font-family: var(--gg-font-data);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gg-sub);
+  margin: 12px 0 4px;
+}
+
+/* Hugs its own text and sits on the right, the way a sent message reads. */
+.bubble-user {
+  margin: 8px 12px 8px auto;
+  width: fit-content;
+  max-width: min(78%, 460px);
+  padding: 9px 13px;
+  border-radius: 16px 16px 4px 16px;
+  background: color-mix(in srgb, var(--gg-thrill) 20%, var(--gg-bg2));
+  border: 1px solid color-mix(in srgb, var(--gg-thrill) 40%, transparent);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.bubble-agent {
+  margin: 8px 12px;
+  overflow-wrap: anywhere;
+}
+.bubble-agent p {
+  margin: 0 0 0.7em;
+}
+.bubble-agent p:last-child {
+  margin-bottom: 0;
+}
+.bubble-agent strong {
+  color: var(--gg-ink);
+}
+.bubble-agent h1,
+.bubble-agent h2,
+.bubble-agent h3 {
+  font-size: 1.05em;
+  margin: 0.6em 0 0.3em;
+}
+.bubble-agent ul {
+  margin: 0.3em 0 0.7em;
+  padding-left: 1.1em;
+}
+.bubble-agent code {
+  font-family: var(--gg-font-data);
+  font-size: 0.92em;
+}
+
+.worked {
+  margin: 4px 12px;
+}
+.worked summary {
+  list-style: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--gg-font-data);
+  font-size: 10.5px;
+  color: var(--gg-sub);
+}
+.worked summary::-webkit-details-marker {
+  display: none;
+}
+.worked summary::after {
+  content: "›";
+  transition: transform 0.18s;
+}
+.worked[open] summary::after {
+  transform: rotate(90deg);
+}
+.worked .notes {
+  margin: 6px 0 0;
+  padding-left: 1.1em;
+  font-family: var(--gg-font-data);
+  font-size: 11px;
+  color: var(--gg-sub);
+  line-height: 1.6;
+}
+
+.tool-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 4px 12px;
+}
+.chip {
+  font-family: var(--gg-font-data);
+  font-size: 10px;
+  padding: 4px 10px;
+  border-radius: var(--gg-radius-pill);
+  border: 1px solid var(--gg-line);
+  background: var(--gg-surface);
+  color: var(--gg-sub);
+}
+.chip.live {
+  color: var(--gg-charge);
+  border-color: color-mix(in srgb, var(--gg-charge) 50%, transparent);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .chip.live {
+    animation: gg-pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes gg-pulse {
+    50% {
+      opacity: 0.45;
+    }
+  }
+}
+
+/* the agent is cooking: the Steam logo variant, only while thinking */
+.thinking {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 12px;
+  font-family: var(--gg-font-data);
+  font-size: 11px;
+  color: var(--gg-sub);
+}
+.thinking .steam {
+  width: 22px;
+  height: 22px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .thinking .steam {
+    animation: gg-simmer 2.2s ease-in-out infinite;
+  }
+  @keyframes gg-simmer {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-1.5px);
+    }
+  }
+}
+
+.cursor {
+  display: inline-block;
+  width: 7px;
+  height: 1.05em;
+  vertical-align: -2px;
+  margin-left: 2px;
+  background: var(--gg-charge);
+  box-shadow: 0 0 calc(7px * var(--gg-glow)) var(--gg-charge);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .cursor {
+    animation: gg-blink 1s steps(2, start) infinite;
+  }
+  @keyframes gg-blink {
+    50% {
+      opacity: 0;
+    }
+  }
+}
+
+.error-note {
+  margin: 8px 12px;
+  padding: 9px 12px;
+  border-radius: var(--gg-radius-button);
+  border: 1px solid color-mix(in srgb, var(--gg-thrill) 50%, transparent);
+  background: color-mix(in srgb, var(--gg-thrill) 10%, transparent);
+  font-size: 13px;
+}
+
+.quick-replies {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+  padding: 2px max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left));
+}
+.quick-replies button {
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: var(--gg-radius-pill);
+  border: 1px solid color-mix(in srgb, var(--gg-charge) 50%, transparent);
+  color: var(--gg-charge);
+  background: transparent;
+}
+.quick-replies button:hover {
+  background: color-mix(in srgb, var(--gg-charge) 12%, transparent);
+}
+
+.empty-state {
+  text-align: center;
+  padding: 34px 24px 12px;
+  color: var(--gg-sub);
+}
+.empty-state .steam {
+  width: 54px;
+  height: 54px;
+  margin-bottom: 10px;
+}
+.empty-state h2 {
+  font-family: var(--gg-font-brand);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  line-height: 1.8;
+  color: var(--gg-warmth);
+  text-shadow: 0 0 calc(9px * var(--gg-glow)) color-mix(in srgb, var(--gg-warmth) 55%, transparent);
+  margin: 0 0 8px;
+}
+.empty-state p {
+  margin: 0 auto;
+  max-width: 34ch;
+  font-size: 13.5px;
+}
+.starters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 16px 12px 0;
+}
+.starters button {
+  padding: 12px 10px;
+  border-radius: var(--gg-radius-card);
+  border: 1px solid var(--gg-line);
+  background: var(--gg-surface);
+  font-size: 12.5px;
+  text-align: left;
+  line-height: 1.35;
+}
+.starters button:hover {
+  border-color: color-mix(in srgb, var(--gg-charge) 55%, transparent);
+}
+
+/* ---- recommendation card ---- */
+
+.rec-card {
+  margin: 8px 12px;
+  padding: 13px 14px 12px;
+  border-radius: var(--gg-radius-card);
+  background: var(--gg-surface);
+  border: 1px solid color-mix(in srgb, var(--gg-charge) 45%, transparent);
+  box-shadow:
+    0 0 calc(16px * var(--gg-glow)) color-mix(in srgb, var(--gg-charge) 18%, transparent),
+    0 6px 18px rgba(0, 0, 0, 0.28);
+}
+/* While the answer is still arriving the card is provisional: no lit border,
+   so the glow becomes the signal that the pick has landed. */
+.rec-card.streaming {
+  border-color: var(--gg-line);
+  box-shadow: none;
+}
+
+.rec-card .kicker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--gg-font-brand);
+  font-size: 7px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--gg-thrill);
+  text-shadow: 0 0 calc(7px * var(--gg-glow)) color-mix(in srgb, var(--gg-thrill) 55%, transparent);
+  margin-bottom: 8px;
+}
+.rec-card .kicker::before {
+  content: "";
+  width: 0;
+  height: 0;
+  border-left: 5px solid var(--gg-thrill);
+  border-top: 3.5px solid transparent;
+  border-bottom: 3.5px solid transparent;
+}
+.rec-card .title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.rec-card h3 {
+  margin: 0;
+  font-size: 16.5px;
+  font-weight: 700;
+  text-wrap: balance;
+}
+.rec-card .score {
+  font-family: var(--gg-font-data);
+  font-size: 11px;
+  color: var(--gg-warmth);
+  white-space: nowrap;
+}
+.rec-card .meta {
+  font-family: var(--gg-font-data);
+  font-size: 10px;
+  color: var(--gg-sub);
+  margin: 3px 0 8px;
+}
+.rec-card .why p {
+  margin: 0 0 0.7em;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.rec-card .why > *:last-child {
+  margin-bottom: 0;
+}
+.rec-card .alts {
+  font-family: var(--gg-font-data);
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--gg-sub);
+}
+.rec-card .alts strong {
+  color: var(--gg-charge);
+  font-weight: 400;
+}
+
+/* The price gets its own lit panel — the one number the eye should find. */
+.price {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 11px;
+  border-radius: 9px;
+  margin: 0 0 10px;
+  background: color-mix(in srgb, var(--gg-warmth) 10%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--gg-warmth) 50%, transparent);
+}
+.price b {
+  font-family: var(--gg-font-data);
+  font-size: 15px;
+  color: var(--gg-warmth);
+  white-space: nowrap;
+  text-shadow: 0 0 calc(8px * var(--gg-glow)) color-mix(in srgb, var(--gg-warmth) 45%, transparent);
+}
+.price span {
+  font-family: var(--gg-font-data);
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--gg-sub);
+}
+
+.rec-actions {
+  display: flex;
+  gap: 7px;
+  margin-top: 10px;
+}
+.rec-actions button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.rec-actions button {
+  flex: 1;
+  padding: 7px 0 6px;
+  border-radius: var(--gg-radius-button);
+  border: 1px solid var(--gg-line);
+  background: transparent;
+  font-size: 14px;
+}
+.rec-actions button:hover {
+  border-color: var(--gg-charge);
+}
+.rec-actions button[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--gg-success) 20%, transparent);
+  border-color: var(--gg-success);
+  box-shadow: 0 0 calc(9px * var(--gg-glow)) color-mix(in srgb, var(--gg-success) 40%, transparent);
+}
+.rec-actions button.down[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--gg-thrill) 20%, transparent);
+  border-color: var(--gg-thrill);
+  box-shadow: 0 0 calc(9px * var(--gg-glow)) color-mix(in srgb, var(--gg-thrill) 40%, transparent);
+}
+
+/* ---- library ---- */
+
+.lib-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 14px 14px 8px;
+}
+.lib-head h2 {
+  font-family: var(--gg-font-brand);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--gg-warmth);
+  text-shadow: 0 0 calc(8px * var(--gg-glow)) color-mix(in srgb, var(--gg-warmth) 55%, transparent);
+  margin: 0;
+}
+.lib-head .count {
+  font-family: var(--gg-font-data);
+  font-size: 10px;
+  color: var(--gg-sub);
+  margin-left: auto;
+}
+.view-toggle {
+  display: flex;
+  border: 1px solid var(--gg-line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.view-toggle button {
+  border: none;
+  background: transparent;
+  color: var(--gg-sub);
+  font-size: 13px;
+  min-width: 38px;
+  min-height: 32px;
+  padding: 0 10px;
+}
+.view-toggle button[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--gg-charge) 22%, transparent);
+  color: var(--gg-charge);
+}
+
+.search-row {
+  display: flex;
+  gap: 8px;
+  margin: 0 12px 8px;
+}
+.search-row input {
+  flex: 1;
+  padding: 9px 13px;
+  border-radius: 11px;
+  border: 1px solid var(--gg-line);
+  background: var(--gg-surface);
+  font-size: 15px;
+}
+.search-row .add {
+  flex: none;
+  width: 40px;
+  border-radius: 11px;
+  border: 1px solid color-mix(in srgb, var(--gg-charge) 50%, transparent);
+  background: transparent;
+  color: var(--gg-charge);
+  font-size: 17px;
+}
+
+.filter-chips {
+  display: flex;
+  gap: 6px;
+  padding: 0 12px 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.filter-chips::-webkit-scrollbar {
+  display: none;
+}
+.filter-chips button {
+  flex: none;
+  font-family: var(--gg-font-data);
+  font-size: 10.5px;
+  padding: 5px 12px;
+  border-radius: var(--gg-radius-pill);
+  border: 1px solid var(--gg-line);
+  background: transparent;
+  color: var(--gg-sub);
+}
+.filter-chips button[aria-pressed="true"] {
+  background: var(--gg-charge);
+  border-color: var(--gg-charge);
+  color: var(--gg-bg);
+  font-weight: 700;
+  box-shadow: 0 0 calc(9px * var(--gg-glow)) color-mix(in srgb, var(--gg-charge) 45%, transparent);
+}
+
+.section-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 6px 14px 6px;
+}
+.section-line h3 {
+  margin: 0;
+  font-family: var(--gg-font-brand);
+  font-size: 7px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--gg-thrill);
+  text-shadow: 0 0 calc(7px * var(--gg-glow)) color-mix(in srgb, var(--gg-thrill) 55%, transparent);
+  white-space: nowrap;
+}
+/* lit bulb before the label — the Backglass cue */
+.section-line h3::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: 1px;
+  background: radial-gradient(circle at 35% 30%, #fff6dd, var(--gg-warmth) 60%, #7a5312);
+  box-shadow: 0 0 calc(8px * var(--gg-glow)) var(--gg-warmth);
+}
+.section-line .hint {
+  font-family: var(--gg-font-data);
+  font-size: 9.5px;
+  color: var(--gg-sub);
+  text-align: right;
+}
+
+.picks-row {
+  display: flex;
+  gap: 8px;
+  padding: 0 12px 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.picks-row::-webkit-scrollbar {
+  display: none;
+}
+.pick {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 11px;
+  border-radius: 10px;
+  border: 1px solid var(--gg-line);
+  background: var(--gg-surface);
+  font-size: 12px;
+}
+.pick .verdict {
+  font-family: var(--gg-font-data);
+  font-size: 9px;
+  color: var(--gg-sub);
+}
+.pick button {
+  border: none;
+  background: none;
+  font-size: 13px;
+  padding: 0 1px;
+  opacity: 0.6;
+}
+.pick button[aria-pressed="true"] {
+  opacity: 1;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 10px;
+  padding: 0 12px 12px;
+}
+.grid.list {
+  grid-template-columns: 1fr;
+  gap: 7px;
+}
+.cover-card {
+  border-radius: var(--gg-radius-card);
+  overflow: hidden;
+  border: 1px solid var(--gg-line);
+  background: var(--gg-surface);
+  padding: 0;
+  text-align: left;
+  display: block;
+  width: 100%;
+}
+.cover-card:hover {
+  border-color: color-mix(in srgb, var(--gg-charge) 55%, transparent);
+}
+.grid.list .cover-card {
+  display: flex;
+  align-items: center;
+}
+.cover-art {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: linear-gradient(
+    var(--tilt, 135deg),
+    color-mix(in srgb, var(--gg-thrill) 62%, var(--gg-bg)),
+    color-mix(in srgb, var(--gg-charge) 62%, var(--gg-bg))
+  );
+  filter: hue-rotate(var(--hue, 0deg));
+}
+.cover-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+/* No cover art yet: the neon marquee placeholder (initials on the gradient). */
+.cover-art .initials {
+  font-family: var(--gg-font-brand);
+  font-size: 15px;
+  color: #fff;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+.grid.list .cover-art {
+  width: 52px;
+  height: 52px;
+  aspect-ratio: auto;
+  flex: none;
+  border-radius: 9px;
+  margin: 6px;
+}
+.grid.list .cover-art .initials {
+  font-size: 9px;
+}
+/* Must be block: as an inline span its padding would not inset the block
+   children, and the title/meta would run to the card's border. */
+.cover-cap {
+  display: block;
+  padding: 8px 10px 9px;
+  min-width: 0;
+  overflow: hidden;
+}
+.cover-cap b {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cover-cap span {
+  display: block;
+  font-family: var(--gg-font-data);
+  font-size: 9.5px;
+  color: var(--gg-sub);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lib-empty {
+  text-align: center;
+  color: var(--gg-sub);
+  font-size: 13px;
+  padding: 26px 24px;
+}
+
+/* ---- bottom sheet ---- */
+
+.sheet-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(0, 0, 0, 0.5);
+  border: none;
+  padding: 0;
+  animation: gg-fade 0.2s ease;
+}
+@keyframes gg-fade {
+  from {
+    opacity: 0;
+  }
+}
+.sheet {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 0;
+  z-index: 61;
+  width: min(100%, 720px);
+  border-radius: 22px 22px 0 0;
+  padding: 12px 16px calc(env(safe-area-inset-bottom) + 20px);
+  background: var(--gg-bg2);
+  border-top: 1px solid color-mix(in srgb, var(--gg-charge) 60%, transparent);
+  box-shadow:
+    0 -8px 30px rgba(0, 0, 0, 0.45),
+    0 0 calc(18px * var(--gg-glow)) color-mix(in srgb, var(--gg-charge) 25%, transparent);
+  animation: gg-rise 0.26s cubic-bezier(0.2, 0.9, 0.3, 1);
+  max-height: 82vh;
+  overflow-y: auto;
+}
+@keyframes gg-rise {
+  from {
+    transform: translate(-50%, 100%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sheet,
+  .sheet-veil {
+    animation: none;
+  }
+}
+.sheet .grab {
+  width: 38px;
+  height: 4px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--gg-ink) 40%, transparent);
+  margin: 0 auto 12px;
+}
+.sheet h3 {
+  margin: 0 0 2px;
+  font-size: 17px;
+}
+.sheet .meta {
+  font-family: var(--gg-font-data);
+  font-size: 10.5px;
+  color: var(--gg-sub);
+  margin-bottom: 12px;
+}
+.sheet-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 2px;
+  border-top: 1px solid var(--gg-line);
+  font-size: 13px;
+}
+.sheet-row .value {
+  font-family: var(--gg-font-data);
+  font-size: 11.5px;
+  color: var(--gg-charge);
+}
+.sheet-row input,
+.sheet-row select {
+  background: var(--gg-surface);
+  border: 1px solid var(--gg-line);
+  border-radius: 8px;
+  padding: 6px 9px;
+  font-size: 13px;
+  max-width: 58%;
+}
+.sheet-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+.sheet-actions button {
+  flex: 1;
+  padding: 10px 0;
+  border-radius: var(--gg-radius-button);
+  border: 1px solid var(--gg-line);
+  background: var(--gg-surface);
+  font-size: 12.5px;
+}
+.sheet-actions button.danger {
+  color: var(--gg-thrill);
+  border-color: color-mix(in srgb, var(--gg-thrill) 50%, transparent);
+}
+.sheet-actions button:disabled {
+  opacity: 0.5;
+}
+
+.suggestions {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.suggestions button {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--gg-line);
+  background: var(--gg-surface);
+  font-size: 13px;
+  text-align: left;
+}
+.suggestions .owned {
+  color: var(--gg-success);
+  font-family: var(--gg-font-data);
+  font-size: 10px;
+}
+
+/* ---- usage caption ---- */
+
+.usage {
+  font-family: var(--gg-font-data);
+  font-size: 9.5px;
+  color: var(--gg-sub);
+  text-align: center;
+  padding: 2px 12px 6px;
+}
+
+.offline-banner {
+  margin: 8px 12px;
+  padding: 8px 12px;
+  border-radius: var(--gg-radius-button);
+  border: 1px dashed color-mix(in srgb, var(--gg-warmth) 55%, transparent);
+  background: color-mix(in srgb, var(--gg-warmth) 10%, transparent);
+  font-family: var(--gg-font-data);
+  font-size: 10.5px;
+  color: var(--gg-sub);
+}
+
+/* Horizontal rails fade at the right edge, so a clipped chip reads as
+   "there is more, scroll" rather than as a broken layout. */
+.filter-chips,
+.picks-row {
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+}
+
+/* ================= DESKTOP: the cabinet's split view =================
+   Below 900px this is the phone layout above. At desktop width the app
+   becomes the prototype's Mac window: a chrome sidebar carrying the brand,
+   navigation, platforms and the running cost, with the conversation held to
+   a readable measure beside it. */
+
+.sidebar {
+  display: none;
+}
+
+@media (min-width: 900px) {
+  body {
+    padding: 22px;
+  }
+
+  .app {
+    flex-direction: row;
+    max-width: 1040px;
+    height: calc(100% - 44px);
+    border: 1px solid var(--gg-line);
+    border-radius: 14px;
+    overflow: hidden;
+    background: color-mix(in srgb, var(--gg-bg2) 45%, transparent);
+    box-shadow: 0 24px 50px rgba(0, 0, 0, 0.32);
+  }
+
+  /* The marquee's job (brand + theme) moves into the sidebar. */
+  .marquee {
+    display: none;
+  }
+
+  .sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    width: 216px;
+    flex: none;
+    padding: 16px 12px 14px;
+    border-right: 1px solid var(--gg-line);
+    background: color-mix(in srgb, var(--gg-bg) 55%, transparent);
+  }
+  .sidebar .brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 2px 4px 16px;
+    font-family: var(--gg-font-brand);
+    font-size: 8px;
+    letter-spacing: 0.14em;
+    color: var(--gg-warmth);
+    text-shadow: 0 0 calc(9px * var(--gg-glow)) color-mix(in srgb, var(--gg-warmth) 55%, transparent);
+  }
+  .sidebar .brand svg {
+    width: 15px;
+    height: 15px;
+    flex: none;
+  }
+  .sidebar nav {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .sidebar nav button {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 8px 10px;
+    border-radius: 9px;
+    border: 1px solid transparent;
+    background: none;
+    font-size: 13px;
+    color: var(--gg-sub);
+    text-align: left;
+  }
+  .sidebar nav button:hover {
+    color: var(--gg-ink);
+  }
+  .sidebar nav button[aria-current="page"] {
+    background: color-mix(in srgb, var(--gg-charge) 14%, transparent);
+    border-color: color-mix(in srgb, var(--gg-charge) 38%, transparent);
+    color: var(--gg-charge);
+  }
+  .sidebar .label {
+    font-family: var(--gg-font-brand);
+    font-size: 6.5px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--gg-thrill);
+    margin: 18px 4px 9px;
+  }
+  .sidebar .platform-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 0 4px;
+  }
+  .sidebar .platform-chips span {
+    font-family: var(--gg-font-data);
+    font-size: 10px;
+    padding: 4px 9px;
+    border-radius: var(--gg-radius-pill);
+    border: 1px solid var(--gg-line);
+    color: var(--gg-sub);
+  }
+  .sidebar .spacer {
+    flex: 1;
+  }
+  .sidebar .usage-panel {
+    font-family: var(--gg-font-data);
+    font-size: 9.5px;
+    line-height: 1.65;
+    color: var(--gg-sub);
+    border-top: 1px solid var(--gg-line);
+    padding: 10px 4px 0;
+  }
+  .sidebar .theme-toggle {
+    align-self: flex-start;
+    margin: 10px 0 0 2px;
+    background: none;
+    border: none;
+    font-size: 14px;
+    opacity: 0.65;
+    padding: 2px 4px;
+  }
+  .sidebar .theme-toggle:hover {
+    opacity: 1;
+  }
+
+  .main {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+  }
+
+  /* The conversation holds a readable measure instead of running the full
+     window width, as in the prototype's Mac view. */
+  .screen {
+    padding: 18px 0 8px;
+  }
+  .screen > * {
+    max-width: 640px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  /* These are flex items of .main, not blocks inside .screen. Auto margins on
+     a flex cross axis shrink an item to its content instead of stretching it,
+     so they need a definite width for the measure to apply — without it the
+     composer collapsed to ~280px under a 616px card. */
+  .composer,
+  .quick-replies,
+  .usage {
+    width: 100%;
+    max-width: 640px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .grid,
+  .filter-chips,
+  .picks-row,
+  .search-row,
+  .lib-head,
+  .section-line,
+  .offline-banner,
+  .lib-empty {
+    max-width: 640px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .bubble-user {
+    margin-right: 12px;
+  }
+  /* Full-width tap targets earn their size on a phone; on a desktop pointer
+     they'd just be three enormous buttons. */
+  .rec-actions {
+    max-width: 240px;
+  }
+  .composer {
+    padding: 0 12px;
+  }
+  .dock {
+    padding: 0 24px 14px;
+    background: none;
+  }
+  /* Navigation lives in the sidebar on desktop. */
+  .tabbar {
+    display: none;
+  }
+  .quick-replies {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  .sheet {
+    max-width: 560px;
+    left: auto;
+    right: auto;
+    transform: none;
+    margin-left: 216px;
+    width: calc(min(1040px, 100vw - 44px) - 216px);
+  }
+}
