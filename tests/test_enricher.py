@@ -24,11 +24,17 @@ _GOOD_JSON = (
 class _FakeTavily:
     """A TavilyService whose web_search returns preset snippets (or none)."""
 
-    def __init__(self, snippets: list[dict[str, str]]) -> None:
+    def __init__(self, snippets: list[dict[str, str]], image: str | None = None) -> None:
         self._snippets = snippets
+        self._image = image
+        self.image_queries: list[str] = []
 
     def web_search(self, query: str) -> list[dict[str, str]]:
         return list(self._snippets)
+
+    def find_image(self, query: str) -> str | None:
+        self.image_queries.append(query)
+        return self._image
 
 
 class _FakeBedrock:
@@ -49,8 +55,10 @@ class _FakeBedrock:
 _SNIPPETS = [{"title": "Metal Slug", "content": "Run-and-gun arcade shooter.", "url": "u"}]
 
 
-def _enricher(bedrock: Any, snippets: list[dict[str, str]] | None = None) -> Enricher:
-    tavily = _FakeTavily(_SNIPPETS if snippets is None else snippets)
+def _enricher(
+    bedrock: Any, snippets: list[dict[str, str]] | None = None, image: str | None = None
+) -> Enricher:
+    tavily = _FakeTavily(_SNIPPETS if snippets is None else snippets, image)
     return Enricher(bedrock, tavily)  # type: ignore[arg-type]
 
 
@@ -128,3 +136,58 @@ def test_partial_classification_fills_only_known_fields() -> None:
     assert result.estimated_playtime_hours is None
     assert result.platform_availability == []
     assert result.community_review is None
+
+
+# --- cover art (contract v3.1) ---
+
+
+def test_cover_url_is_filled_from_the_image_search() -> None:
+    record = GameRecord(title="Metal Slug", source="gmail")
+    enricher = _enricher(_FakeBedrock(_GOOD_JSON), image="https://img.example/ms.jpg")
+    result = enricher.enrich(record)
+
+    assert result.cover_url == "https://img.example/ms.jpg"
+
+
+def test_cover_url_is_fetched_even_when_already_enriched() -> None:
+    """Records enriched under an earlier contract still gain a cover.
+
+    They are already "enriched" (genre + availability), so the classification
+    short-circuits — but the cheap image search must still run, otherwise an
+    existing library could never show art.
+    """
+    record = GameRecord(
+        title="Hades",
+        genre="Roguelike",
+        platform_availability=["Switch"],
+        source="gmail",
+    )
+    bedrock = _FakeBedrock(_GOOD_JSON)
+    result = _enricher(bedrock, image="https://img.example/hades.jpg").enrich(record)
+
+    assert result.cover_url == "https://img.example/hades.jpg"
+    assert bedrock.calls == 0  # no LLM re-classification was paid for
+
+
+def test_existing_cover_url_is_never_refetched() -> None:
+    record = GameRecord(title="Hades", cover_url="https://img.example/keep.jpg", source="manual")
+    tavily = _FakeTavily(_SNIPPETS, image="https://img.example/other.jpg")
+    Enricher(_FakeBedrock(_GOOD_JSON), tavily).enrich(record)  # type: ignore[arg-type]
+
+    assert record.cover_url == "https://img.example/keep.jpg"
+    assert tavily.image_queries == []
+
+
+def test_missing_cover_leaves_record_usable() -> None:
+    record = GameRecord(title="Obscure Game", source="manual")
+    result = _enricher(_FakeBedrock(_GOOD_JSON), image=None).enrich(record)
+
+    assert result.cover_url is None
+    assert result.genre == "Run-and-gun shooter"  # the rest of enrichment is unaffected
+
+
+def test_cover_is_not_part_of_the_enrichment_gate() -> None:
+    """Art is presentation: a record with everything but a cover stays enriched."""
+    record = GameRecord(title="Hades", genre="Roguelike", platform_availability=["Switch"])
+    assert record.is_enriched() is True
+    assert record.cover_url is None

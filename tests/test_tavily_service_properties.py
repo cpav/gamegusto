@@ -245,3 +245,50 @@ def test_autocomplete_strips_site_suffixes_from_titles() -> None:
         "Marvel's Spider-Man",
         "Hades",
     ]
+
+
+# --- find_image (cover art, contract v3.1) ---
+
+
+def test_find_image_returns_first_valid_url() -> None:
+    client = FakeSearchClient(
+        {"images": ["not-a-url", {"url": "https://img.example/cover.jpg"}, "https://later.jpg"]}
+    )
+    service = TavilyService("key", client=client)
+
+    assert service.find_image("Hades cover art") == "https://img.example/cover.jpg"
+    # Images are requested explicitly; the default search never pays for them.
+    assert client.calls[0][1]["include_images"] is True
+
+
+def test_find_image_accepts_bare_url_strings() -> None:
+    client = FakeSearchClient({"images": ["https://img.example/bare.png"]})
+    assert TavilyService("key", client=client).find_image("Hades") == "https://img.example/bare.png"
+
+
+def test_find_image_returns_none_without_usable_images() -> None:
+    payloads: list[dict[str, Any]] = [
+        {"images": []},
+        {"images": "nope"},
+        {},
+        {"images": [{"no_url": 1}]},
+    ]
+    for payload in payloads:
+        client = FakeSearchClient(payload)
+        assert TavilyService("key", client=client).find_image("Hades") is None
+
+
+def test_find_image_degrades_on_failure() -> None:
+    class _Boom:
+        def search(self, query: str, **kwargs: Any) -> dict[str, Any]:
+            raise RuntimeError("tavily down")
+
+    service = TavilyService("key", client=_Boom())
+    assert service.find_image("Hades") is None
+    assert service.is_available is False
+
+
+def test_find_image_skips_blank_query_without_calling() -> None:
+    client = FakeSearchClient({"images": ["https://img.example/x.jpg"]})
+    assert TavilyService("key", client=client).find_image("   ") is None
+    assert client.call_count == 0

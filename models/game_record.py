@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Literal
 
-CONTRACT_VERSION = "3.0.0"
+CONTRACT_VERSION = "3.1.0"
 
 Source = Literal["gmail", "manual", "enrichment"]
 
@@ -52,7 +52,7 @@ class CommunityReview:
 
 @dataclass
 class GameRecord:
-    """A single owned game, normalized across all sources (data contract v3.0.0)."""
+    """A single owned game, normalized across all sources (data contract v3.1.0)."""
 
     title: str
     platforms: list[str] = field(default_factory=list)
@@ -66,6 +66,10 @@ class GameRecord:
     community_review: CommunityReview | None = None
     platform_availability: list[str] = field(default_factory=list)
     external_ids: dict[str, str] = field(default_factory=dict)
+    cover_url: str | None = None
+    """Cover/key art URL for the v2 card grid (contract v3.1). Presentation-only:
+    it never affects dedup, matching, or recommendation reasoning, and a record
+    without one renders a styled placeholder instead."""
 
     @property
     def dedup_key(self) -> str:
