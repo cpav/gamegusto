@@ -146,13 +146,17 @@ textarea {
 }
 .marquee .theme-toggle {
   position: absolute;
-  right: 12px;
-  bottom: 8px;
+  right: max(6px, env(safe-area-inset-right));
+  bottom: 2px;
   background: none;
   border: none;
   font-size: 15px;
   opacity: 0.65;
-  padding: 4px;
+  /* Comfortable touch target, not just the glyph's own size. */
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
 }
 .marquee .theme-toggle:hover {
   opacity: 1;
@@ -175,11 +179,16 @@ textarea {
   z-index: 45;
 }
 
+/* The composer and quick replies render outside .dock (the chat view supplies
+   them), so they carry their own gutters — including the safe-area inset, or
+   the send key sits under an iPhone's rounded corner. */
 .composer {
   display: flex;
   gap: 8px;
   align-items: flex-end;
   margin-bottom: 8px;
+  padding-left: max(12px, env(safe-area-inset-left));
+  padding-right: max(12px, env(safe-area-inset-right));
 }
 .composer textarea {
   flex: 1;
@@ -433,7 +442,7 @@ textarea {
   display: flex;
   gap: 7px;
   flex-wrap: wrap;
-  padding: 2px 12px 8px;
+  padding: 2px max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left));
 }
 .quick-replies button {
   font-size: 12px;
@@ -654,8 +663,10 @@ textarea {
   border: none;
   background: transparent;
   color: var(--gg-sub);
-  font-size: 12px;
-  padding: 3px 9px;
+  font-size: 13px;
+  min-width: 38px;
+  min-height: 32px;
+  padding: 0 10px;
 }
 .view-toggle button[aria-pressed="true"] {
   background: color-mix(in srgb, var(--gg-charge) 22%, transparent);
@@ -850,9 +861,13 @@ textarea {
 .grid.list .cover-art .initials {
   font-size: 9px;
 }
+/* Must be block: as an inline span its padding would not inset the block
+   children, and the title/meta would run to the card's border. */
 .cover-cap {
+  display: block;
   padding: 8px 10px 9px;
   min-width: 0;
+  overflow: hidden;
 }
 .cover-cap b {
   display: block;
@@ -864,9 +879,13 @@ textarea {
   text-overflow: ellipsis;
 }
 .cover-cap span {
+  display: block;
   font-family: var(--gg-font-data);
   font-size: 9.5px;
   color: var(--gg-sub);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .lib-empty {
@@ -1176,10 +1195,19 @@ textarea {
   .screen {
     padding: 18px 0 8px;
   }
-  .screen > *,
+  .screen > * {
+    max-width: 640px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  /* These are flex items of .main, not blocks inside .screen. Auto margins on
+     a flex cross axis shrink an item to its content instead of stretching it,
+     so they need a definite width for the measure to apply — without it the
+     composer collapsed to ~280px under a 616px card. */
   .composer,
   .quick-replies,
   .usage {
+    width: 100%;
     max-width: 640px;
     margin-left: auto;
     margin-right: auto;
