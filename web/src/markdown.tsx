@@ -39,7 +39,11 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
   });
 }
 
-export function Markdown({ text }: { text: string }) {
+export function Markdown({ text, inline = false }: { text: string; inline?: boolean }) {
+  // `inline` renders the spans only — for places that supply their own element
+  // (the alternatives line inside the recommendation card).
+  if (inline) return <>{renderInline(text.trim(), "inline")}</>;
+
   const blocks: ReactNode[] = [];
   const lines = text.split("\n");
   let bullets: string[] = [];

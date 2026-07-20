@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { api, streamChat, type ChatEvent, type Message, type Usage } from "../api";
+import { api, streamChat, type ChatEvent, type Message, type Pick, type Usage, type Verdict } from "../api";
 import { Logo } from "./Logo";
 import { Markdown } from "../markdown";
+import { RecCard } from "./RecCard";
 
 /** Friendly transient label per tool, mirroring the Streamlit vocabulary. */
 const TOOL_LABELS: Record<string, string> = {
@@ -51,8 +52,15 @@ function formatUsage(usage: Usage): string | null {
   return `~$${cost.toFixed(2)} · ${(total / 1000).toFixed(1)}k in (${cached}% cached) · ${(output / 1000).toFixed(1)}k out`;
 }
 
-export function ChatView({ onLibraryChanged }: { onLibraryChanged: () => void }) {
+export function ChatView({
+  onLibraryChanged,
+  onUsage,
+}: {
+  onLibraryChanged: () => void;
+  onUsage: (usage: string | null) => void;
+}) {
   const [messages, setMessages] = useState<Message[]>([]);
+  const [picks, setPicks] = useState<Pick[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [streaming, setStreaming] = useState(false);
   const [liveText, setLiveText] = useState("");
@@ -70,7 +78,38 @@ export function ChatView({ onLibraryChanged }: { onLibraryChanged: () => void })
       .then((data) => setMessages(data.messages))
       .catch(() => setError("Can't reach GameGusto — is the API running?"))
       .finally(() => setLoaded(true));
+    void refreshPicks();
   }, []);
+
+  async function refreshPicks() {
+    const data = await api.picks().catch(() => null);
+    if (data) setPicks(data.picks);
+  }
+
+  /**
+   * The saved pick a reply is about, matched by title appearing in the text.
+   * `save_recommendation` is what makes a turn a recommendation, so a reply
+   * with no matching pick (a clarifying question) correctly gets no header.
+   */
+  function pickFor(text: string): Pick | undefined {
+    const haystack = text.toLowerCase();
+    return picks.find((pick) => haystack.includes(pick.game_title.toLowerCase()));
+  }
+
+  async function setVerdict(pick: Pick, verdict: Verdict) {
+    setPicks((prior) =>
+      prior.map((item) => (item.game_title === pick.game_title ? { ...item, verdict } : item)),
+    );
+    await api.setFeedback(pick.game_title, verdict).catch(() => undefined);
+  }
+
+  async function addPick(pick: Pick) {
+    setPicks((prior) =>
+      prior.map((item) => (item.game_title === pick.game_title ? { ...item, owned: true } : item)),
+    );
+    await api.addGame(pick.game_title).catch(() => undefined);
+    onLibraryChanged();
+  }
 
   // Keep the newest content in view as the answer streams in.
   useLayoutEffect(() => {
@@ -112,9 +151,12 @@ export function ChatView({ onLibraryChanged }: { onLibraryChanged: () => void })
         case "error":
           setError(event.message);
           break;
-        case "done":
-          setUsage(formatUsage(event.usage));
+        case "done": {
+          const caption = formatUsage(event.usage);
+          setUsage(caption);
+          onUsage(caption); // the desktop sidebar shows the running cost
           break;
+        }
       }
     };
 
@@ -128,7 +170,10 @@ export function ChatView({ onLibraryChanged }: { onLibraryChanged: () => void })
       const entry: Message = { role: "assistant", content: answer };
       if (notes.length) entry.notes = notes;
       setMessages((prior) => [...prior, entry]);
-      onLibraryChanged(); // a turn may have saved a pick or added a game
+      // The turn may have saved a pick or touched the library; refresh both so
+      // the new reply can render as a card with working actions.
+      await refreshPicks();
+      onLibraryChanged();
     }
     setLiveText("");
     setLiveNotes([]);
@@ -182,9 +227,18 @@ export function ChatView({ onLibraryChanged }: { onLibraryChanged: () => void })
                   </ul>
                 </details>
               )}
-              <div className="bubble-agent">
-                <Markdown text={message.content} />
-              </div>
+              <RecCard
+                text={message.content}
+                pick={pickFor(message.content)}
+                onFeedback={(verdict) => {
+                  const pick = pickFor(message.content);
+                  if (pick) void setVerdict(pick, verdict);
+                }}
+                onAdd={() => {
+                  const pick = pickFor(message.content);
+                  if (pick) void addPick(pick);
+                }}
+              />
             </div>
           ),
         )}
@@ -208,9 +262,11 @@ export function ChatView({ onLibraryChanged }: { onLibraryChanged: () => void })
               </div>
             )}
             {liveText ? (
-              <div className="bubble-agent">
-                <Markdown text={liveText} />
-                <span className="cursor" aria-hidden="true" />
+              <div className="rec-card streaming">
+                <div className="why">
+                  <Markdown text={liveText} />
+                  <span className="cursor" aria-hidden="true" />
+                </div>
               </div>
             ) : (
               !activeTool && (

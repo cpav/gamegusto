@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { api, type Platform } from "./api";
 import { ChatView } from "./components/ChatView";
 import { LibraryView } from "./components/LibraryView";
 import { Logo } from "./components/Logo";
@@ -13,6 +14,8 @@ export default function App() {
   // Bumped whenever a chat turn may have changed stored data, so the library
   // refetches when you switch to it instead of showing a stale list.
   const [reloadKey, setReloadKey] = useState(0);
+  const [platforms, setPlatforms] = useState<Platform[]>([]);
+  const [usage, setUsage] = useState<string | null>(null);
   const [theme, setTheme] = useState<Theme>(
     () => (localStorage.getItem(THEME_KEY) as Theme | null) ?? "dark",
   );
@@ -22,45 +25,88 @@ export default function App() {
     localStorage.setItem(THEME_KEY, theme);
   }, [theme]);
 
+  useEffect(() => {
+    api
+      .platforms()
+      .then((data) => setPlatforms(data.platforms))
+      .catch(() => undefined);
+  }, [reloadKey]);
+
+  const onLibraryChanged = useCallback(() => setReloadKey((key) => key + 1), []);
+
+  const themeButton = (
+    <button
+      className="theme-toggle"
+      onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+      aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+    >
+      {theme === "dark" ? "☀" : "☾"}
+    </button>
+  );
+
+  const nav = (
+    <>
+      <button aria-current={tab === "chat" ? "page" : undefined} onClick={() => setTab("chat")}>
+        <i>💬</i>Chat
+      </button>
+      <button
+        aria-current={tab === "library" ? "page" : undefined}
+        onClick={() => {
+          setTab("library");
+          setReloadKey((key) => key + 1);
+        }}
+      >
+        <i>📚</i>Library
+      </button>
+    </>
+  );
+
   return (
     <div className="app">
-      <header className="marquee">
-        <Logo className="logo" />
-        <span className="wordmark">GAMEGUSTO</span>
-        <button
-          className="theme-toggle"
-          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-          aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
-        >
-          {theme === "dark" ? "☀" : "☾"}
-        </button>
-      </header>
-
-      {/* Both views stay mounted so switching tabs keeps scroll position and
-          never interrupts a streaming answer. */}
-      <div style={{ display: tab === "chat" ? "contents" : "none" }}>
-        <ChatView onLibraryChanged={() => setReloadKey((key) => key + 1)} />
-      </div>
-      <div style={{ display: tab === "library" ? "contents" : "none" }}>
-        <LibraryView reloadKey={reloadKey} />
-      </div>
-
-      <nav className="dock">
-        <div className="tabbar">
-          <button aria-current={tab === "chat" ? "page" : undefined} onClick={() => setTab("chat")}>
-            <i>💬</i>Chat
-          </button>
-          <button
-            aria-current={tab === "library" ? "page" : undefined}
-            onClick={() => {
-              setTab("library");
-              setReloadKey((key) => key + 1);
-            }}
-          >
-            <i>📚</i>Library
-          </button>
+      {/* Desktop: the cabinet's side panel. Hidden on phones, where the
+          marquee and the bottom tab bar carry the same information. */}
+      <aside className="sidebar">
+        <div className="brand">
+          <Logo />
+          GAMEGUSTO
         </div>
-      </nav>
+        <nav>{nav}</nav>
+        <div className="label">Platforms</div>
+        <div className="platform-chips">
+          {platforms.length ? (
+            platforms.map((platform) => <span key={platform.platform_id}>{platform.name}</span>)
+          ) : (
+            <span>none yet</span>
+          )}
+        </div>
+        <div className="spacer" />
+        {usage && <div className="usage-panel">{usage}</div>}
+        {themeButton}
+      </aside>
+
+      {/* The column the views live in. `display: contents` on phones so the
+          shell stays one flex column; a real flex column beside the sidebar
+          on desktop. */}
+      <main className="main">
+        <header className="marquee">
+          <Logo className="logo" />
+          <span className="wordmark">GAMEGUSTO</span>
+          {themeButton}
+        </header>
+
+        {/* Both views stay mounted so switching tabs keeps scroll position
+            and never interrupts a streaming answer. */}
+        <div style={{ display: tab === "chat" ? "contents" : "none" }}>
+          <ChatView onLibraryChanged={onLibraryChanged} onUsage={setUsage} />
+        </div>
+        <div style={{ display: tab === "library" ? "contents" : "none" }}>
+          <LibraryView reloadKey={reloadKey} />
+        </div>
+
+        <nav className="dock">
+          <div className="tabbar">{nav}</div>
+        </nav>
+      </main>
     </div>
   );
 }

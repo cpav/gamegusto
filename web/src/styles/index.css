@@ -85,6 +85,12 @@ textarea {
   position: relative;
 }
 
+/* On phones the main column is transparent to layout — the shell is one
+   flex column. It becomes a real column beside the sidebar at desktop width. */
+.main {
+  display: contents;
+}
+
 /* Marquee: chrome bar with the lit edge underneath (Backglass trim). */
 .marquee {
   flex: none;
@@ -262,8 +268,11 @@ textarea {
   margin: 12px 0 4px;
 }
 
+/* Hugs its own text and sits on the right, the way a sent message reads. */
 .bubble-user {
-  margin: 8px 12px 8px 56px;
+  margin: 8px 12px 8px auto;
+  width: fit-content;
+  max-width: min(78%, 460px);
   padding: 9px 13px;
   border-radius: 16px 16px 4px 16px;
   background: color-mix(in srgb, var(--gg-thrill) 20%, var(--gg-bg2));
@@ -494,6 +503,9 @@ textarea {
     0 6px 18px rgba(0, 0, 0, 0.28);
 }
 .rec-card .kicker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-family: var(--gg-font-brand);
   font-size: 7px;
   letter-spacing: 0.18em;
@@ -501,6 +513,14 @@ textarea {
   color: var(--gg-thrill);
   text-shadow: 0 0 calc(7px * var(--gg-glow)) color-mix(in srgb, var(--gg-thrill) 55%, transparent);
   margin-bottom: 8px;
+}
+.rec-card .kicker::before {
+  content: "";
+  width: 0;
+  height: 0;
+  border-left: 5px solid var(--gg-thrill);
+  border-top: 3.5px solid transparent;
+  border-bottom: 3.5px solid transparent;
 }
 .rec-card .title-row {
   display: flex;
@@ -512,6 +532,7 @@ textarea {
   margin: 0;
   font-size: 16.5px;
   font-weight: 700;
+  text-wrap: balance;
 }
 .rec-card .score {
   font-family: var(--gg-font-data);
@@ -525,9 +546,58 @@ textarea {
   color: var(--gg-sub);
   margin: 3px 0 8px;
 }
+.rec-card .why p {
+  margin: 0 0 0.7em;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.rec-card .why > *:last-child {
+  margin-bottom: 0;
+}
+.rec-card .alts {
+  font-family: var(--gg-font-data);
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--gg-sub);
+}
+.rec-card .alts strong {
+  color: var(--gg-charge);
+  font-weight: 400;
+}
+
+/* The price gets its own lit panel — the one number the eye should find. */
+.price {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 11px;
+  border-radius: 9px;
+  margin: 0 0 10px;
+  background: color-mix(in srgb, var(--gg-warmth) 10%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--gg-warmth) 50%, transparent);
+}
+.price b {
+  font-family: var(--gg-font-data);
+  font-size: 15px;
+  color: var(--gg-warmth);
+  white-space: nowrap;
+  text-shadow: 0 0 calc(8px * var(--gg-glow)) color-mix(in srgb, var(--gg-warmth) 45%, transparent);
+}
+.price span {
+  font-family: var(--gg-font-data);
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--gg-sub);
+}
+
 .rec-actions {
   display: flex;
   gap: 7px;
+  margin-top: 10px;
+}
+.rec-actions button:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 .rec-actions button {
   flex: 1;
@@ -955,4 +1025,206 @@ textarea {
   font-family: var(--gg-font-data);
   font-size: 10.5px;
   color: var(--gg-sub);
+}
+
+/* Horizontal rails fade at the right edge, so a clipped chip reads as
+   "there is more, scroll" rather than as a broken layout. */
+.filter-chips,
+.picks-row {
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+}
+
+/* ================= DESKTOP: the cabinet's split view =================
+   Below 900px this is the phone layout above. At desktop width the app
+   becomes the prototype's Mac window: a chrome sidebar carrying the brand,
+   navigation, platforms and the running cost, with the conversation held to
+   a readable measure beside it. */
+
+.sidebar {
+  display: none;
+}
+
+@media (min-width: 900px) {
+  body {
+    padding: 22px;
+  }
+
+  .app {
+    flex-direction: row;
+    max-width: 1040px;
+    height: calc(100% - 44px);
+    border: 1px solid var(--gg-line);
+    border-radius: 14px;
+    overflow: hidden;
+    background: color-mix(in srgb, var(--gg-bg2) 45%, transparent);
+    box-shadow: 0 24px 50px rgba(0, 0, 0, 0.32);
+  }
+
+  /* The marquee's job (brand + theme) moves into the sidebar. */
+  .marquee {
+    display: none;
+  }
+
+  .sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    width: 216px;
+    flex: none;
+    padding: 16px 12px 14px;
+    border-right: 1px solid var(--gg-line);
+    background: color-mix(in srgb, var(--gg-bg) 55%, transparent);
+  }
+  .sidebar .brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 2px 4px 16px;
+    font-family: var(--gg-font-brand);
+    font-size: 8px;
+    letter-spacing: 0.14em;
+    color: var(--gg-warmth);
+    text-shadow: 0 0 calc(9px * var(--gg-glow)) color-mix(in srgb, var(--gg-warmth) 55%, transparent);
+  }
+  .sidebar .brand svg {
+    width: 15px;
+    height: 15px;
+    flex: none;
+  }
+  .sidebar nav {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .sidebar nav button {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 8px 10px;
+    border-radius: 9px;
+    border: 1px solid transparent;
+    background: none;
+    font-size: 13px;
+    color: var(--gg-sub);
+    text-align: left;
+  }
+  .sidebar nav button:hover {
+    color: var(--gg-ink);
+  }
+  .sidebar nav button[aria-current="page"] {
+    background: color-mix(in srgb, var(--gg-charge) 14%, transparent);
+    border-color: color-mix(in srgb, var(--gg-charge) 38%, transparent);
+    color: var(--gg-charge);
+  }
+  .sidebar .label {
+    font-family: var(--gg-font-brand);
+    font-size: 6.5px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--gg-thrill);
+    margin: 18px 4px 9px;
+  }
+  .sidebar .platform-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 0 4px;
+  }
+  .sidebar .platform-chips span {
+    font-family: var(--gg-font-data);
+    font-size: 10px;
+    padding: 4px 9px;
+    border-radius: var(--gg-radius-pill);
+    border: 1px solid var(--gg-line);
+    color: var(--gg-sub);
+  }
+  .sidebar .spacer {
+    flex: 1;
+  }
+  .sidebar .usage-panel {
+    font-family: var(--gg-font-data);
+    font-size: 9.5px;
+    line-height: 1.65;
+    color: var(--gg-sub);
+    border-top: 1px solid var(--gg-line);
+    padding: 10px 4px 0;
+  }
+  .sidebar .theme-toggle {
+    align-self: flex-start;
+    margin: 10px 0 0 2px;
+    background: none;
+    border: none;
+    font-size: 14px;
+    opacity: 0.65;
+    padding: 2px 4px;
+  }
+  .sidebar .theme-toggle:hover {
+    opacity: 1;
+  }
+
+  .main {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+  }
+
+  /* The conversation holds a readable measure instead of running the full
+     window width, as in the prototype's Mac view. */
+  .screen {
+    padding: 18px 0 8px;
+  }
+  .screen > *,
+  .composer,
+  .quick-replies,
+  .usage {
+    max-width: 640px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .grid,
+  .filter-chips,
+  .picks-row,
+  .search-row,
+  .lib-head,
+  .section-line,
+  .offline-banner,
+  .lib-empty {
+    max-width: 640px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .bubble-user {
+    margin-right: 12px;
+  }
+  /* Full-width tap targets earn their size on a phone; on a desktop pointer
+     they'd just be three enormous buttons. */
+  .rec-actions {
+    max-width: 240px;
+  }
+  .composer {
+    padding: 0 12px;
+  }
+  .dock {
+    padding: 0 24px 14px;
+    background: none;
+  }
+  /* Navigation lives in the sidebar on desktop. */
+  .tabbar {
+    display: none;
+  }
+  .quick-replies {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  .sheet {
+    max-width: 560px;
+    left: auto;
+    right: auto;
+    transform: none;
+    margin-left: 216px;
+    width: calc(min(1040px, 100vw - 44px) - 216px);
+  }
 }
