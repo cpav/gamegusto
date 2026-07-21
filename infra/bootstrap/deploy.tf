@@ -26,7 +26,9 @@ locals {
     aws_iam_policy.boundary.arn,                                   # its own ceiling
     "arn:aws:iam::${local.account}:policy/${local.prefix}-deploy", # its own permissions
     "arn:aws:iam::${local.account}:role/${local.prefix}-deploy",   # its own trust policy
-    "arn:aws:iam::${local.account}:user/${local.prefix}",          # the v1 Streamlit user
+    # The assume-only user Terraform runs as. Without this the prefix rules
+    # below would let a run rewrite the identity it is running under.
+    aws_iam_user.terraform.arn,
   ]
 
   live_table_arns = [
@@ -225,9 +227,17 @@ data "aws_iam_policy_document" "deploy_trust" {
     actions = ["sts:AssumeRole"]
     principals {
       type = "AWS"
-      # Defaults to whoever bootstrapped this. Add a GitHub OIDC role here to
-      # move deploys into CI without touching any of the policies above.
-      identifiers = length(var.deploy_principals) > 0 ? var.deploy_principals : [data.aws_caller_identity.current.arn]
+      # The assume-only user is always trusted, so day-to-day Terraform never
+      # needs an admin credential on disk. The bootstrapping identity stays
+      # trusted too — otherwise applying this very change would remove the
+      # caller's own access before the replacement key exists.
+      #
+      # Add a GitHub OIDC role to deploy_principals to move deploys into CI
+      # without touching any of the policies above.
+      identifiers = concat(
+        [aws_iam_user.terraform.arn],
+        length(var.deploy_principals) > 0 ? var.deploy_principals : [data.aws_caller_identity.current.arn],
+      )
     }
   }
 }
