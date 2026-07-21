@@ -486,3 +486,60 @@ def test_main_build_wires_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     from api.main import build
 
     assert isinstance(build(), FastAPI)
+
+
+# --- authentication --------------------------------------------------------
+#
+# create_app() reads COGNITO_USER_POOL_ID at build time, so these tests set it
+# before constructing the app. Every other test in this file runs with it
+# absent, which is the local-development path.
+
+
+def test_routes_reject_requests_without_a_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    """With a pool configured, an unauthenticated request must not reach data."""
+    monkeypatch.setenv("COGNITO_USER_POOL_ID", "eu-north-1_test")
+    monkeypatch.setenv("AWS_REGION", "eu-north-1")
+    client, _, _ = make_app()
+
+    for method, path in [
+        ("get", "/api/library"),
+        ("get", "/api/picks"),
+        ("get", "/api/platforms"),
+        ("get", "/api/conversation"),
+    ]:
+        response = getattr(client, method)(path)
+        assert response.status_code == 401, f"{method.upper()} {path} was not protected"
+
+
+def test_chat_rejects_requests_without_a_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("COGNITO_USER_POOL_ID", "eu-north-1_test")
+    monkeypatch.setenv("AWS_REGION", "eu-north-1")
+    client, _, _ = make_app()
+
+    assert client.post("/api/chat", json={"message": "hi"}).status_code == 401
+
+
+def test_health_stays_open(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Health is the origin's readiness probe — it must not require a token."""
+    monkeypatch.setenv("COGNITO_USER_POOL_ID", "eu-north-1_test")
+    monkeypatch.setenv("AWS_REGION", "eu-north-1")
+    client, _, _ = make_app()
+
+    assert client.get("/api/health").status_code == 200
+
+
+def test_a_rejected_token_yields_401_not_500(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("COGNITO_USER_POOL_ID", "eu-north-1_test")
+    monkeypatch.setenv("AWS_REGION", "eu-north-1")
+    client, _, _ = make_app()
+
+    response = client.get("/api/library", headers={"X-Id-Token": "not-a-real-token"})
+    assert response.status_code == 401
+
+
+def test_without_a_pool_the_api_is_open(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The local path: no pool means no auth, so frontend work needs no AWS."""
+    monkeypatch.delenv("COGNITO_USER_POOL_ID", raising=False)
+    client, _, _ = make_app()
+
+    assert client.get("/api/library").status_code == 200

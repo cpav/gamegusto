@@ -43,6 +43,11 @@ exclude = ['^\.venv/', '^dist/']
 module = [
     "boto3.*",
     "botocore.*",
+    # Present in the venv and the Lambda bundle, but not in the pre-commit
+    # hook's isolated env: it has no wheel for this interpreter and building
+    # from source needs a Rust/OpenSSL toolchain. Only the auth tests import
+    # it, to generate real RSA keys.
+    "cryptography.*",
     "tavily.*",
     "googleapiclient.*",
     "google.*",

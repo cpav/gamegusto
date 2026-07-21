@@ -54,6 +54,69 @@ resource "aws_cognito_user_pool_domain" "main" {
   user_pool_id = aws_cognito_user_pool.main.id
 }
 
+# The hosted UI is the one screen in this product AWS designs rather than us,
+# and landing on stock grey-and-blue in the middle of the Blend palette reads
+# as a different application. Cognito only accepts a fixed set of selectors
+# and properties here, so this is as close to the design system as it goes:
+# the ground, the ink, and the thrill colour on the one button that matters.
+resource "aws_cognito_user_pool_ui_customization" "web" {
+  user_pool_id = aws_cognito_user_pool_domain.main.user_pool_id
+  client_id    = aws_cognito_user_pool_client.web.id
+
+  image_file = filebase64("${path.module}/../../web/public/icon-192.png")
+
+  # The Blend palette's LIGHT ground, not the dark one, and deliberately so.
+  # Cognito exposes no selector for page headings ("Change Password", "Reset
+  # your password"), which render in its own near-black. On a dark panel those
+  # become unreadable — dark grey on dark navy — and there is no way to fix it
+  # from here. A cream ground keeps every string Cognito controls legible while
+  # still carrying the brand through the banner, the logo and the pink action.
+  css = <<-CSS
+    .banner-customizable {
+      background: #0e101c;
+      padding: 24px 0 18px;
+    }
+    .background-customizable {
+      background: #f7f2e6;
+      border: 1px solid #d9d0ba;
+      border-radius: 14px;
+    }
+    .logo-customizable { max-width: 56px; max-height: 56px; }
+    .label-customizable { color: #4a4f66; font-weight: 400; }
+    .inputField-customizable {
+      background: #fffdf7;
+      border: 1px solid #cfc6b0;
+      border-radius: 10px;
+      color: #1a1d2e;
+    }
+    .inputField-customizable:focus {
+      border-color: #0f9ba1;
+      outline: 0;
+    }
+    .submitButton-customizable {
+      background: #d81b7a;
+      border-radius: 999px;
+      color: #ffffff;
+      font-weight: 600;
+    }
+    .submitButton-customizable:hover {
+      background: #b81566;
+      color: #ffffff;
+    }
+    /* One selector per rule: Cognito validates against an allow-list and
+       rejects comma-grouped selectors outright. */
+    .redirect-customizable { color: #4a4f66; }
+    .textDescription-customizable { color: #4a4f66; }
+    .legalText-customizable { color: #6f7590; }
+    .errorMessage-customizable {
+      background: #fdeaf3;
+      border: 1px solid #d81b7a;
+      color: #6b0f3c;
+      border-radius: 10px;
+    }
+  CSS
+}
+
 resource "aws_cognito_user_pool_client" "web" {
   name         = "${local.prefix}-web"
   user_pool_id = aws_cognito_user_pool.main.id

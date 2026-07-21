@@ -36,8 +36,15 @@ types: ## mypy
 
 # --- build -----------------------------------------------------------------
 
-web-build: ## Type-check and bundle the PWA
-	cd web && PATH="$(NODE_BIN):$$PATH" npm run build
+web-build: ## Type-check and bundle the PWA (with Cognito config from the stack)
+	@set -euo pipefail; \
+	domain=$$($(TF_STACK) output -raw login_domain 2>/dev/null || echo ""); \
+	client=$$($(TF_STACK) output -raw user_pool_client_id 2>/dev/null || echo ""); \
+	if [[ -z "$$domain" ]]; then \
+	  echo "!! no Cognito outputs — building UNAUTHENTICATED (fine for local dev)"; \
+	fi; \
+	cd web && PATH="$(NODE_BIN):$$PATH" \
+	  VITE_COGNITO_DOMAIN="$$domain" VITE_COGNITO_CLIENT_ID="$$client" npm run build
 
 api-build: ## Build the Lambda deployment zip
 	./scripts/build_lambda.sh

@@ -1263,3 +1263,67 @@ textarea {
     width: calc(min(1040px, 100vw - 44px) - 216px);
   }
 }
+
+/* ---- sign-in ---- */
+
+.app.signin {
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+.signin-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  max-width: 320px;
+}
+.signin-panel .logo {
+  width: 56px;
+  height: 56px;
+  margin-bottom: 6px;
+}
+.signin-panel h1 {
+  margin: 0;
+  font-family: var(--gg-font-brand);
+  font-size: 15px;
+  letter-spacing: 0.16em;
+  color: var(--gg-warmth);
+  text-shadow: 0 0 calc(16px * var(--gg-glow)) color-mix(in srgb, var(--gg-warmth) 55%, transparent);
+}
+.signin-panel p {
+  margin: 0 0 14px;
+  font-size: 13.5px;
+  color: var(--gg-sub);
+}
+/* The one true action on the screen, so it gets the thrill colour. */
+.signin-button {
+  padding: 11px 30px;
+  border-radius: var(--gg-radius-pill);
+  border: 1px solid color-mix(in srgb, var(--gg-thrill) 60%, transparent);
+  background: color-mix(in srgb, var(--gg-thrill) 22%, var(--gg-bg2));
+  color: var(--gg-ink);
+  font-size: 14px;
+  box-shadow: 0 0 calc(18px * var(--gg-glow)) color-mix(in srgb, var(--gg-thrill) 30%, transparent);
+}
+.signin-button:hover {
+  background: color-mix(in srgb, var(--gg-thrill) 32%, var(--gg-bg2));
+}
+
+.sidebar-foot {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.sidebar-foot .signout {
+  background: none;
+  border: none;
+  font-family: var(--gg-font-data);
+  font-size: 9.5px;
+  color: var(--gg-sub);
+  padding: 4px 6px;
+}
+.sidebar-foot .signout:hover {
+  color: var(--gg-thrill);
+}

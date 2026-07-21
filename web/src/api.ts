@@ -1,5 +1,7 @@
 /** Typed client for the GameGusto API (see `api/app.py`). */
 
+import { currentToken, payloadHash } from "./auth";
+
 export interface CommunityReview {
   score: number;
   sentiment_summary: string;
@@ -60,15 +62,47 @@ export type ChatEvent =
 
 export class ApiError extends Error {}
 
+/** Raised on 401 so the shell can send the user back to sign in. */
+export class AuthExpiredError extends ApiError {}
+
+/**
+ * Headers every API call needs.
+ *
+ * Two things are going on, both forced by the deployment:
+ *
+ *  - The token travels as `X-Id-Token`, not `Authorization`. CloudFront's
+ *    origin access control puts its own SigV4 signature in `Authorization`
+ *    when signing requests to the Lambda function URL, so that header is not
+ *    ours to use.
+ *  - Any request with a body carries `x-amz-content-sha256`. Lambda refuses
+ *    unsigned payloads behind OAC, and without this the request fails with a
+ *    signature mismatch that points nowhere near the real cause.
+ *
+ * Both are centralised here so no call site can forget them.
+ */
+async function authHeaders(body?: BodyInit | null): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {};
+  if (body) {
+    headers["Content-Type"] = "application/json";
+    headers["x-amz-content-sha256"] = await payloadHash(String(body));
+  }
+  const token = await currentToken();
+  if (token) headers["X-Id-Token"] = token;
+  return headers;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
     response = await fetch(path, {
       ...init,
-      headers: init?.body ? { "Content-Type": "application/json" } : undefined,
+      headers: { ...(await authHeaders(init?.body)), ...(init?.headers as Record<string, string>) },
     });
   } catch {
     throw new ApiError("Can't reach GameGusto — check that the API is running.");
+  }
+  if (response.status === 401) {
+    throw new AuthExpiredError("Session expired.");
   }
   if (!response.ok) {
     throw new ApiError(`Request failed (${response.status}).`);
@@ -130,14 +164,19 @@ export async function streamChat(
   onEvent: (event: ChatEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
+  const body = JSON.stringify({ message });
   const response = await fetch("/api/chat", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message }),
+    headers: await authHeaders(body),
+    body,
     signal,
   });
   if (response.status === 409) {
     onEvent({ kind: "error", message: "Still working on the previous message." });
+    return;
+  }
+  if (response.status === 401) {
+    onEvent({ kind: "error", message: "Session expired — sign in again." });
     return;
   }
   if (!response.ok || !response.body) {
