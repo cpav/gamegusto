@@ -23,6 +23,7 @@ raising: a missing cover is cosmetic, and must never break a library listing
 from __future__ import annotations
 
 import logging
+import re
 import time
 from typing import Any, Protocol
 
@@ -41,6 +42,37 @@ _TOKEN_SKEW_SECONDS = 60
 #: library grid is built around; "t_cover_big" is 264x374, retina-ish at the
 #: card sizes used and small enough to stay snappy on a phone.
 _IMAGE_TEMPLATE = "https://images.igdb.com/igdb/image/upload/t_cover_big/{image_id}.jpg"
+
+
+def _normalise(name: str) -> str:
+    """Reduce a title to comparable letters and digits."""
+    return re.sub(r"[^a-z0-9]+", "", name.casefold())
+
+
+def _best_match(title: str, games: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Pick the entry that is actually the game asked for.
+
+    IGDB's relevance ranking alone returns fan entries and spin-offs ahead of
+    the real thing — "Super Mario Odyssey" surfaced "Super Mario Odyssey
+    F.L.U.D.D." first, and "Star Fox" surfaced "Star Fox: Super Weekend". So
+    an exact name match wins, then one that differs only by a subtitle, and
+    anything looser is refused rather than guessed at: a wrong cover is worse
+    than the fallback, because it looks deliberate.
+    """
+    target = _normalise(title)
+
+    for game in games:
+        if _normalise(str(game.get("name", ""))) == target:
+            return game
+
+    for game in games:
+        candidate = _normalise(str(game.get("name", "")))
+        # "zeldatearsofthekingdom" against "thelegendofzeldatearsofthekingdom":
+        # a real title often omits the franchise prefix people never type.
+        if candidate.startswith(target) or target in candidate:
+            return game
+
+    return None
 
 
 class _Http(Protocol):
@@ -84,14 +116,17 @@ class IgdbService:
         if token is None:
             return None
 
-        # `where cover != null` keeps entries that have art; category 0 is a
-        # main game, which drops DLC, expansions and bundles that otherwise
-        # outrank the thing actually being searched for.
+        # Only "has a cover" is filtered. An earlier version also required
+        # `category = 0` to drop DLC — it matched NOTHING, including plain main
+        # games, because that attribute is no longer populated the way it was.
+        # Every lookup missed and fell back to a web image search, silently.
+        # Ranking is done below on the names instead, which does not depend on
+        # a schema detail staying still.
         body = (
             f'search "{title.replace(chr(34), "")}";'
             " fields name, cover.image_id;"
-            " where cover != null & category = 0;"
-            " limit 5;"
+            " where cover != null;"
+            " limit 15;"
         )
 
         try:
@@ -112,9 +147,15 @@ class IgdbService:
             return None
 
         if not isinstance(games, list) or not games:
+            logger.info("IGDB had no match for %r; falling back to image search", title)
             return None
 
-        image_id = (games[0].get("cover") or {}).get("image_id")
+        best = _best_match(title, games)
+        if best is None:
+            logger.info("IGDB match for %r was too loose; falling back", title)
+            return None
+
+        image_id = (best.get("cover") or {}).get("image_id")
         return _IMAGE_TEMPLATE.format(image_id=image_id) if image_id else None
 
     def _access_token(self) -> str | None:

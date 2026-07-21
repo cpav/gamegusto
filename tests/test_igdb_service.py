@@ -66,16 +66,6 @@ def test_reuses_the_token_across_lookups() -> None:
     assert len(token_calls) == 1
 
 
-def test_query_excludes_dlc_and_bundles() -> None:
-    """Searching a popular title otherwise surfaces its season pass first."""
-    http = FakeHttp()
-    IgdbService("id", "secret", http=http).find_cover("Hades")
-
-    _, kwargs = next((c for c in http.calls if "games" in c[0]), ("", {}))
-    assert "category = 0" in kwargs["data"]
-    assert "cover != null" in kwargs["data"]
-
-
 def test_no_credentials_means_unavailable() -> None:
     """The whole feature is optional; missing config must not raise."""
     service = IgdbService(None, None, http=FakeHttp())
@@ -119,3 +109,57 @@ def test_quotes_in_a_title_cannot_break_the_query() -> None:
 
     _, kwargs = next((c for c in http.calls if "games" in c[0]), ("", {}))
     assert kwargs["data"].count('"') == 2  # only the ones wrapping the term
+
+
+# --- picking the right entry -----------------------------------------------
+#
+# These encode what real IGDB responses actually looked like. The first
+# version filtered on `category = 0` to drop DLC, which matched NOTHING —
+# not even plain main games — so every lookup silently fell back to a web
+# image search. Ranking now happens on names, which does not depend on a
+# schema attribute staying put.
+
+
+def _games(*names: str) -> list[dict[str, Any]]:
+    return [{"name": n, "cover": {"image_id": f"img-{i}"}} for i, n in enumerate(names)]
+
+
+def test_exact_name_wins_over_a_higher_ranked_spin_off() -> None:
+    """IGDB ranked a fan entry above the real game for this exact query."""
+    http = FakeHttp(
+        games=FakeResponse(_games("Super Mario Odyssey F.L.U.D.D.", "Super Mario Odyssey"))
+    )
+    url = IgdbService("id", "secret", http=http).find_cover("Super Mario Odyssey")
+
+    assert url and url.endswith("img-1.jpg")
+
+
+def test_a_franchise_prefix_the_user_omitted_still_matches() -> None:
+    """Nobody types "The Legend of" — the library says "Zelda: ...".."""
+    http = FakeHttp(games=FakeResponse(_games("The Legend of Zelda: Tears of the Kingdom")))
+    url = IgdbService("id", "secret", http=http).find_cover("Zelda: Tears of the Kingdom")
+
+    assert url and url.endswith("img-0.jpg")
+
+
+def test_punctuation_and_case_do_not_decide_a_match() -> None:
+    http = FakeHttp(games=FakeResponse(_games("Worms W.M.D")))
+    url = IgdbService("id", "secret", http=http).find_cover("worms wmd")
+
+    assert url and url.endswith("img-0.jpg")
+
+
+def test_an_unrelated_result_is_refused_rather_than_guessed() -> None:
+    """A wrong cover looks deliberate; the fallback does not."""
+    http = FakeHttp(games=FakeResponse(_games("Star Fox: Super Weekend", "Star Wars")))
+    assert IgdbService("id", "secret", http=http).find_cover("Celeste") is None
+
+
+def test_the_query_no_longer_filters_on_category() -> None:
+    """That filter excluded remakes, editions and bundles — and everything else."""
+    http = FakeHttp()
+    IgdbService("id", "secret", http=http).find_cover("Spyro Reignited Trilogy")
+
+    _, kwargs = next(c for c in http.calls if "games" in c[0])
+    assert "category" not in kwargs["data"]
+    assert "cover != null" in kwargs["data"]
