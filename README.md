@@ -9,13 +9,18 @@ web) and avoiding anything you already have.
 
 ## Architecture
 
-`models → services → agent → ui`. The agent runs a Bedrock Converse tool-use
+`models → services → agent → api → web`. The agent runs a Bedrock Converse tool-use
 loop (`agent/runtime.py`) over tools that wrap the services
 (`agent/tools.py`): platforms, library, enrichment, web search (with deep page
 reads for store deals), persistence.
 Memory is a single DynamoDB table; the LLM is a hard dependency while memory and
 Tavily degrade gracefully. See [`.kiro/specs/game-recommendation-agent`](.kiro/specs/game-recommendation-agent)
 for the full requirements/design.
+
+Single-user by design: authentication gates access, but all data lives under
+one storage identity. [`docs/adding-users.md`](docs/adding-users.md) explains
+what a second person actually costs — and why there is deliberately no sign-up
+link.
 
 ## Run locally
 
