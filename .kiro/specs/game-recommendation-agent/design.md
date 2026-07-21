@@ -1,5 +1,16 @@
 # Design Document
 
+> **Scope note (2026-07-21).** This spec describes GameGusto **v1**. It remains
+> the reference for requirements — roughly 107 comments in the code cite
+> `Req X.Y` from `requirements.md` — and for the correctness properties
+> (P1–P22) the property tests implement.
+>
+> Its UI chapters are **historical**: the Streamlit app they describe was
+> retired in Phase 4. The deployed system is a React PWA on CloudFront over a
+> streaming FastAPI Lambda; see [`../../../README.md`](../../../README.md),
+> [`../../../infra/README.md`](../../../infra/README.md) and
+> [`../../../CLAUDE.md`](../../../CLAUDE.md).
+
 ## Overview
 
 GameGusto is a Python application that recommends the next video game to **buy and play** based on the user's mood, available time, taste, and the platforms they own. It is a **discovery tool**: it recommends games the user does **not** already own, using their library only to learn their taste and to exclude titles they already have. A **tool-using agent** — a Claude Sonnet base model on Amazon Bedrock driven through the Converse API tool-use loop — is the reasoning core: it interprets the user's request, decides which tools to call (manage platforms, read the owned library for taste/exclusion, import from sources, enrich, web search, recall recent picks, persist sessions), asks for missing information only when needed, and **selects the recommendation itself** so the result honors the user's stated taste and genre. It returns one strong new-title recommendation (playable on an owned platform) with clear reasoning plus up to three alternatives, and handles follow-ups ("I already played it", "something shorter") as turns in the same conversation.

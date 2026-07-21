@@ -14,8 +14,9 @@ loop (`agent/runtime.py`) over tools that wrap the services
 (`agent/tools.py`): platforms, library, enrichment, web search (with deep page
 reads for store deals), persistence.
 Memory is a single DynamoDB table; the LLM is a hard dependency while memory and
-Tavily degrade gracefully. See [`.kiro/specs/game-recommendation-agent`](.kiro/specs/game-recommendation-agent)
-for the full requirements/design.
+Tavily degrade gracefully. [`.kiro/specs/game-recommendation-agent`](.kiro/specs/game-recommendation-agent)
+holds the v1 requirements and correctness properties, still cited by ~107 code
+comments; its UI chapters are historical.
 
 Single-user by design: authentication gates access, but all data lives under
 one storage identity. [`docs/adding-users.md`](docs/adding-users.md) explains
