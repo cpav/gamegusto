@@ -1,6 +1,6 @@
 # GameGusto web client (v2)
 
-The installable PWA that replaces the Streamlit UI: chat with live streaming,
+The installable PWA: chat with live streaming,
 and a console-store library. Talks only to the HTTP API (`api/`) — no Python
 imports, so the same client can later be wrapped natively.
 
@@ -39,7 +39,7 @@ icon and no browser chrome.
 | `src/App.tsx` | Shell: marquee, tab bar, theme toggle. Both views stay mounted so switching never interrupts a streaming answer. |
 | `src/components/ChatView.tsx` | Streaming conversation: tool chips, live token deltas, quick replies, per-turn cost. |
 | `src/components/LibraryView.tsx` | Card grid, instant client-side search, filter chips, recent picks. |
-| `src/components/GameSheet.tsx` | Detail bottom sheet — the actions Streamlit hid behind `⋯`. |
+| `src/components/GameSheet.tsx` | Detail bottom sheet: platform, enrich, remove. |
 | `src/components/AddGameSheet.tsx` | Add-a-game with live autocomplete. |
 | `src/markdown.tsx` | Small renderer for the agent's markdown. No `dangerouslySetInnerHTML`, so a reply can't inject markup. |
 | `src/styles/index.css` | All styling. Imports `design/tokens.css` at the repo root — the tokens are never copied here, so the app and the design spec can't drift. |
