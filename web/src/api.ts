@@ -117,7 +117,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new AuthExpiredError("Session expired.");
   }
   if (!response.ok) {
-    throw new ApiError(`Request failed (${response.status}).`);
+    // Include the API's own explanation when it sent one. Without this a 404
+    // from a stale key and a 403 from the edge read identically to the user,
+    // and to anyone they report it to.
+    let detail = "";
+    try {
+      const body = (await response.clone().json()) as { detail?: string };
+      if (body?.detail) detail = `: ${body.detail}`;
+    } catch {
+      /* not JSON — the status alone will have to do */
+    }
+    throw new ApiError(`${response.status}${detail}`);
   }
   return response.status === 204 ? (undefined as T) : ((await response.json()) as T);
 }

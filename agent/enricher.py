@@ -27,6 +27,17 @@ from services.tavily_service import TavilyService
 _MAX_SNIPPETS = 6
 
 
+def _cover_query(record: GameRecord) -> str:
+    """Build the image-search query for a game's cover.
+
+    "cover art" alone pulls in fan art, screenshots and wallpapers — the
+    results looked nothing like a shelf of boxes. Naming the packaging and the
+    platform biases the search towards the real product shot.
+    """
+    platform = record.platforms[0] if record.platforms else ""
+    return f"{record.title} {platform} official box art packshot".strip()
+
+
 class Enricher:
     """Populates missing ``GameRecord`` metadata via Tavily search + the LLM."""
 
@@ -35,19 +46,28 @@ class Enricher:
         self._bedrock = bedrock
         self._tavily = tavily
 
-    def enrich(self, record: GameRecord) -> GameRecord:
+    def enrich(self, record: GameRecord, *, refresh_cover: bool = False) -> GameRecord:
         """Fill any unset enrichment fields of ``record`` (cache-first, degrading).
 
         Returns the record unchanged when it is already enriched, when Tavily
         yields no snippets, or when the model call/JSON parse fails (Req 5.5, 10.3).
+
+        ``refresh_cover`` replaces existing art rather than only filling a gap.
+        Image search returns whatever the web offers, so a wrong or unpleasant
+        cover is a normal outcome — asking again is the only remedy, and
+        without this the answer was always the same one.
         """
         # Cover art is filled BEFORE the cache-first return: it is a v3.1 addition,
         # so records enriched under an earlier contract are "enriched" yet have no
         # cover. Fetching it here lets them gain one from a single cheap image
         # search, without paying for a full LLM re-classification they don't need.
         # It stays out of is_enriched(): art is presentation, never a data gate.
-        if record.cover_url is None:
-            record.cover_url = self._tavily.find_image(f"{record.title} video game cover art")
+        if record.cover_url is None or refresh_cover:
+            found = self._tavily.find_image(_cover_query(record))
+            # Keep what we had if the search comes back empty — a refresh that
+            # finds nothing should not strip a cover the user could see.
+            if found or record.cover_url is None:
+                record.cover_url = found
 
         if record.is_enriched():
             return record

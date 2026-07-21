@@ -38,8 +38,17 @@ export function GameSheet({
     try {
       await action();
       onChanged();
-    } catch {
-      setError(`Couldn't ${label.toLowerCase()} — try again.`);
+    } catch (cause) {
+      // Say what actually failed. "Try again" told the user nothing and told
+      // us less — a request rejected by the edge and one rejected by the API
+      // looked identical, which made a real report impossible to act on.
+      const detail = cause instanceof Error && cause.message ? ` (${cause.message})` : "";
+      setError(`Couldn't ${label.toLowerCase()}${detail}`);
+      console.error(`GameSheet: ${label} failed`, cause);
+    } finally {
+      // Always — not only on failure. On the success path this was left set,
+      // which disabled every button in the sheet including Close. It went
+      // unnoticed only because onChanged happens to unmount the sheet.
       setBusy(null);
     }
   }
@@ -111,14 +120,21 @@ export function GameSheet({
               {busy === "Save platform" ? "Saving…" : "💾 Save"}
             </button>
           )}
-          {!record.is_enriched && (
-            <button
-              disabled={busy !== null}
-              onClick={() => void run("Enrich", () => api.enrich(record.dedup_key))}
-            >
-              {busy === "Enrich" ? "Looking up…" : "✨ Enrich"}
-            </button>
-          )}
+          {/* Always available. It used to render only when the record was
+              unenriched, so the moment anything filled a record in — the
+              artwork backfill enriches as a side effect — the button vanished
+              and there was no way to look a game up again or to replace a bad
+              cover. Enrichment is idempotent, so offering it always is safe. */}
+          <button
+            disabled={busy !== null}
+            onClick={() => void run("Enrich", () => api.enrich(record.dedup_key))}
+          >
+            {busy === "Enrich"
+              ? "Looking up…"
+              : record.is_enriched
+                ? "✨ Refresh details"
+                : "✨ Enrich"}
+          </button>
           <button
             className="danger"
             disabled={busy !== null}

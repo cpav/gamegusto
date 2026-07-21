@@ -109,13 +109,18 @@ class FakeEnricher(Enricher):
         #: Tavily miss or rate limit. Per instance, not shared on the class.
         self.no_art: set[str] = set()
 
-    def enrich(self, record: GameRecord) -> GameRecord:
+    def enrich(self, record: GameRecord, *, refresh_cover: bool = False) -> GameRecord:
         record.genre = "Roguelike"
         record.platform_availability = ["Switch", "PC"]
         # Matches the real enricher: art is fetched before the is_enriched()
-        # early return, and a miss leaves cover_url as None.
-        if record.cover_url is None and record.title not in self.no_art:
-            record.cover_url = f"https://img.example/{record.title}.jpg"
+        # early return, a miss leaves what was already there, and an explicit
+        # refresh replaces an existing cover.
+        if record.cover_url is None or refresh_cover:
+            found = (
+                None if record.title in self.no_art else f"https://img.example/{record.title}.jpg"
+            )
+            if found or record.cover_url is None:
+                record.cover_url = found
         return record
 
 
@@ -622,3 +627,41 @@ def test_artwork_requires_authentication(monkeypatch: pytest.MonkeyPatch) -> Non
     client, _, _ = make_app()
 
     assert client.post("/api/library/artwork").status_code == 401
+
+
+def test_enrich_replaces_an_existing_cover() -> None:
+    """The button exists to fix bad art; filling only gaps could never do that."""
+    client, ctx, _ = make_app()
+    ctx.memory.upsert_record(
+        USER,
+        GameRecord(
+            title="Batman",
+            platforms=["PC"],
+            source="manual",
+            cover_url="https://img.example/wrong-and-ugly.jpg",
+        ),
+    )
+    key = ctx.memory.get_records(USER)[0].dedup_key
+
+    body = client.post(f"/api/library/{key}/enrich").json()
+    assert body["record"]["cover_url"] == "https://img.example/Batman.jpg"
+
+
+def test_enrich_keeps_the_old_cover_when_the_search_finds_nothing() -> None:
+    """A refresh that comes back empty must not strip art the user could see."""
+    client, ctx, _ = make_app()
+    assert isinstance(ctx.enricher, FakeEnricher)
+    ctx.enricher.no_art = {"Batman"}
+    ctx.memory.upsert_record(
+        USER,
+        GameRecord(
+            title="Batman",
+            platforms=["PC"],
+            source="manual",
+            cover_url="https://img.example/keep.jpg",
+        ),
+    )
+    key = ctx.memory.get_records(USER)[0].dedup_key
+
+    body = client.post(f"/api/library/{key}/enrich").json()
+    assert body["record"]["cover_url"] == "https://img.example/keep.jpg"

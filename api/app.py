@@ -177,7 +177,9 @@ def create_app(ctx: AppContext) -> FastAPI:
     def enrich_game(dedup_key: str, user: str = Depends(current_user)) -> dict[str, Any]:
         records = ctx.memory.get_records(user)
         record = _find_record(records, dedup_key)
-        enriched = ctx.enricher.enrich(record)
+        # Asked for explicitly, so refresh the cover too: this is the only way
+        # to replace art the image search got wrong.
+        enriched = ctx.enricher.enrich(record, refresh_cover=True)
         ctx.memory.store_records(user, [enriched if r is record else r for r in records])
         return {"record": record_to_dict(enriched)}
 
