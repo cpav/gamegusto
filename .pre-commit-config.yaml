@@ -27,4 +27,11 @@ repos:
             "streamlit==1.58.0",
             "fastapi==0.121.3",
             "httpx==0.28.1",
+            # PyJWT ships py.typed, so api/auth.py resolves here. Deliberately
+            # WITHOUT the [crypto] extra: that pulls `cryptography`, which has
+            # no wheel for this interpreter and tries to build from source,
+            # failing on a missing Rust/OpenSSL toolchain. mypy needs the
+            # stubs, not the crypto backend — `cryptography.*` is covered by
+            # an ignore_missing_imports override in pyproject.toml instead.
+            "PyJWT==2.10.1",
           ]

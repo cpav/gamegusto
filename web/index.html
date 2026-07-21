@@ -7,12 +7,15 @@
       content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1"
     />
     <title>GameGusto</title>
-    <meta name="description" content="Your next game, picked for tonight." />
+    <meta name="description" content="Your next game, cooked and served to your taste." />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <!-- Installed on iOS this runs chrome-less; the status bar blends into the marquee. -->
+    <!-- iOS reads apple-mobile-web-app-capable; the unprefixed name is the
+         standard that replaced it and is what Chrome/Android honour. -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="GameGusto" />
     <meta name="theme-color" content="#0e101c" media="(prefers-color-scheme: dark)" />

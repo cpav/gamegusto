@@ -200,7 +200,7 @@ export function ChatView({
       <div className="screen" ref={scrollRef}>
         {empty && (
           <div className="empty-state">
-            <Logo steam className="steam" />
+            <Logo className="mark" />
             <h2>WHAT ARE WE PLAYING?</h2>
             <p>Tell me the mood, the time you've got, and I'll find something worth buying.</p>
             <div className="starters">
@@ -276,7 +276,7 @@ export function ChatView({
             ) : (
               !activeTool && (
                 <div className="thinking">
-                  <Logo steam className="steam" />
+                  <Logo className="mark" />
                   <span>cooking something…</span>
                 </div>
               )

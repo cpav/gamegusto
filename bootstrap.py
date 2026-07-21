@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+from typing import TYPE_CHECKING
 
 from agent.enricher import Enricher
 from agent.library_service import LibraryService
@@ -23,9 +24,13 @@ from services.bedrock_service import BedrockService
 from services.dynamodb_memory_client import DynamoDBMemoryClient
 from services.memory_service import MemoryService
 from services.sources.base import RecordSource
-from services.sources.gmail_source import GmailSource
 from services.sources.manual_source import ManualSource
 from services.tavily_service import TavilyService
+
+if TYPE_CHECKING:
+    # Annotation only — see _build_gmail_source for why this is not a runtime
+    # import. `from __future__ import annotations` keeps the hints as strings.
+    from services.sources.gmail_source import GmailSource
 
 
 @dataclass
@@ -93,7 +98,21 @@ def build_app(
 
 
 def _build_gmail_source(config: Config) -> GmailSource | None:
-    """Build the Gmail source when a cached token is configured, else ``None`` (Req 3.6)."""
+    """Build the Gmail source when a cached token is configured, else ``None`` (Req 3.6).
+
+    The import is deferred because Gmail is genuinely optional: the deployed
+    API never uses it (the token stays on your machine), and importing at
+    module scope would force the Google API client stack into the Lambda
+    bundle to satisfy a module that is never called. A missing library is
+    therefore treated the same as a missing token — the source is simply
+    unavailable, and manual entry carries on.
+    """
     if not config.gmail_enabled or config.gmail_token_path is None:
         return None
+
+    try:
+        from services.sources.gmail_source import GmailSource
+    except ImportError:
+        return None
+
     return GmailSource(token_path=config.gmail_token_path)

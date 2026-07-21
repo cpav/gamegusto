@@ -14,16 +14,18 @@ both frontends resume the same conversation during the migration window.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import threading
 from collections.abc import Iterator
 from typing import Annotated, Any
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Response
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from starlette.background import BackgroundTask
 
+from api.auth import TOKEN_HEADER, AuthError, build_verifier
 from api.schemas import (
     AddGameRequest,
     ChatRequest,
@@ -38,6 +40,8 @@ from bootstrap import AppContext
 from models.game_record import GameRecord
 from models.platform import OwnedPlatform
 from services.bedrock_service import BedrockServiceError
+
+logger = logging.getLogger(__name__)
 
 #: Comma-separated allowed CORS origins; defaults cover the local Vite dev server.
 _CORS_ENV = "GAMEGUSTO_CORS_ORIGINS"
@@ -94,12 +98,36 @@ def create_app(ctx: AppContext) -> FastAPI:
         allow_headers=["*"],
     )
 
-    def current_user() -> str:
-        """Resolve the requesting user.
+    verifier = build_verifier()
+    if verifier is None:
+        # Loud, because the deployed function must never reach this branch.
+        # Absent configuration disables auth so local development and the mock
+        # API stay credential-free; see api/auth.py.
+        logger.warning("No COGNITO_USER_POOL_ID set — API is UNAUTHENTICATED.")
 
-        Single-user for now. Phase 3 replaces this dependency with JWT
-        validation that returns the Cognito ``sub`` — nothing else changes.
+    def current_user(request: Request) -> str:
+        """Authenticate the request, then return the storage identity.
+
+        Note the deliberate split: the token proves *who is asking*, but what
+        comes back is ``ctx.user_id``, not the Cognito ``sub``. The library
+        predates authentication and lives under its own key — returning the
+        subject here would not migrate that data, it would hide it behind an
+        empty account.
         """
+        if verifier is None:
+            return ctx.user_id
+
+        token = request.headers.get(TOKEN_HEADER, "")
+        if not token:
+            raise HTTPException(status_code=401, detail="Not signed in.")
+
+        try:
+            verifier.subject(token)
+        except AuthError as exc:
+            # 401 rather than 403: the client should re-authenticate, which is
+            # what the web app keys its silent-refresh on.
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+
         return ctx.user_id
 
     turns = TurnGuard()

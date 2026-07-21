@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type Platform } from "./api";
+import { AUTH_EXPIRED_EVENT, authConfig, completeSignIn, isSignedIn, signIn, signOut } from "./auth";
 import { ChatView } from "./components/ChatView";
 import { LibraryView } from "./components/LibraryView";
 import { Logo } from "./components/Logo";
@@ -19,6 +20,24 @@ export default function App() {
   const [theme, setTheme] = useState<Theme>(
     () => (localStorage.getItem(THEME_KEY) as Theme | null) ?? "dark",
   );
+  // `null` until the redirect from the hosted UI has been consumed, so the
+  // app never flashes a sign-in screen at someone who is mid-login.
+  const [authed, setAuthed] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    completeSignIn()
+      .catch(() => undefined)
+      .finally(() => setAuthed(isSignedIn()));
+  }, []);
+
+  // A session can vanish while the app is open — iOS evicts storage from
+  // installed PWAs that go unopened for a while. Without this the user would
+  // sit on a screen whose every request quietly fails.
+  useEffect(() => {
+    const onExpired = () => setAuthed(false);
+    window.addEventListener(AUTH_EXPIRED_EVENT, onExpired);
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired);
+  }, []);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -61,6 +80,27 @@ export default function App() {
     </>
   );
 
+  if (authed === null) {
+    // Deliberately blank rather than a spinner: this resolves in a tick, and
+    // a flash of loading chrome is worse than a moment of nothing.
+    return <div className="app" />;
+  }
+
+  if (!authed) {
+    return (
+      <div className="app signin">
+        <div className="signin-panel">
+          <Logo className="logo" />
+          <h1>GAMEGUSTO</h1>
+          <p>Your next game, cooked and served to your taste.</p>
+          <button className="signin-button" onClick={() => void signIn()}>
+            Sign in
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="app">
       {/* Desktop: the cabinet's side panel. Hidden on phones, where the
@@ -81,7 +121,14 @@ export default function App() {
         </div>
         <div className="spacer" />
         {usage && <div className="usage-panel">{usage}</div>}
-        {themeButton}
+        <div className="sidebar-foot">
+          {themeButton}
+          {authConfig && (
+            <button className="signout" onClick={signOut}>
+              Sign out
+            </button>
+          )}
+        </div>
       </aside>
 
       {/* The column the views live in. `display: contents` on phones so the

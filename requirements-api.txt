@@ -2,3 +2,6 @@
 # Install on top of the runtime deps:  pip install -r requirements.txt -r requirements-api.txt
 fastapi==0.121.3
 uvicorn==0.34.0
+# Cognito ID token verification (api/auth.py). [crypto] pulls `cryptography`,
+# which provides the RSA verification PyJWT needs for Cognito's RS256 tokens.
+PyJWT[crypto]==2.10.1

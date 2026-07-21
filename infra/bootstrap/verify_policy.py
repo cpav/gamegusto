@@ -149,6 +149,25 @@ def build_cases(account: str, prefix: str, table: str) -> list[tuple[str, str, s
             {},
             "DENY",
         ),
+        # --- secrets ----------------------------------------------------------
+        # Planning needs ssm:DescribeParameters on "*" (it rejects a scoped
+        # ARN). Describe returns metadata; Get returns the decrypted value.
+        # The distinction is the whole point — losing it would let this role
+        # read every secret in the account.
+        (
+            "cannot read secrets outside the project",
+            "ssm:GetParameter",
+            f"arn:aws:ssm:*:{account}:parameter/some-other-app/password",
+            {},
+            "implicit-deny",
+        ),
+        (
+            "can read its own project's secrets",
+            "ssm:GetParameter",
+            f"arn:aws:ssm:*:{account}:parameter/{prefix}/tavily_api_key",
+            {},
+            "ALLOW",
+        ),
         # --- blast radius ----------------------------------------------------
         (
             "cannot touch an unrelated bucket",

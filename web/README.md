@@ -50,5 +50,5 @@ The approved identity ("The Blend" + the Panel logo) is specified in
 [`../design/README.md`](../design/README.md). Colors are used strictly by role:
 **thrill** (pink) for send/kickers, **charge** (cyan) for anything interactive,
 **warmth** (amber) for the wordmark, lamps, prices and scores. Dark and light
-are one token set with two grounds — never a second design. The Steam logo
-variant appears only while the agent is thinking and on the empty state.
+are one token set with two grounds — never a second design. The Panel mark is
+the only logo and never varies by context.

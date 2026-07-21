@@ -9,7 +9,7 @@ requires-python = ">=3.11"
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-extend-exclude = [".venv"]
+extend-exclude = [".venv", "dist"]  # dist/ is Lambda build output, not source
 
 [tool.ruff.lint]
 # E/F: pycodestyle + pyflakes, I: isort, UP: pyupgrade, B: flake8-bugbear.
@@ -33,13 +33,21 @@ disallow_incomplete_defs = true
 check_untyped_defs = true
 no_implicit_optional = true
 strict_equality = true
-exclude = ['^\.venv/']
+# dist/ is the vendored dependency tree for the Lambda bundle. Type checking
+# someone else's shipped code — and its stdlib-shadowing modules — says
+# nothing about ours.
+exclude = ['^\.venv/', '^dist/']
 
 [[tool.mypy.overrides]]
 # Third-party packages without bundled type stubs.
 module = [
     "boto3.*",
     "botocore.*",
+    # Present in the venv and the Lambda bundle, but not in the pre-commit
+    # hook's isolated env: it has no wheel for this interpreter and building
+    # from source needs a Rust/OpenSSL toolchain. Only the auth tests import
+    # it, to generate real RSA keys.
+    "cryptography.*",
     "tavily.*",
     "googleapiclient.*",
     "google.*",

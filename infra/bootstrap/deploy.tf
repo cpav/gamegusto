@@ -112,6 +112,17 @@ data "aws_iam_policy_document" "deploy" {
     resources = ["arn:aws:lambda:*:${local.account}:function:${local.prefix}-*"]
   }
 
+  # Attaching a layer requires permission on the layer itself, which is owned
+  # by AWS, not by us — the function-scoped grant above does not reach it.
+  # This is the Lambda Web Adapter, needed because response streaming is the
+  # only way to keep SSE working on Lambda (Mangum buffers).
+  statement {
+    sid       = "ReadLambdaWebAdapterLayer"
+    effect    = "Allow"
+    actions   = ["lambda:GetLayerVersion"]
+    resources = ["arn:aws:lambda:*:753240598075:layer:LambdaAdapterLayer*:*"]
+  }
+
   statement {
     sid     = "ProjectRolesAndPolicies"
     effect  = "Allow"
@@ -174,10 +185,30 @@ data "aws_iam_policy_document" "deploy" {
   }
 
   # Read-only calls Terraform makes constantly while planning.
+  #
+  # These are metadata APIs that genuinely have no resource-level support —
+  # DescribeUserPoolDomain, DescribeLogGroups and DescribeParameters all
+  # reject a scoped ARN — so they must be granted on "*". Note what is NOT
+  # here: ssm:GetParameter. Describe returns parameter metadata only, while
+  # Get returns the decrypted value, and granting that account-wide would let
+  # this role read every secret in the account. verify_policy.py asserts it
+  # stays out.
   statement {
-    sid       = "ReadOnlyPlanning"
-    effect    = "Allow"
-    actions   = ["sts:GetCallerIdentity", "iam:List*", "iam:Get*", "tag:GetResources"]
+    sid    = "ReadOnlyPlanning"
+    effect = "Allow"
+    actions = [
+      "sts:GetCallerIdentity",
+      "tag:GetResources",
+      "iam:List*",
+      "iam:Get*",
+      "lambda:List*",
+      "logs:Describe*",
+      "logs:List*",
+      "cognito-idp:Describe*",
+      "cognito-idp:List*",
+      "cognito-idp:Get*",
+      "ssm:DescribeParameters",
+    ]
     resources = ["*"]
   }
 }
