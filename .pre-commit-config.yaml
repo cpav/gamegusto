@@ -14,9 +14,7 @@ repos:
       - id: mypy
         args: ["--config-file", "pyproject.toml"]
         # The hook runs in an isolated env; include the typed deps so mypy
-        # resolves imports just like the local .venv run. Streamlit ships type
-        # info (py.typed); without it the UI's st.* returns degrade to Any and
-        # mypy flags no-any-return where the local run is clean.
+        # resolves imports just like the local .venv run.
         # fastapi/httpx: the api/ package and its TestClient-based tests are
         # fully typed; without them here the isolated hook env can't resolve
         # the imports the local .venv run resolves fine.
@@ -24,7 +22,6 @@ repos:
           [
             "hypothesis==6.156.1",
             "pytest==9.1.1",
-            "streamlit==1.58.0",
             "fastapi==0.121.3",
             "httpx==0.28.1",
             # PyJWT ships py.typed, so api/auth.py resolves here. Deliberately

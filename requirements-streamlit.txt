@@ -1,7 +1,0 @@
-# The v1 Streamlit UI. Install on top of requirements.txt:
-#     pip install -r requirements.txt -r requirements-streamlit.txt
-#
-# Retires in Phase 4 once the v2 PWA has proven itself in daily use; this
-# file and ui/ go together.
-streamlit==1.58.0
-streamlit-js-eval==1.0.0

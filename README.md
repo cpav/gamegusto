@@ -34,7 +34,6 @@ runs. Layer on what you need:
 |---|---|
 | `requirements.txt` | the agent, its services and the data layer — the core |
 | `requirements-api.txt` | FastAPI + uvicorn (the v2 HTTP service) |
-| `requirements-streamlit.txt` | the v1 UI (retires in Phase 4) |
 | `requirements-gmail.txt` | Gmail import — local only, imported lazily |
 | `requirements-dev.txt` | tests, lint, types |
 
@@ -44,7 +43,6 @@ Required env (see `.env.example`): `AWS_REGION`, `BEDROCK_MODEL_ID`,
 `requirements-gmail.txt` uninstalled the source is simply unavailable.
 
 - **CLI:** `python cli.py`
-- **Web UI:** `streamlit run streamlit_app.py` (needs `requirements-streamlit.txt`)
 - **HTTP API** (v2 frontend backend; same env, `pip install -r requirements-api.txt`):
   `uvicorn --factory api.main:build --reload --port 8000` — JSON endpoints under
   `/api/*` plus an SSE chat stream at `POST /api/chat`. Single-user for now;
@@ -61,30 +59,21 @@ pytest          # fast unit + property tests, coverage gate
 ruff check . && mypy .
 ```
 
-## Deploy to Streamlit Community Cloud (private, phone-friendly)
+## Deploy
 
-The hosted app runs without Gmail (your token stays local) on the existing
-DynamoDB library + manual entry.
+The app is a PWA on CloudFront with a streaming FastAPI Lambda behind it, all
+described in [`infra/`](infra/README.md). Everything runs as the scoped
+`gamegusto-deploy` role — never as admin.
 
-1. **AWS access key** — the app needs an access key for the least-privilege
-   `gamegusto` IAM user (Bedrock `InvokeModel` + DynamoDB on the `gamegusto`
-   table). It can't use a local AWS profile.
-2. **Create the app** — at [share.streamlit.io](https://share.streamlit.io),
-   *New app* → repo `cpav/gamegusto`, branch `main`, **Main file path
-   `streamlit_app.py`**. Under *Advanced settings* **pick Python 3.13** (a
-   pinned `runtime.txt` requests this too). **Do not use Python 3.14** — its
-   `dataclasses` changes break `from __future__ import annotations` and the app
-   fails to start with `AttributeError: 'NoneType' object has no attribute
-   '__dict__'`. Python version can only be set at deploy time, so to change it on
-   an existing app, delete it and redeploy (the subdomain is freed for reuse).
-3. **Secrets** — open the app's *Settings → Secrets* and paste the keys from
-   [`.streamlit/secrets.toml.example`](.streamlit/secrets.toml.example) with real
-   values (`AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
-   `BEDROCK_MODEL_ID`, `DYNAMODB_TABLE_NAME`, `TAVILY_API_KEY`).
-4. **Make it private** — *Settings → Sharing* → restrict to specific viewers and
-   invite your Google email. Only allow-listed accounts can open it.
-5. **Use it** — open the app URL on your phone, sign in with the invited Google
-   account, and play.
+```bash
+make deploy        # API (bundle + terraform) and the web client
+make deploy-web    # just the PWA: build, sync to S3, invalidate
+make url           # print the app URL
+```
 
-Real secrets are never committed (`.env` and `.streamlit/secrets.toml` are
-git-ignored).
+Install it by opening that URL in Safari: **Add to Home Screen** on iPhone,
+**File → Add to Dock** on a Mac. Sign-in is Cognito; the API validates the
+token on every request.
+
+Real secrets are never committed: `.env` is git-ignored, and the deployed
+Tavily key lives in SSM Parameter Store, never in Terraform state.

@@ -1,9 +1,6 @@
 # Secrets and local environment
 .env
 
-# Streamlit secrets (keep the template, ignore the real file)
-.streamlit/secrets.toml
-
 # Local credential files (Gmail OAuth client + cached token, etc.)
 # Keep the directory and its README, ignore everything else inside.
 secrets/*

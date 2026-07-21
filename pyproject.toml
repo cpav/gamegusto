@@ -2,7 +2,7 @@
 name = "gamegusto"
 version = "0.1.0"
 description = "GameGusto - a mood-aware game recommendation agent."
-# Deployment (Streamlit Cloud, runtime.txt) runs 3.13; 3.11 is the compatibility
+# Deployment (Lambda, python3.13) runs 3.13; 3.11 is the compatibility
 # floor so the code also runs on any recent interpreter. Python 3.9 is EOL.
 requires-python = ">=3.11"
 
@@ -53,9 +53,6 @@ module = [
     "google.*",
     "google_auth_oauthlib.*",
     "requests.*",
-    "streamlit.*",
-    "streamlit_js_eval.*",
-    "altair.*",
 ]
 ignore_missing_imports = true
 
@@ -75,6 +72,4 @@ omit = [
     "scripts/*",
     # Streamlit render modules need a running app context, not unit coverage;
     # their pure helpers are smoke-tested in tests/test_ui_*.py.
-    "ui/*",
-    "streamlit_app.py",
 ]
