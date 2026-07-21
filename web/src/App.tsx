@@ -23,6 +23,18 @@ export default function App() {
   // `null` until the redirect from the hosted UI has been consumed, so the
   // app never flashes a sign-in screen at someone who is mid-login.
   const [authed, setAuthed] = useState<boolean | null>(null);
+  // Incrementing this tells ChatView to start over.
+  const [newChatNonce, setNewChatNonce] = useState(0);
+  // Two-step confirm: clearing deletes the transcript from DynamoDB, and
+  // there is no undo. A modal would be heavier than the action deserves;
+  // asking in place costs one extra tap and cannot be mis-tapped.
+  const [confirmingNew, setConfirmingNew] = useState(false);
+
+  useEffect(() => {
+    if (!confirmingNew) return;
+    const timer = setTimeout(() => setConfirmingNew(false), 4000);
+    return () => clearTimeout(timer);
+  }, [confirmingNew]);
 
   useEffect(() => {
     completeSignIn()
@@ -60,6 +72,25 @@ export default function App() {
       aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
     >
       {theme === "dark" ? "☀" : "☾"}
+    </button>
+  );
+
+  const newChatButton = (
+    <button
+      className={"new-chat" + (confirmingNew ? " confirming" : "")}
+      onClick={() => {
+        if (!confirmingNew) {
+          setConfirmingNew(true);
+          return;
+        }
+        setConfirmingNew(false);
+        setNewChatNonce((n) => n + 1);
+        setTab("chat");
+      }}
+      aria-label={confirmingNew ? "Confirm: clear this conversation" : "Start a new conversation"}
+      title="Start a new conversation"
+    >
+      {confirmingNew ? "Clear?" : "✨"}
     </button>
   );
 
@@ -111,6 +142,21 @@ export default function App() {
           GAMEGUSTO
         </div>
         <nav>{nav}</nav>
+        <button
+          className={"sidebar-new" + (confirmingNew ? " confirming" : "")}
+          onClick={() => {
+            if (!confirmingNew) {
+              setConfirmingNew(true);
+              return;
+            }
+            setConfirmingNew(false);
+            setNewChatNonce((n) => n + 1);
+            setTab("chat");
+          }}
+        >
+          <i>✨</i>
+          {confirmingNew ? "Clear conversation?" : "New conversation"}
+        </button>
         <div className="label">Platforms</div>
         <div className="platform-chips">
           {platforms.length ? (
@@ -136,6 +182,9 @@ export default function App() {
           on desktop. */}
       <main className="main">
         <header className="marquee">
+          {/* Left of the wordmark, opposite the theme toggle: a persistent,
+              obvious place for it rather than buried among suggestions. */}
+          {newChatButton}
           <Logo className="logo" />
           <span className="wordmark">GAMEGUSTO</span>
           {themeButton}
@@ -144,7 +193,11 @@ export default function App() {
         {/* Both views stay mounted so switching tabs keeps scroll position
             and never interrupts a streaming answer. */}
         <div style={{ display: tab === "chat" ? "contents" : "none" }}>
-          <ChatView onLibraryChanged={onLibraryChanged} onUsage={setUsage} />
+          <ChatView
+            onLibraryChanged={onLibraryChanged}
+            onUsage={setUsage}
+            newChatNonce={newChatNonce}
+          />
         </div>
         <div style={{ display: tab === "library" ? "contents" : "none" }}>
           <LibraryView reloadKey={reloadKey} />

@@ -55,9 +55,13 @@ function formatUsage(usage: Usage): string | null {
 export function ChatView({
   onLibraryChanged,
   onUsage,
+  newChatNonce,
 }: {
   onLibraryChanged: () => void;
   onUsage: (usage: string | null) => void;
+  /** Bumped by the shell's "New chat" action. A counter rather than a
+      callback ref, so the data flow stays one-way. */
+  newChatNonce: number;
 }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [picks, setPicks] = useState<Pick[]>([]);
@@ -191,7 +195,15 @@ export function ChatView({
     setMessages([]);
     setUsage(null);
     setError(null);
+    onUsage(null); // the desktop sidebar's running cost belongs to the old thread
   }
+
+  // Driven by the shell's header action. Skips the initial render so opening
+  // the app never wipes the conversation it just restored.
+  const firstNonce = useRef(newChatNonce);
+  useEffect(() => {
+    if (newChatNonce !== firstNonce.current) void newConversation();
+  }, [newChatNonce]);
 
   const empty = loaded && messages.length === 0 && !streaming;
 
@@ -292,14 +304,15 @@ export function ChatView({
 
       {messages.some((message) => message.role === "assistant") && !streaming && (
         <div className="quick-replies">
+          {/* Suggestions only. "New conversation" used to live here, looking
+              exactly like the three chips that merely send a message — a
+              destructive action one fat thumb away from "Surprise me". It is
+              a deliberate, confirmed action in the header now. */}
           {QUICK_REPLIES.map((reply) => (
             <button key={reply.label} onClick={() => void send(reply.text)}>
               {reply.label}
             </button>
           ))}
-          <button onClick={() => void newConversation()} title="Start a new conversation">
-            ✨ New
-          </button>
         </div>
       )}
 

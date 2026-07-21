@@ -1146,6 +1146,37 @@ textarea {
     border-color: color-mix(in srgb, var(--gg-charge) 38%, transparent);
     color: var(--gg-charge);
   }
+  .sidebar-new {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin-top: 4px;
+    padding: 8px 10px;
+    border-radius: 9px;
+    border: 1px solid transparent;
+    background: none;
+    font-size: 13px;
+    color: var(--gg-sub);
+    text-align: left;
+    width: 100%;
+  }
+  .sidebar-new:hover {
+    color: var(--gg-ink);
+  }
+  .sidebar-new i {
+    font-style: normal;
+    font-size: 15px;
+    filter: grayscale(1) opacity(0.55);
+  }
+  .sidebar-new.confirming {
+    color: var(--gg-thrill);
+    border-color: color-mix(in srgb, var(--gg-thrill) 45%, transparent);
+    background: color-mix(in srgb, var(--gg-thrill) 12%, transparent);
+  }
+  .sidebar-new.confirming i {
+    filter: none;
+  }
+
   .sidebar .label {
     font-family: var(--gg-font-brand);
     font-size: 6.5px;
@@ -1343,4 +1374,36 @@ textarea {
 }
 .sidebar-foot .signout:hover {
   color: var(--gg-thrill);
+}
+
+/* ---- new conversation ---- */
+
+/* Mirrors the theme toggle on the opposite side of the marquee. */
+.marquee .new-chat {
+  position: absolute;
+  left: max(6px, env(safe-area-inset-left));
+  bottom: 2px;
+  background: none;
+  border: none;
+  font-size: 15px;
+  opacity: 0.65;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+}
+.marquee .new-chat:hover {
+  opacity: 1;
+}
+/* Armed: reads as a question, and is unmistakably not the idle state. */
+.marquee .new-chat.confirming {
+  width: auto;
+  padding: 0 10px;
+  border-radius: var(--gg-radius-pill);
+  font-family: var(--gg-font-data);
+  font-size: 10px;
+  opacity: 1;
+  color: var(--gg-thrill);
+  border: 1px solid color-mix(in srgb, var(--gg-thrill) 55%, transparent);
+  background: color-mix(in srgb, var(--gg-thrill) 14%, transparent);
 }
