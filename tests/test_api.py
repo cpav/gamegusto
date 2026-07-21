@@ -694,6 +694,40 @@ def test_enrich_all_works_in_bounded_batches() -> None:
     assert second["remaining"] == 0
 
 
+def test_enrich_all_refresh_walks_the_whole_library() -> None:
+    """A refresh has no shrinking backlog, so it is paged by cursor.
+
+    The first version hardcoded remaining=0 for refresh and always took the
+    first five records, so "redo all" silently redid five games and stopped.
+    """
+    client, ctx, _ = make_app()
+    for index in range(12):
+        ctx.memory.upsert_record(
+            USER,
+            GameRecord(
+                title=f"Game {index}",
+                platforms=["PC"],
+                source="manual",
+                genre="RPG",
+                platform_availability=["PC"],
+                cover_url="https://img.example/old.jpg",
+            ),
+        )
+
+    seen = 0
+    offset = 0
+    for _ in range(10):
+        body = client.post(f"/api/library/enrich-all?refresh=true&offset={offset}").json()
+        seen += body["enriched"]
+        offset += body["enriched"]
+        if body["remaining"] == 0:
+            break
+    assert seen == 12, "every record must be reached, not just the first batch"
+
+    covers = {r["title"]: r["cover_url"] for r in body["records"]}
+    assert all(url.startswith("https://img.example/Game") for url in covers.values())
+
+
 def test_enrich_all_refresh_redoes_everything() -> None:
     """Moving to a better art source must not mean opening each game."""
     client, ctx, _ = make_app()

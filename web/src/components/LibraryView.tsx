@@ -59,19 +59,28 @@ export function LibraryView({ reloadKey }: { reloadKey: number }) {
     const started = needsWork;
     let previousRemaining = Number.POSITIVE_INFINITY;
     let done = 0;
+    // Refresh walks the library by cursor: every record qualifies, so there is
+    // no shrinking backlog to signal progress and the server would otherwise
+    // keep handing back the same first batch.
+    let offset = 0;
     try {
       // Bounded, and stops as soon as a pass stops helping. Some titles can
       // never be classified — no search results, or a model that will not
       // commit — and they stay "needing work" forever. Looping on `remaining`
       // alone would hammer the API and the budget indefinitely.
       for (let pass = 0; pass < 20; pass++) {
-        const result = await api.enrichAll(refresh);
+        const result = await api.enrichAll(refresh, offset);
         setRecords(result.records);
-        done = refresh ? result.enriched : Math.max(0, started - result.remaining);
+        offset += result.enriched;
+        done = refresh ? offset : Math.max(0, started - result.remaining);
 
-        if (result.remaining === 0 || result.enriched === 0 || refresh) {
+        if (result.remaining === 0 || result.enriched === 0) {
           setEnrichNote(done === 0 ? "Nothing needed filling in." : `Filled in ${done}.`);
           break;
+        }
+        if (refresh) {
+          setEnrichNote(`Redone ${done}, ${result.remaining} to go…`);
+          continue; // the cursor is the stop condition, not a shrinking backlog
         }
         if (result.remaining >= previousRemaining) {
           // A whole pass moved nothing: the rest cannot be filled in.

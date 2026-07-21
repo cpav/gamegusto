@@ -199,6 +199,7 @@ def create_app(ctx: AppContext) -> FastAPI:
     def enrich_all(
         user: str = Depends(current_user),
         refresh: Annotated[bool, Query()] = False,
+        offset: Annotated[int, Query(ge=0)] = 0,
     ) -> dict[str, Any]:
         """Enrich every record that still needs it, a batch at a time.
 
@@ -222,12 +223,19 @@ def create_app(ctx: AppContext) -> FastAPI:
         stop the rest of the batch.
         """
         records = ctx.memory.get_records(user)
-        needs_work = [
-            record
-            for record in records
-            if refresh or not record.is_enriched() or record.cover_url is None
-        ]
-        batch = needs_work[:_ENRICH_BATCH]
+
+        if refresh:
+            # A refresh has no shrinking backlog to work through — every record
+            # already qualifies — so batches are walked by an explicit cursor.
+            # Without one the server would hand back the same first five on
+            # every call, and "redo all" would quietly redo only those.
+            batch = records[offset : offset + _ENRICH_BATCH]
+            remaining = max(0, len(records) - (offset + len(batch)))
+        else:
+            needs_work = [
+                record for record in records if not record.is_enriched() or record.cover_url is None
+            ]
+            batch = needs_work[:_ENRICH_BATCH]
 
         for record in batch:
             try:
@@ -238,15 +246,18 @@ def create_app(ctx: AppContext) -> FastAPI:
         if batch:
             ctx.memory.store_records(user, records)
 
-        # Recomputed against the freshly enriched records, so "remaining"
-        # counts what genuinely still needs work — not what this batch failed
-        # to fix, which would loop forever on a title nothing can classify.
-        still_missing = sum(
-            1 for record in records if not record.is_enriched() or record.cover_url is None
-        )
+        if not refresh:
+            # Recomputed against the freshly enriched records, so "remaining"
+            # counts what genuinely still needs work — not what this batch
+            # failed to fix, which would loop forever on a title nothing can
+            # classify.
+            remaining = sum(
+                1 for record in records if not record.is_enriched() or record.cover_url is None
+            )
+
         return {
             "enriched": len(batch),
-            "remaining": 0 if refresh else still_missing,
+            "remaining": remaining,
             "records": [record_to_dict(record) for record in records],
         }
 

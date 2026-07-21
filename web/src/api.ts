@@ -165,9 +165,9 @@ export const api = {
    * call and the edge allows 60 seconds; `remaining` is how the caller knows
    * to go again. `refresh` re-does the whole library instead. See api/app.py.
    */
-  enrichAll: (refresh = false) =>
+  enrichAll: (refresh = false, offset = 0) =>
     request<{ enriched: number; remaining: number; records: GameRecord[] }>(
-      `/api/library/enrich-all${refresh ? "?refresh=true" : ""}`,
+      `/api/library/enrich-all?refresh=${refresh}&offset=${offset}`,
       { method: "POST" },
     ),
   removeGame: (key: string) =>
