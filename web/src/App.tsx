@@ -92,7 +92,7 @@ export default function App() {
         <div className="signin-panel">
           <Logo className="logo" />
           <h1>GAMEGUSTO</h1>
-          <p>Your next game, picked for tonight.</p>
+          <p>Your next game, cooked and served to your taste.</p>
           <button className="signin-button" onClick={() => void signIn()}>
             Sign in
           </button>

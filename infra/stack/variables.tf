@@ -40,3 +40,16 @@ variable "refresh_token_days" {
   type        = number
   default     = 90
 }
+
+variable "app_url" {
+  description = <<-EOT
+    Public app URL, used only in the Cognito invitation email. Passed in
+    rather than read from the distribution because referencing CloudFront
+    from the user pool would close a dependency cycle: pool -> distribution
+    -> Function URL -> Lambda, and the Lambda needs the pool id. Empty is
+    fine — the email simply omits the link. `make apply` fills it from the
+    stack's own output once the distribution exists.
+  EOT
+  type        = string
+  default     = ""
+}

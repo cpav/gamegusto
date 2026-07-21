@@ -1,7 +1,7 @@
 {
   "name": "GameGusto",
   "short_name": "GameGusto",
-  "description": "Your next game, picked for tonight.",
+  "description": "Your next game, cooked and served to your taste.",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",

@@ -12,7 +12,10 @@ LOGIN_EMAIL ?= christian.pavese@gmail.com
 
 # Every stack command needs the login email; keep it in one place.
 TF_STACK := AWS_PROFILE=$(PROFILE) $(TF) -chdir=$(STACK)
-TF_VARS  := -var login_email=$(LOGIN_EMAIL)
+# app_url is read back from the stack's own output (empty on the very first
+# apply, which is fine — see variables.tf).
+APP_URL   = $(shell $(TF_STACK) output -raw app_url 2>/dev/null)
+TF_VARS   = -var login_email=$(LOGIN_EMAIL) -var app_url=$(APP_URL)
 
 .PHONY: help check test lint types web-build api-build plan apply deploy deploy-web deploy-api url
 
@@ -54,8 +57,12 @@ api-build: ## Build the Lambda deployment zip
 plan: api-build ## Show what would change
 	$(TF_STACK) plan $(TF_VARS)
 
-apply: api-build ## Apply infrastructure (rebuilds the Lambda bundle first)
-	$(TF_STACK) apply $(TF_VARS)
+# Interactive by default: an infrastructure apply should be looked at. Pass
+# AUTO=1 to skip the prompt when the plan has already been reviewed.
+APPROVE := $(if $(AUTO),-auto-approve,)
+
+apply: api-build ## Apply infrastructure (AUTO=1 to skip the confirmation)
+	$(TF_STACK) apply $(TF_VARS) $(APPROVE)
 
 url: ## Print the app URL
 	@$(TF_STACK) output -raw app_url

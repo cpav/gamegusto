@@ -23,6 +23,42 @@ resource "aws_cognito_user_pool" "main" {
 
   admin_create_user_config {
     allow_admin_create_user_only = true # no self-signup, ever
+
+    # Cognito's default invite is a bare "Your username is X and temporary
+    # password is Y" with no indication of what it grants access to — which
+    # reads like phishing when it lands months later. Both {username} and
+    # {####} are mandatory placeholders; Cognito rejects the template without
+    # them.
+    #
+    # No app URL is embedded: referencing the distribution here would close a
+    # dependency cycle (pool -> CloudFront -> Function URL -> Lambda, which
+    # needs the pool id). var.app_url carries it instead, and the message
+    # degrades gracefully when it is unset.
+    invite_message_template {
+      # Required by Cognito even though this pool only ever sends email —
+      # it rejects the whole template if sms_message is empty.
+      sms_message   = "GameGusto sign-in for {username}. Temporary password: {####}"
+      email_subject = "Your GameGusto sign-in"
+      email_message = replace(
+        trimspace(
+          <<-HTML
+            <div style="font-family:-apple-system,system-ui,sans-serif;font-size:15px;line-height:1.5;color:#1a1d2e">
+              <p style="font-size:17px;margin:0 0 4px"><b>GameGusto</b></p>
+              <p style="margin:0 0 18px;color:#4a4f66">Your next game, cooked and served to your taste.</p>
+              <p>An account has been created for you. Use these details the first time you sign in — you will be asked to choose your own password straight away.</p>
+              <p style="background:#f7f2e6;border:1px solid #d9d0ba;border-radius:10px;padding:12px 14px">
+                <b>Email:</b> {username}<br>
+                <b>Temporary password:</b> {####}
+              </p>
+              APP_LINK
+              <p style="color:#6f7590;font-size:13px">The temporary password expires in 7 days. If you did not expect this, you can ignore it — the account cannot be used until that password is changed.</p>
+            </div>
+          HTML
+        ),
+        "APP_LINK",
+        var.app_url != "" ? "<p>Open <a href=\"${var.app_url}\">${var.app_url}</a> to sign in.</p>" : ""
+      )
+    }
   }
 
   password_policy {
