@@ -39,3 +39,12 @@ htmlcov/
 web/node_modules/
 web/dist/
 web/*.tsbuildinfo
+
+# Terraform: local state (bootstrap only), provider plugins, plan artifacts.
+# .terraform.lock.hcl is deliberately NOT ignored — it pins provider versions
+# and their checksums, so committing it is both reproducibility and supply
+# chain integrity.
+infra/**/.terraform/
+infra/**/terraform.tfstate
+infra/**/terraform.tfstate.*
+infra/**/*.tfplan
