@@ -1,0 +1,12 @@
+# Optional: import purchases from Gmail. Install on top of requirements.txt:
+#     pip install -r requirements.txt -r requirements-gmail.txt
+#
+# Local only by design. The OAuth token stays on your machine, so neither the
+# Streamlit deploy nor the v2 Lambda ever needs these — and they are heavy
+# enough to be worth leaving out of a Lambda bundle.
+#
+# bootstrap.py imports the Gmail source lazily, so the app runs normally with
+# these absent: the source is simply unavailable and manual entry carries on.
+google-api-python-client==2.198.0
+google-auth==2.55.1
+google-auth-oauthlib==1.4.0

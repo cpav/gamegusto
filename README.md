@@ -27,12 +27,24 @@ pip install -r requirements.txt -r requirements-dev.txt
 cp .env.example .env   # fill in the values
 ```
 
+Dependencies are split by concern, so the deployed API ships only what it
+runs. Layer on what you need:
+
+| File | For |
+|---|---|
+| `requirements.txt` | the agent, its services and the data layer — the core |
+| `requirements-api.txt` | FastAPI + uvicorn (the v2 HTTP service) |
+| `requirements-streamlit.txt` | the v1 UI (retires in Phase 4) |
+| `requirements-gmail.txt` | Gmail import — local only, imported lazily |
+| `requirements-dev.txt` | tests, lint, types |
+
 Required env (see `.env.example`): `AWS_REGION`, `BEDROCK_MODEL_ID`,
 `DYNAMODB_TABLE_NAME`, `TAVILY_API_KEY` (plus AWS credentials via your profile or
-`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`). Gmail is optional.
+`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`). Gmail is optional — with
+`requirements-gmail.txt` uninstalled the source is simply unavailable.
 
 - **CLI:** `python cli.py`
-- **Web UI:** `streamlit run streamlit_app.py`
+- **Web UI:** `streamlit run streamlit_app.py` (needs `requirements-streamlit.txt`)
 - **HTTP API** (v2 frontend backend; same env, `pip install -r requirements-api.txt`):
   `uvicorn --factory api.main:build --reload --port 8000` — JSON endpoints under
   `/api/*` plus an SSE chat stream at `POST /api/chat`. Single-user for now;

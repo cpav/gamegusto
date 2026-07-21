@@ -1,9 +1,15 @@
-# Runtime dependencies (pinned for reproducible installs)
-streamlit==1.58.0
-streamlit-js-eval==1.0.0
+# Core runtime: the agent, its services and the data layer.
+# Everything the deployed API needs, and nothing it does not.
+#
+# The other files layer on top:
+#   requirements-api.txt        FastAPI + uvicorn  (the v2 HTTP service)
+#   requirements-streamlit.txt  the v1 UI          (retires in Phase 4)
+#   requirements-gmail.txt      Gmail import       (local only — the OAuth
+#                               token never leaves your machine, so the
+#                               deployed API omits these entirely)
+#   requirements-dev.txt        tests, lint, types
+#
+# Pinned for reproducible installs.
 boto3==1.43.40
 requests==2.34.2
 tavily-python==0.7.26
-google-api-python-client==2.198.0
-google-auth==2.55.1
-google-auth-oauthlib==1.4.0
