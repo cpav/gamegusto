@@ -88,12 +88,35 @@ its actual job.
 
 ## Known limits of the scoping
 
-Some IAM actions have no resource-level support, so they appear with
-`Resource "*"`: `cognito-idp:CreateUserPool` (constrained instead by a
-required `Project` tag) and most of `cloudfront:*`. Within CloudFront and
-Cognito the role is therefore broader than the name prefix suggests. The
-Denies and the boundary are the controls that actually bound the damage; the
-prefix is a strong second layer, not a complete one.
+**Wildcards over scoped ARNs.** The Allows are written as `lambda:*`, `s3:*`,
+`iam:*` and so on, each fenced by a resource ARN, rather than as enumerated
+action lists. `lambda:*` on `function:gamegusto-*` is no weaker than naming
+twenty Lambda actions against the same ARN, and it does not break the first
+time Terraform calls something nobody thought to list. It also has to be this
+way: IAM managed policies are capped at **6144 characters** and the enumerated
+version exceeded it. The security lives in the four Deny statements and the
+ARN prefixes — read those, not the action lists.
+
+One consequence: `iam:*` over `role/gamegusto-*` would otherwise allow passing
+a role to any service, so `DenyPassRoleExceptToLambda` restores that limit
+explicitly.
+
+**No resource-level support.** `cognito-idp:CreateUserPool` (constrained
+instead by a required `Project` tag) and most of `cloudfront:*` appear with
+`Resource "*"`. Within those two services the role is broader than the prefix
+suggests. The Denies and the boundary are what actually bound the damage.
+
+## Credential chain, and the admin key
+
+The deploy role trusts the identity that bootstrapped it — your admin user —
+so `~/.aws/config` chains `gamegusto-deploy` off the `admin` profile.
+
+That makes the admin access key load-bearing: **deleting it breaks the ability
+to assume the deploy role at all.** If you want it gone (reasonable — it is the
+highest-value credential on the machine), the fix is a dedicated IAM user whose
+only permission is `sts:AssumeRole` on `gamegusto-deploy`, listed in
+`deploy_principals`. The key on disk then grants nothing but the ability to
+become an already-bounded role.
 
 `bootstrap/terraform.tfstate` is git-ignored. Losing it is recoverable — the
 four resources are stable and importable — so it is not worth a second

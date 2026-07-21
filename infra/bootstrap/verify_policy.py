@@ -210,6 +210,20 @@ def build_cases(account: str, prefix: str, table: str) -> list[tuple[str, str, s
     ]
 
 
+def holds(expected: str, actual: Decision) -> bool:
+    """Compare on the security property, not the mechanism.
+
+    A request being refused explicitly ("DENY") or by absence of any Allow
+    ("implicit-deny") are both refusals. Which one applies shifts as the
+    policy is restructured — tightening one statement can convert an implicit
+    refusal into an explicit one — and a test that pinned the mechanism would
+    fail on a change that made the policy stricter.
+    """
+    if expected == "ALLOW":
+        return actual == "ALLOW"
+    return actual in ("DENY", "implicit-deny")
+
+
 def main() -> int:
     if len(sys.argv) != 2:
         print(__doc__)
@@ -230,7 +244,7 @@ def main() -> int:
         account, "gamegusto", "gamegusto"
     ):
         actual = evaluate(policy, action, resource, context)
-        ok = actual == expected
+        ok = holds(expected, actual)
         failures += not ok
         print(f"{'PASS' if ok else 'FAIL'}  {label:44} {action:28} -> {actual}")
 

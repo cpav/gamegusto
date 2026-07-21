@@ -1,20 +1,20 @@
 # ---------------------------------------------------------------------------
 # The deploy role — what Terraform runs as.
 #
-# Scoping strategy, in order of how much work each does:
+# Written as Denies plus service wildcards over tightly scoped resource ARNs,
+# rather than enumerated action lists. Two reasons, in order of importance:
 #
-#   1. Explicit Deny on the control plane itself (this role, its policy, the
-#      boundary, the live table, the v1 IAM user). Deny always wins, so these
-#      hold no matter what the Allow statements below say.
-#   2. Name prefix on every resource ARN. The role cannot see or touch
-#      anything in the account not named ${var.name_prefix}-*.
-#   3. A permissions boundary required on any role it creates.
+#   1. The resource ARN is what actually contains this role. "lambda:* on
+#      function:gamegusto-*" is no weaker than naming twenty lambda actions on
+#      the same ARN, and it does not silently break Phase 3 the first time
+#      Terraform calls an action nobody thought to list.
+#   2. IAM managed policies are capped at 6144 characters. The enumerated
+#      version exceeded it.
 #
-# Honest limitation: a handful of actions have no resource-level support in
-# IAM — cognito-idp:CreateUserPool and cloudfront:CreateDistribution among
-# them — so they appear with Resource "*". The Denies and the boundary are
-# what actually contain the blast radius; the prefix conditions are a strong
-# second layer, not a complete one.
+# So the security lives in the four Deny statements and the ARN prefixes, not
+# in the length of the action lists. Where a service has no resource-level
+# support — cognito-idp:CreateUserPool, most of cloudfront:* — that is called
+# out inline rather than papered over.
 # ---------------------------------------------------------------------------
 
 locals {
@@ -23,19 +23,25 @@ locals {
 
   # Resources that MUST stay beyond the deploy role's reach.
   protected_arns = [
-    aws_iam_policy.boundary.arn, # its own ceiling
-    "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/${var.name_prefix}-deploy",
-    "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.name_prefix}-deploy",
-    "arn:aws:iam::${data.aws_caller_identity.current.account_id}:user/${var.name_prefix}", # v1 Streamlit user
+    aws_iam_policy.boundary.arn,                                   # its own ceiling
+    "arn:aws:iam::${local.account}:policy/${local.prefix}-deploy", # its own permissions
+    "arn:aws:iam::${local.account}:role/${local.prefix}-deploy",   # its own trust policy
+    "arn:aws:iam::${local.account}:user/${local.prefix}",          # the v1 Streamlit user
+  ]
+
+  live_table_arns = [
+    "arn:aws:dynamodb:*:${local.account}:table/${var.library_table_name}",
+    "arn:aws:dynamodb:*:${local.account}:table/${var.library_table_name}/*",
   ]
 }
 
 data "aws_iam_policy_document" "deploy" {
-  # --- 1. Denies -----------------------------------------------------------
+  # === Denies — the actual security boundary ================================
+  # Deny wins over any Allow, so these hold regardless of what follows.
 
-  # Without this, the prefix-based Allows below would cover the deploy role's
-  # own policy and its boundary — letting a run rewrite its own limits. This
-  # is the statement that makes the whole scheme hold.
+  # Without this, the gamegusto-* prefix Allows below would match the deploy
+  # role's own policy and its boundary, letting a run rewrite its own limits.
+  # A prefix-scoped policy is self-escalating unless it carves this out.
   statement {
     sid       = "DenyTamperingWithOwnControls"
     effect    = "Deny"
@@ -43,34 +49,22 @@ data "aws_iam_policy_document" "deploy" {
     resources = local.protected_arns
   }
 
-  # The live library is irreplaceable. Terraform may describe it (to wire up
-  # the Lambda's permissions) and nothing more — not even reading rows, which
-  # it has no reason to do.
+  # The live library is irreplaceable and Terraform does not manage it.
+  # Describe is genuinely all this role gets — not even reading rows.
   statement {
-    sid    = "DenyMutatingTheLiveLibrary"
-    effect = "Deny"
-    not_actions = [
-      "dynamodb:DescribeTable",
-      "dynamodb:DescribeContinuousBackups",
-      "dynamodb:DescribeTimeToLive",
-      "dynamodb:ListTagsOfResource",
-    ]
-    resources = [
-      "arn:aws:dynamodb:*:${local.account}:table/${var.library_table_name}",
-      "arn:aws:dynamodb:*:${local.account}:table/${var.library_table_name}/*",
-    ]
+    sid         = "DenyEverythingButDescribeOnLiveLibrary"
+    effect      = "Deny"
+    not_actions = ["dynamodb:Describe*", "dynamodb:ListTagsOfResource"]
+    resources   = local.live_table_arns
   }
 
-  # Belt and braces alongside the condition on CreateRole below: no role may
-  # be created or have its boundary changed unless the boundary is ours.
+  # iam:CreateRole is a privilege-escalation primitive. Roles may only exist
+  # with our boundary attached, which caps them however they are later
+  # policied.
   statement {
-    sid    = "DenyRolesWithoutTheBoundary"
-    effect = "Deny"
-    actions = [
-      "iam:CreateRole",
-      "iam:PutRolePermissionsBoundary",
-      "iam:DeleteRolePermissionsBoundary",
-    ]
+    sid       = "DenyRolesWithoutTheBoundary"
+    effect    = "Deny"
+    actions   = ["iam:CreateRole", "iam:PutRolePermissionsBoundary", "iam:DeleteRolePermissionsBoundary"]
     resources = ["*"]
     condition {
       test     = "StringNotEquals"
@@ -79,129 +73,78 @@ data "aws_iam_policy_document" "deploy" {
     }
   }
 
-  # --- 2. Allows -----------------------------------------------------------
-
-  # Terraform's own state.
+  # The Allows below grant iam:* over gamegusto-* roles, which would otherwise
+  # include passing one to any service. Lambda is the only legitimate target.
   statement {
-    sid       = "TerraformState"
-    effect    = "Allow"
-    actions   = ["s3:ListBucket", "s3:GetBucketVersioning"]
-    resources = [aws_s3_bucket.state.arn]
-  }
-  statement {
-    sid    = "TerraformStateObjects"
-    effect = "Allow"
-    actions = [
-      "s3:GetObject",
-      "s3:PutObject",
-      "s3:DeleteObject", # the lock file, on release
-    ]
-    resources = ["${aws_s3_bucket.state.arn}/*"]
-  }
-
-  # Read-only look at the live table, so the stack can reference it as a data
-  # source. Paired with the Deny above, describe is genuinely all it gets.
-  statement {
-    sid    = "DescribeLiveLibrary"
-    effect = "Allow"
-    actions = [
-      "dynamodb:DescribeTable",
-      "dynamodb:DescribeContinuousBackups",
-      "dynamodb:DescribeTimeToLive",
-      "dynamodb:ListTagsOfResource",
-    ]
-    resources = ["arn:aws:dynamodb:*:${local.account}:table/${var.library_table_name}"]
-  }
-
-  # Lambda: the API itself, plus its streaming Function URL.
-  statement {
-    sid    = "ManageLambda"
-    effect = "Allow"
-    actions = [
-      "lambda:CreateFunction",
-      "lambda:DeleteFunction",
-      "lambda:GetFunction",
-      "lambda:GetFunctionConfiguration",
-      "lambda:GetFunctionCodeSigningConfig",
-      "lambda:UpdateFunctionCode",
-      "lambda:UpdateFunctionConfiguration",
-      "lambda:PublishVersion",
-      "lambda:ListVersionsByFunction",
-      "lambda:TagResource",
-      "lambda:UntagResource",
-      "lambda:ListTags",
-      "lambda:AddPermission",
-      "lambda:RemovePermission",
-      "lambda:GetPolicy",
-      "lambda:CreateFunctionUrlConfig",
-      "lambda:UpdateFunctionUrlConfig",
-      "lambda:DeleteFunctionUrlConfig",
-      "lambda:GetFunctionUrlConfig",
-      "lambda:PutFunctionConcurrency",
-      "lambda:DeleteFunctionConcurrency",
-    ]
-    resources = ["arn:aws:lambda:*:${local.account}:function:${local.prefix}-*"]
-  }
-
-  # IAM, tightly fenced: only this project's roles and policies.
-  statement {
-    sid    = "ManageProjectRoles"
-    effect = "Allow"
-    actions = [
-      "iam:CreateRole",
-      "iam:DeleteRole",
-      "iam:GetRole",
-      "iam:UpdateRole",
-      "iam:UpdateAssumeRolePolicy",
-      "iam:TagRole",
-      "iam:UntagRole",
-      "iam:ListRoleTags",
-      "iam:AttachRolePolicy",
-      "iam:DetachRolePolicy",
-      "iam:PutRolePolicy",
-      "iam:DeleteRolePolicy",
-      "iam:GetRolePolicy",
-      "iam:ListRolePolicies",
-      "iam:ListAttachedRolePolicies",
-      "iam:ListInstanceProfilesForRole",
-      "iam:PutRolePermissionsBoundary",
-    ]
-    resources = ["arn:aws:iam::${local.account}:role/${local.prefix}-*"]
-  }
-
-  statement {
-    sid    = "ManageProjectPolicies"
-    effect = "Allow"
-    actions = [
-      "iam:CreatePolicy",
-      "iam:DeletePolicy",
-      "iam:GetPolicy",
-      "iam:GetPolicyVersion",
-      "iam:CreatePolicyVersion",
-      "iam:DeletePolicyVersion",
-      "iam:ListPolicyVersions",
-      "iam:TagPolicy",
-      "iam:UntagPolicy",
-      "iam:ListEntitiesForPolicy",
-    ]
-    resources = ["arn:aws:iam::${local.account}:policy/${local.prefix}-*"]
-  }
-
-  # Handing the execution role to Lambda, and to nothing else.
-  statement {
-    sid       = "PassExecutionRoleToLambdaOnly"
-    effect    = "Allow"
+    sid       = "DenyPassRoleExceptToLambda"
+    effect    = "Deny"
     actions   = ["iam:PassRole"]
-    resources = ["arn:aws:iam::${local.account}:role/${local.prefix}-*"]
+    resources = ["*"]
     condition {
-      test     = "StringEquals"
+      test     = "StringNotEquals"
       variable = "iam:PassedToService"
       values   = ["lambda.amazonaws.com"]
     }
   }
 
-  # Cognito. CreateUserPool has no resource-level support, so it is split out
-  # and constrained by a required project tag instead.
+  # === Allows ===============================================================
+
+  statement {
+    sid       = "TerraformState"
+    effect    = "Allow"
+    actions   = ["s3:ListBucket", "s3:GetBucketVersioning", "s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+    resources = [aws_s3_bucket.state.arn, "${aws_s3_bucket.state.arn}/*"]
+  }
+
+  # Paired with the Deny above, this resolves to describe-only.
+  statement {
+    sid       = "DescribeLiveLibrary"
+    effect    = "Allow"
+    actions   = ["dynamodb:Describe*", "dynamodb:ListTagsOfResource"]
+    resources = local.live_table_arns
+  }
+
+  # The project's own resources, each fenced by its ARN.
+  statement {
+    sid       = "ProjectLambda"
+    effect    = "Allow"
+    actions   = ["lambda:*"]
+    resources = ["arn:aws:lambda:*:${local.account}:function:${local.prefix}-*"]
+  }
+
+  statement {
+    sid     = "ProjectRolesAndPolicies"
+    effect  = "Allow"
+    actions = ["iam:*"]
+    resources = [
+      "arn:aws:iam::${local.account}:role/${local.prefix}-*",
+      "arn:aws:iam::${local.account}:policy/${local.prefix}-*",
+    ]
+  }
+
+  statement {
+    sid       = "ProjectBuckets"
+    effect    = "Allow"
+    actions   = ["s3:*"]
+    resources = ["arn:aws:s3:::${local.prefix}-*", "arn:aws:s3:::${local.prefix}-*/*"]
+  }
+
+  statement {
+    sid       = "ProjectLogs"
+    effect    = "Allow"
+    actions   = ["logs:*"]
+    resources = ["arn:aws:logs:*:${local.account}:log-group:/aws/lambda/${local.prefix}-*"]
+  }
+
+  statement {
+    sid       = "ProjectParameters"
+    effect    = "Allow"
+    actions   = ["ssm:*"]
+    resources = ["arn:aws:ssm:*:${local.account}:parameter/${local.prefix}/*"]
+  }
+
+  # Cognito user pool ARNs carry a generated id, so they cannot be prefixed.
+  # Creating one has no resource-level support at all, hence the tag condition.
   statement {
     sid       = "CreateUserPool"
     effect    = "Allow"
@@ -213,166 +156,35 @@ data "aws_iam_policy_document" "deploy" {
       values   = [local.prefix]
     }
   }
+
   statement {
-    sid    = "ManageUserPool"
-    effect = "Allow"
-    actions = [
-      "cognito-idp:DeleteUserPool",
-      "cognito-idp:DescribeUserPool",
-      "cognito-idp:UpdateUserPool",
-      "cognito-idp:GetUserPoolMfaConfig",
-      "cognito-idp:SetUserPoolMfaConfig",
-      "cognito-idp:CreateUserPoolClient",
-      "cognito-idp:DeleteUserPoolClient",
-      "cognito-idp:DescribeUserPoolClient",
-      "cognito-idp:UpdateUserPoolClient",
-      "cognito-idp:CreateUserPoolDomain",
-      "cognito-idp:DeleteUserPoolDomain",
-      "cognito-idp:DescribeUserPoolDomain",
-      "cognito-idp:UpdateUserPoolDomain",
-      "cognito-idp:TagResource",
-      "cognito-idp:UntagResource",
-      "cognito-idp:ListTagsForResource",
-      "cognito-idp:AdminCreateUser", # inviting yourself as the first user
-      "cognito-idp:AdminGetUser",
-      "cognito-idp:AdminDeleteUser",
-      "cognito-idp:AdminSetUserPassword",
-    ]
+    sid       = "ManageUserPools"
+    effect    = "Allow"
+    actions   = ["cognito-idp:*"]
     resources = ["arn:aws:cognito-idp:*:${local.account}:userpool/*"]
   }
 
-  # Static hosting for the PWA.
+  # CloudFront has essentially no resource-level support on the create paths,
+  # so this is the broadest grant here. Documented in infra/README.md.
   statement {
-    sid    = "ManageSiteBuckets"
-    effect = "Allow"
-    actions = [
-      "s3:CreateBucket",
-      "s3:DeleteBucket",
-      "s3:ListBucket",
-      "s3:GetBucketLocation",
-      "s3:GetBucketPolicy",
-      "s3:PutBucketPolicy",
-      "s3:DeleteBucketPolicy",
-      "s3:GetBucketPublicAccessBlock",
-      "s3:PutBucketPublicAccessBlock",
-      "s3:GetBucketVersioning",
-      "s3:PutBucketVersioning",
-      "s3:GetBucketTagging",
-      "s3:PutBucketTagging",
-      "s3:GetBucketOwnershipControls",
-      "s3:PutBucketOwnershipControls",
-      "s3:GetEncryptionConfiguration",
-      "s3:PutEncryptionConfiguration",
-      "s3:GetBucketCORS",
-      "s3:PutBucketCORS",
-      "s3:GetBucketWebsite",
-      "s3:PutBucketWebsite",
-      "s3:DeleteBucketWebsite",
-      "s3:GetObject",
-      "s3:PutObject",
-      "s3:DeleteObject",
-      "s3:PutObjectAcl",
-    ]
-    resources = [
-      "arn:aws:s3:::${local.prefix}-*",
-      "arn:aws:s3:::${local.prefix}-*/*",
-    ]
-  }
-
-  # CloudFront in front of both origins. Almost nothing here supports
-  # resource-level permissions at create time.
-  statement {
-    sid    = "ManageCloudFront"
-    effect = "Allow"
-    actions = [
-      "cloudfront:CreateDistribution",
-      "cloudfront:UpdateDistribution",
-      "cloudfront:DeleteDistribution",
-      "cloudfront:GetDistribution",
-      "cloudfront:GetDistributionConfig",
-      "cloudfront:ListDistributions",
-      "cloudfront:CreateOriginAccessControl",
-      "cloudfront:UpdateOriginAccessControl",
-      "cloudfront:DeleteOriginAccessControl",
-      "cloudfront:GetOriginAccessControl",
-      "cloudfront:GetOriginAccessControlConfig",
-      "cloudfront:ListOriginAccessControls",
-      "cloudfront:CreateInvalidation",
-      "cloudfront:GetInvalidation",
-      "cloudfront:CreateCachePolicy",
-      "cloudfront:DeleteCachePolicy",
-      "cloudfront:GetCachePolicy",
-      "cloudfront:GetCachePolicyConfig",
-      "cloudfront:UpdateCachePolicy",
-      "cloudfront:ListCachePolicies",
-      "cloudfront:CreateResponseHeadersPolicy",
-      "cloudfront:DeleteResponseHeadersPolicy",
-      "cloudfront:GetResponseHeadersPolicy",
-      "cloudfront:GetResponseHeadersPolicyConfig",
-      "cloudfront:UpdateResponseHeadersPolicy",
-      "cloudfront:CreateOriginRequestPolicy",
-      "cloudfront:DeleteOriginRequestPolicy",
-      "cloudfront:GetOriginRequestPolicy",
-      "cloudfront:GetOriginRequestPolicyConfig",
-      "cloudfront:UpdateOriginRequestPolicy",
-      "cloudfront:TagResource",
-      "cloudfront:UntagResource",
-      "cloudfront:ListTagsForResource",
-    ]
+    sid       = "ManageCloudFront"
+    effect    = "Allow"
+    actions   = ["cloudfront:*"]
     resources = ["*"]
   }
 
-  # Log groups for the function.
+  # Read-only calls Terraform makes constantly while planning.
   statement {
-    sid    = "ManageLogGroups"
-    effect = "Allow"
-    actions = [
-      "logs:CreateLogGroup",
-      "logs:DeleteLogGroup",
-      "logs:DescribeLogGroups",
-      "logs:PutRetentionPolicy",
-      "logs:DeleteRetentionPolicy",
-      "logs:TagResource",
-      "logs:UntagResource",
-      "logs:ListTagsForResource",
-    ]
-    resources = ["arn:aws:logs:*:${local.account}:log-group:/aws/lambda/${local.prefix}-*"]
-  }
-
-  # The Tavily key, as an SSM SecureString under this project's path.
-  statement {
-    sid    = "ManageProjectParameters"
-    effect = "Allow"
-    actions = [
-      "ssm:PutParameter",
-      "ssm:GetParameter",
-      "ssm:GetParameters",
-      "ssm:DeleteParameter",
-      "ssm:DescribeParameters",
-      "ssm:AddTagsToResource",
-      "ssm:RemoveTagsFromResource",
-      "ssm:ListTagsForResource",
-    ]
-    resources = ["arn:aws:ssm:*:${local.account}:parameter/${local.prefix}/*"]
-  }
-
-  # Read-only calls Terraform makes constantly to plan.
-  statement {
-    sid    = "ReadOnlyPlanning"
-    effect = "Allow"
-    actions = [
-      "sts:GetCallerIdentity",
-      "iam:ListPolicies",
-      "iam:ListRoles",
-      "tag:GetResources",
-    ]
+    sid       = "ReadOnlyPlanning"
+    effect    = "Allow"
+    actions   = ["sts:GetCallerIdentity", "iam:List*", "iam:Get*", "tag:GetResources"]
     resources = ["*"]
   }
 }
 
 resource "aws_iam_policy" "deploy" {
   name        = "${local.prefix}-deploy"
-  description = "Permissions for Terraform to manage the ${local.prefix} v2 stack. Cannot touch the live library, the v1 user, or its own controls."
+  description = "Terraform's permissions for the ${local.prefix} v2 stack. Cannot touch the live library, the v1 user, or its own controls."
   policy      = data.aws_iam_policy_document.deploy.json
 }
 
