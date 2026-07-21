@@ -1,5 +1,16 @@
 # Implementation Plan: GameGusto (game-recommendation-agent)
 
+> **Scope note (2026-07-21).** This spec describes GameGusto **v1**. It remains
+> the reference for requirements — roughly 107 comments in the code cite
+> `Req X.Y` from `requirements.md` — and for the correctness properties
+> (P1–P22) the property tests implement.
+>
+> Its UI chapters are **historical**: the Streamlit app they describe was
+> retired in Phase 4. The deployed system is a React PWA on CloudFront over a
+> streaming FastAPI Lambda; see [`../../../README.md`](../../../README.md),
+> [`../../../infra/README.md`](../../../infra/README.md) and
+> [`../../../CLAUDE.md`](../../../CLAUDE.md).
+
 ## Overview
 
 The backend and a runnable **headless conversation app** are complete, and the agent layer has been **re-architected into a tool-using Bedrock agent** (Task 12): project setup → locked data contract → core services (ErrorHandler, Bedrock via Converse, DynamoDB-backed memory, Tavily) → record sources (Gmail + manual) → agent layer (library assembly + tool registry + agent runtime) → application wiring (`bootstrap.build_app`) and a CLI (`cli.py`). The library is filled from read-only Gmail purchase emails and manual entry, persisted in DynamoDB, enriched via Tavily, and the agent — Claude Sonnet on Bedrock driven through the Converse tool-use loop — interprets the request, calls tools, and selects a recommendation with alternatives that honors the user's stated taste.

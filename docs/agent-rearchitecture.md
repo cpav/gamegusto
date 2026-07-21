@@ -1,9 +1,10 @@
 # GameGusto → Re-architecture Brief: Tool-Using Bedrock Agent
 
-> Hand-off prompt for the next working session. Goal: replace the current fixed
-> mood→time→recommend pipeline with a proper **agent** — Claude Sonnet 4.6 on
-> Bedrock as the reasoning core that calls **tools** and decides the flow itself.
-> Clean this up as needed, then drive implementation from it.
+> **Delivered — kept as the record of why the agent looks like this.** This was
+> the hand-off brief for replacing a fixed mood→time→recommend pipeline with a
+> tool-using Bedrock agent. That work shipped: `agent/runtime.py` runs the
+> Converse tool-use loop today. Read it for the reasoning, not for current
+> instructions.
 
 ## 1. Why we're changing direction
 
