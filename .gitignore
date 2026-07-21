@@ -39,3 +39,10 @@ htmlcov/
 web/node_modules/
 web/dist/
 web/*.tsbuildinfo
+
+# Terraform: local state (bootstrap only), provider plugins, plan artifacts
+infra/**/.terraform/
+infra/**/.terraform.lock.hcl
+infra/**/terraform.tfstate
+infra/**/terraform.tfstate.*
+infra/**/*.tfplan
