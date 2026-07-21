@@ -21,6 +21,7 @@ from typing import Any
 
 from models.game_record import CommunityReview, GameRecord
 from services.bedrock_service import BedrockService, BedrockServiceError
+from services.igdb_service import IgdbService
 from services.tavily_service import TavilyService
 
 #: Cap on snippets fed to the model, keeping the prompt bounded.
@@ -41,10 +42,16 @@ def _cover_query(record: GameRecord) -> str:
 class Enricher:
     """Populates missing ``GameRecord`` metadata via Tavily search + the LLM."""
 
-    def __init__(self, bedrock: BedrockService, tavily: TavilyService) -> None:
-        """Build the enricher around the Bedrock model and the Tavily search."""
+    def __init__(
+        self,
+        bedrock: BedrockService,
+        tavily: TavilyService,
+        igdb: IgdbService | None = None,
+    ) -> None:
+        """Build the enricher around the model, the search, and cover art."""
         self._bedrock = bedrock
         self._tavily = tavily
+        self._igdb = igdb
 
     def enrich(self, record: GameRecord, *, refresh_cover: bool = False) -> GameRecord:
         """Fill any unset enrichment fields of ``record`` (cache-first, degrading).
@@ -63,7 +70,7 @@ class Enricher:
         # search, without paying for a full LLM re-classification they don't need.
         # It stays out of is_enriched(): art is presentation, never a data gate.
         if record.cover_url is None or refresh_cover:
-            found = self._tavily.find_image(_cover_query(record))
+            found = self._find_cover(record)
             # Keep what we had if the search comes back empty — a refresh that
             # finds nothing should not strip a cover the user could see.
             if found or record.cover_url is None:
@@ -81,6 +88,22 @@ class Enricher:
         except (BedrockServiceError, ValueError):
             return record
         return self._apply(record, data, source_count=len(snippets))
+
+    def _find_cover(self, record: GameRecord) -> str | None:
+        """IGDB first, image search second.
+
+        IGDB returns the actual product shot at a consistent aspect ratio; the
+        web image search returns whatever exists for the words "cover art",
+        which is where the wrong and unpleasant covers came from. The search
+        stays as a fallback so a library without IGDB credentials, or a game
+        IGDB has never heard of, still gets something.
+        """
+        if self._igdb is not None:
+            platform = record.platforms[0] if record.platforms else None
+            cover = self._igdb.find_cover(record.title, platform)
+            if cover:
+                return cover
+        return self._tavily.find_image(_cover_query(record))
 
     def _classify(self, title: str, snippets: list[dict[str, str]]) -> dict[str, Any]:
         """Ask the model to classify the title into structured fields.

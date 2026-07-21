@@ -104,6 +104,12 @@ class Config:
     auto-detected (browser locale) and falls back to a default; an explicit value
     here always wins. See ``bootstrap.build_app`` / ``ui.bootstrap``."""
 
+    igdb_client_id: str | None = None
+    """Twitch app credentials backing IGDB cover art. When unset, covers fall
+    back to the Tavily image search — art is presentation, never a hard
+    dependency."""
+    igdb_client_secret: str | None = None
+
     # Optional (feature-gated integrations).
     gmail_token_path: str | None = None
 
@@ -119,6 +125,8 @@ class Config:
                 "BEDROCK_REASONING_BUDGET_TOKENS", _DEFAULT_REASONING_BUDGET_TOKENS
             ),
             deals_region=_optional("DEALS_REGION"),
+            igdb_client_id=_optional("IGDB_CLIENT_ID"),
+            igdb_client_secret=_optional("IGDB_CLIENT_SECRET"),
             gmail_token_path=_optional("GMAIL_TOKEN_PATH"),
         )
 

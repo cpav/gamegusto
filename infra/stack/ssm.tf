@@ -27,3 +27,21 @@ resource "aws_ssm_parameter" "tavily_api_key" {
     ignore_changes = [value]
   }
 }
+
+# IGDB (Twitch) credentials backing cover art. One parameter holding
+# "client_id:client_secret" — two secrets would mean two SSM round trips on
+# every cold start for values that are always set together.
+#
+#   aws ssm put-parameter --name /gamegusto/igdb_credentials \
+#     --value "<client-id>:<client-secret>" \
+#     --type SecureString --overwrite --profile gamegusto-deploy
+resource "aws_ssm_parameter" "igdb_credentials" {
+  name        = "/${local.prefix}/igdb_credentials"
+  description = "IGDB client id and secret, colon-separated. Cover art only."
+  type        = "SecureString"
+  value       = "placeholder-set-out-of-band"
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}

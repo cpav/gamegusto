@@ -22,6 +22,7 @@ from agent.tools import ToolRegistry
 from config import DEFAULT_DEALS_REGION, Config
 from services.bedrock_service import BedrockService
 from services.dynamodb_memory_client import DynamoDBMemoryClient
+from services.igdb_service import IgdbService
 from services.memory_service import MemoryService
 from services.sources.base import RecordSource
 from services.sources.manual_source import ManualSource
@@ -70,7 +71,8 @@ def build_app(
         sources.append(gmail)  # Gmail takes precedence over manual entries
     sources.append(ManualSource(memory, user_id))
 
-    enricher = Enricher(bedrock, tavily)
+    igdb = IgdbService(config.igdb_client_id, config.igdb_client_secret)
+    enricher = Enricher(bedrock, tavily, igdb)
     library = LibraryService(sources=sources, enricher=enricher, memory=memory)
     tools = ToolRegistry(
         memory=memory, library=library, tavily=tavily, enricher=enricher, user_id=user_id

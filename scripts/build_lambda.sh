@@ -79,6 +79,23 @@ print(ssm.get_parameter(Name=os.environ['TAVILY_PARAMETER'], WithDecryption=True
   export TAVILY_API_KEY
 fi
 
+# IGDB cover art, stored as "client_id:client_secret" in one parameter. A miss
+# is not fatal — the enricher falls back to the image search.
+if [[ -n "${IGDB_PARAMETER:-}" ]]; then
+  IGDB_PAIR="$(python -c "
+import boto3, os
+ssm = boto3.client('ssm')
+try:
+    print(ssm.get_parameter(Name=os.environ['IGDB_PARAMETER'], WithDecryption=True)['Parameter']['Value'])
+except Exception:
+    print('')
+")"
+  if [[ "$IGDB_PAIR" == *:* && "$IGDB_PAIR" != placeholder* ]]; then
+    export IGDB_CLIENT_ID="${IGDB_PAIR%%:*}"
+    export IGDB_CLIENT_SECRET="${IGDB_PAIR#*:}"
+  fi
+fi
+
 exec python -m uvicorn --factory api.main:build --host 0.0.0.0 --port "${AWS_LWA_PORT:-8000}"
 ENTRY
 chmod +x "$BUILD/run.sh"
