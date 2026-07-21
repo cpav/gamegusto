@@ -158,11 +158,18 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ dedup_key: key }),
     }),
-  /** Fill cover art for every record that has none. See api/app.py. */
-  backfillArtwork: () =>
-    request<{ filled: number; remaining: number; records: GameRecord[] }>("/api/library/artwork", {
-      method: "POST",
-    }),
+  /**
+   * Enrich everything that still needs it, one bounded batch per call.
+   *
+   * The server caps the batch because each record costs a search and a model
+   * call and the edge allows 60 seconds; `remaining` is how the caller knows
+   * to go again. `refresh` re-does the whole library instead. See api/app.py.
+   */
+  enrichAll: (refresh = false) =>
+    request<{ enriched: number; remaining: number; records: GameRecord[] }>(
+      `/api/library/enrich-all${refresh ? "?refresh=true" : ""}`,
+      { method: "POST" },
+    ),
   removeGame: (key: string) =>
     request<void>("/api/library/remove", {
       method: "POST",

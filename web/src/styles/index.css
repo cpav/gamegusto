@@ -860,6 +860,17 @@ textarea {
   display: grid;
   place-items: center;
   overflow: hidden;
+  background: var(--gg-bg2);
+}
+/* The placeholder gradient lives on a pseudo-element, NOT on the container.
+   The per-title hue-rotate that varies it used to sit on .cover-art itself,
+   where a filter applies to every child — so real box art was being hue
+   shifted by an arbitrary amount hashed from the title. Mario came out the
+   wrong colour. Keeping the filter here leaves photographs alone. */
+.cover-art::before {
+  content: "";
+  position: absolute;
+  inset: 0;
   background: linear-gradient(
     var(--tilt, 135deg),
     color-mix(in srgb, var(--gg-thrill) 62%, var(--gg-bg)),
@@ -868,6 +879,7 @@ textarea {
   filter: hue-rotate(var(--hue, 0deg));
 }
 .cover-art img {
+  position: relative; /* above the gradient, and unfiltered */
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -875,6 +887,7 @@ textarea {
 }
 /* No cover art yet: the neon marquee placeholder (initials on the gradient). */
 .cover-art .initials {
+  position: relative; /* above the gradient */
   font-family: var(--gg-font-brand);
   font-size: 15px;
   color: #fff;
@@ -1457,4 +1470,16 @@ textarea {
   color: var(--gg-thrill);
   border: 1px solid color-mix(in srgb, var(--gg-thrill) 55%, transparent);
   background: color-mix(in srgb, var(--gg-thrill) 14%, transparent);
+}
+
+/* Secondary to "find missing": it replaces art that already exists, so it
+   should not read as the obvious thing to press. */
+.art-backfill button.subtle {
+  border-color: var(--gg-line);
+  background: none;
+  color: var(--gg-sub);
+}
+.art-backfill button.subtle:hover:not(:disabled) {
+  color: var(--gg-ink);
+  border-color: var(--gg-charge);
 }

@@ -51,6 +51,11 @@ _DEFAULT_CORS = "http://localhost:5173,http://127.0.0.1:5173"
 #: Minimum query length before autocomplete hits the search service (matches the UI).
 _AUTOCOMPLETE_MIN_CHARS = 3
 
+#: Records enriched per bulk request. Each costs a web search plus a model
+#: call, and CloudFront allows the origin 60 seconds — a whole library in one
+#: request would be cut off mid-flight, having spent the tokens anyway.
+_ENRICH_BATCH = 5
+
 
 def _sse(event: str, payload: dict[str, Any]) -> str:
     """Frame one Server-Sent Event."""
@@ -190,42 +195,58 @@ def create_app(ctx: AppContext) -> FastAPI:
         ctx.memory.store_records(user, [enriched if r is record else r for r in records])
         return {"record": record_to_dict(enriched)}
 
-    @app.post("/api/library/artwork")
-    def backfill_artwork(user: str = Depends(current_user)) -> dict[str, Any]:
-        """Fill in cover art for records that have none.
+    @app.post("/api/library/enrich-all")
+    def enrich_all(
+        user: str = Depends(current_user),
+        refresh: Annotated[bool, Query()] = False,
+    ) -> dict[str, Any]:
+        """Enrich every record that still needs it, a batch at a time.
 
-        Records enriched before ``cover_url`` existed have no image, and the
-        enricher fetches one *before* its ``is_enriched()`` early return — so
-        this costs one image search per record and no LLM classification.
+        Adding a dozen games by hand leaves a dozen records with no genre, no
+        length, no score and no art; filling them in one at a time through the
+        detail sheet is the tedious path this replaces.
 
-        A single endpoint rather than the client looping the per-record route:
-        that route reads every record, changes one, and writes them all back,
-        so N calls means N read-modify-writes racing each other. This does one
-        read and one write.
+        ``refresh=true`` re-does the whole library instead, which is how it
+        moves to a better art source without opening each game in turn.
 
-        Failures are per-record and silent by design — ``find_image`` already
-        degrades to ``None`` on a rate limit, and a missing cover is cosmetic.
-        The count that comes back is what actually gained art, not what was
-        attempted.
+        **Bounded on purpose.** Each record costs a search plus a model call,
+        and CloudFront gives the origin 60 seconds. So this processes at most
+        ``_ENRICH_BATCH`` records and reports how many remain; the client calls
+        again until nothing is left, which keeps one click bounded work and
+        gives honest progress instead of a request that dies at the edge.
+
+        One read and one write per batch, rather than the per-record route's
+        read-modify-write of the entire list N times over.
+
+        Failures are per-record: a title the model cannot classify must not
+        stop the rest of the batch.
         """
         records = ctx.memory.get_records(user)
-        missing = [record for record in records if record.cover_url is None]
+        needs_work = [
+            record
+            for record in records
+            if refresh or not record.is_enriched() or record.cover_url is None
+        ]
+        batch = needs_work[:_ENRICH_BATCH]
 
-        for record in missing:
+        for record in batch:
             try:
-                ctx.enricher.enrich(record)
+                ctx.enricher.enrich(record, refresh_cover=refresh)
             except BedrockServiceError:
-                # Only reachable for a record that also needs classification;
-                # the rest of the batch should still get its art.
                 continue
 
-        filled = [record for record in missing if record.cover_url is not None]
-        if filled:
+        if batch:
             ctx.memory.store_records(user, records)
 
+        # Recomputed against the freshly enriched records, so "remaining"
+        # counts what genuinely still needs work — not what this batch failed
+        # to fix, which would loop forever on a title nothing can classify.
+        still_missing = sum(
+            1 for record in records if not record.is_enriched() or record.cover_url is None
+        )
         return {
-            "filled": len(filled),
-            "remaining": len(missing) - len(filled),
+            "enriched": len(batch),
+            "remaining": 0 if refresh else still_missing,
             "records": [record_to_dict(record) for record in records],
         }
 

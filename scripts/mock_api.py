@@ -189,17 +189,31 @@ class Handler(BaseHTTPRequestHandler):
             before = len(STATE["records"])
             STATE["records"] = [r for r in STATE["records"] if r["dedup_key"] != key]
             self._empty(204 if len(STATE["records"]) < before else 404)
-        elif path == "/api/library/artwork":
+        elif path.startswith("/api/library/enrich-all"):
             # One title stays without art on purpose, so the client's
             # "couldn't find N" path is exercised rather than assumed.
-            filled = 0
+            refresh = "refresh=true" in urlparse(self.path).query
+            enriched = 0
             for record in STATE["records"]:
-                if record["cover_url"] is None and record["title"] != "Disco Elysium":
+                needs = refresh or not record["is_enriched"] or record["cover_url"] is None
+                if not needs:
+                    continue
+                record["is_enriched"] = True
+                record["genre"] = record["genre"] or "Action"
+                # One title never gets art, so the client's "some are still
+                # without" path is exercised rather than assumed.
+                if record["title"] != "Disco Elysium":
                     slug = record["title"].lower().replace(" ", "-").replace(":", "")
                     record["cover_url"] = f"https://placehold.co/460x215/181b2e/2de2e6?text={slug}"
-                    filled += 1
-            remaining = sum(1 for r in STATE["records"] if r["cover_url"] is None)
-            self._json({"filled": filled, "remaining": remaining, "records": STATE["records"]})
+                enriched += 1
+            remaining = (
+                0
+                if refresh
+                else sum(
+                    1 for r in STATE["records"] if not r["is_enriched"] or r["cover_url"] is None
+                )
+            )
+            self._json({"enriched": enriched, "remaining": remaining, "records": STATE["records"]})
         elif path == "/api/library":
             title = str(body.get("title", "")).strip()
             platform = (body.get("platform") or "").strip()

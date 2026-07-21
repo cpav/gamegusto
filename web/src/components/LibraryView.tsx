@@ -35,30 +35,58 @@ export function LibraryView({ reloadKey }: { reloadKey: number }) {
   const [adding, setAdding] = useState(false);
   const [memoryDown, setMemoryDown] = useState(false);
   const [brokenCovers, setBrokenCovers] = useState<Set<string>>(new Set());
-  const [fetchingArt, setFetchingArt] = useState(false);
-  const [artResult, setArtResult] = useState<string | null>(null);
+  const [enriching, setEnriching] = useState(false);
+  const [enrichNote, setEnrichNote] = useState<string | null>(null);
 
-  const missingArt = records.filter((record) => record.cover_url === null).length;
+  const needsWork = records.filter(
+    (record) => !record.is_enriched || record.cover_url === null,
+  ).length;
 
-  async function fetchMissingArt() {
-    setFetchingArt(true);
-    setArtResult(null);
+  /**
+   * Fill in everything that is missing: genre, length, score and art.
+   *
+   * The server works in bounded batches so a request cannot die at the edge,
+   * so this keeps calling until nothing remains — one click, honest progress,
+   * and a stop condition that does not depend on a title the model simply
+   * cannot classify.
+   */
+  async function enrichAll(refresh = false) {
+    setEnriching(true);
+    setEnrichNote(null);
+    // Counted from what is actually complete, not by summing batch sizes: a
+    // record that cannot be filled in is retried in the next pass and would
+    // otherwise be counted twice ("filled in 10" for a library of 9).
+    const started = needsWork;
+    let previousRemaining = Number.POSITIVE_INFINITY;
+    let done = 0;
     try {
-      const result = await api.backfillArtwork();
-      setRecords(result.records);
-      // Say what actually happened, including the misses. Silently leaving a
-      // few tiles blank would read as the button not having worked.
-      setArtResult(
-        result.filled === 0
-          ? "No art found for those."
-          : result.remaining > 0
-            ? `Found ${result.filled} — ${result.remaining} still without.`
-            : `Found ${result.filled}.`,
-      );
+      // Bounded, and stops as soon as a pass stops helping. Some titles can
+      // never be classified — no search results, or a model that will not
+      // commit — and they stay "needing work" forever. Looping on `remaining`
+      // alone would hammer the API and the budget indefinitely.
+      for (let pass = 0; pass < 20; pass++) {
+        const result = await api.enrichAll(refresh);
+        setRecords(result.records);
+        done = refresh ? result.enriched : Math.max(0, started - result.remaining);
+
+        if (result.remaining === 0 || result.enriched === 0 || refresh) {
+          setEnrichNote(done === 0 ? "Nothing needed filling in." : `Filled in ${done}.`);
+          break;
+        }
+        if (result.remaining >= previousRemaining) {
+          // A whole pass moved nothing: the rest cannot be filled in.
+          setEnrichNote(`Filled in ${done}. ${result.remaining} couldn't be looked up.`);
+          break;
+        }
+        previousRemaining = result.remaining;
+        setEnrichNote(`Filled in ${done}, ${result.remaining} to go…`);
+      }
     } catch {
-      setArtResult("Couldn't reach the art search.");
+      setEnrichNote(
+        done > 0 ? `Filled in ${done}, then lost the connection.` : "Couldn't reach the API.",
+      );
     } finally {
-      setFetchingArt(false);
+      setEnriching(false);
     }
   }
 
@@ -161,18 +189,19 @@ export function LibraryView({ reloadKey }: { reloadKey: number }) {
           ))}
         </div>
 
-        {/* Only when there is something to fetch. Records added from now on
-            get their art during enrichment, so this exists for the ones that
-            predate cover_url — and for the occasional search that finds
-            nothing. */}
-        {(missingArt > 0 || artResult) && (
+        {/* One action for the case that actually happens: a batch of games
+            added by hand, none of them with genre, length, score or art. */}
+        {records.length > 0 && (
           <div className="art-backfill">
-            {missingArt > 0 && (
-              <button onClick={() => void fetchMissingArt()} disabled={fetchingArt}>
-                {fetchingArt ? "Looking…" : `✨ Find art for ${missingArt}`}
+            {needsWork > 0 && (
+              <button onClick={() => void enrichAll(false)} disabled={enriching}>
+                {enriching ? "Filling in…" : `✨ Fill in ${needsWork} game${needsWork > 1 ? "s" : ""}`}
               </button>
             )}
-            {artResult && <span>{artResult}</span>}
+            <button className="subtle" onClick={() => void enrichAll(true)} disabled={enriching}>
+              {enriching ? "Working…" : "↻ Redo all"}
+            </button>
+            {enrichNote && <span>{enrichNote}</span>}
           </div>
         )}
 

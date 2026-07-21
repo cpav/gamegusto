@@ -90,9 +90,15 @@ try:
 except Exception:
     print('')
 ")"
-  if [[ "$IGDB_PAIR" == *:* && "$IGDB_PAIR" != placeholder* ]]; then
+  # Reject the unset parameter AND the example pasted verbatim. Angle brackets
+  # never appear in real Twitch credentials, and treating "<client-id>" as one
+  # means every lookup fails its token request and silently falls back — the
+  # feature looks configured and is not.
+  if [[ "$IGDB_PAIR" == *:* && "$IGDB_PAIR" != placeholder* && "$IGDB_PAIR" != *"<"* ]]; then
     export IGDB_CLIENT_ID="${IGDB_PAIR%%:*}"
     export IGDB_CLIENT_SECRET="${IGDB_PAIR#*:}"
+  else
+    echo "IGDB credentials not configured; covers fall back to image search." >&2
   fi
 fi
 

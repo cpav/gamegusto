@@ -562,74 +562,15 @@ def test_without_a_pool_the_api_is_open(monkeypatch: pytest.MonkeyPatch) -> None
 # --- artwork backfill ------------------------------------------------------
 
 
-def test_artwork_fills_only_records_without_covers() -> None:
-    """Records that already have art must not be re-fetched."""
-    client, ctx, _ = make_app()
-    ctx.memory.upsert_record(USER, GameRecord(title="No Art", platforms=["PC"], source="manual"))
-    ctx.memory.upsert_record(
-        USER,
-        GameRecord(
-            title="Has Art",
-            platforms=["PC"],
-            source="manual",
-            cover_url="https://img.example/original.jpg",
-        ),
-    )
-
-    response = client.post("/api/library/artwork")
-    assert response.status_code == 200
-    assert response.json()["filled"] == 1
-
-    by_title = {r["title"]: r for r in response.json()["records"]}
-    assert by_title["No Art"]["cover_url"] == "https://img.example/No Art.jpg"
-    # Untouched, not refreshed.
-    assert by_title["Has Art"]["cover_url"] == "https://img.example/original.jpg"
-
-
-def test_artwork_persists_across_requests() -> None:
+def test_enrich_all_persists_across_requests() -> None:
     """The point of the endpoint is that the covers survive; assert the write."""
     client, ctx, _ = make_app()
     ctx.memory.upsert_record(USER, GameRecord(title="Celeste", platforms=["PC"], source="manual"))
 
-    client.post("/api/library/artwork")
+    client.post("/api/library/enrich-all")
 
     reread = client.get("/api/library").json()["records"]
     assert reread[0]["cover_url"] == "https://img.example/Celeste.jpg"
-
-
-def test_artwork_reports_what_it_could_not_find() -> None:
-    """A Tavily miss is normal; the count must reflect reality, not attempts."""
-    client, ctx, _ = make_app()
-    assert isinstance(ctx.enricher, FakeEnricher)
-    ctx.enricher.no_art = {"Obscure Game"}
-    ctx.memory.upsert_record(USER, GameRecord(title="Found", platforms=["PC"], source="manual"))
-    ctx.memory.upsert_record(
-        USER, GameRecord(title="Obscure Game", platforms=["PC"], source="manual")
-    )
-
-    body = client.post("/api/library/artwork").json()
-    assert body["filled"] == 1
-    assert body["remaining"] == 1
-
-
-def test_artwork_on_a_fully_covered_library_is_a_no_op() -> None:
-    client, ctx, _ = make_app()
-    ctx.memory.upsert_record(
-        USER,
-        GameRecord(title="Done", platforms=["PC"], source="manual", cover_url="https://x/y.jpg"),
-    )
-
-    body = client.post("/api/library/artwork").json()
-    assert body["filled"] == 0
-    assert body["remaining"] == 0
-
-
-def test_artwork_requires_authentication(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("COGNITO_USER_POOL_ID", "eu-north-1_test")
-    monkeypatch.setenv("AWS_REGION", "eu-north-1")
-    client, _, _ = make_app()
-
-    assert client.post("/api/library/artwork").status_code == 401
 
 
 def test_enrich_replaces_an_existing_cover() -> None:
@@ -695,3 +636,89 @@ def test_a_platform_containing_a_slash_is_reachable() -> None:
     moved = ctx.memory.get_records(USER)[0].dedup_key
     assert client.post("/api/library/remove", json={"dedup_key": moved}).status_code == 204
     assert ctx.memory.get_records(USER) == []
+
+
+# --- bulk enrichment -------------------------------------------------------
+
+
+def test_enrich_all_fills_records_that_need_it() -> None:
+    """The manual-entry case: a batch of bare titles gains metadata and art."""
+    client, ctx, _ = make_app()
+    for title in ("Batman", "Spyro"):
+        ctx.memory.upsert_record(USER, GameRecord(title=title, platforms=["PC"], source="manual"))
+
+    body = client.post("/api/library/enrich-all").json()
+
+    assert body["enriched"] == 2
+    assert body["remaining"] == 0
+    for record in body["records"]:
+        assert record["genre"] == "Roguelike"
+        assert record["cover_url"] == f"https://img.example/{record['title']}.jpg"
+
+
+def test_enrich_all_leaves_complete_records_alone() -> None:
+    client, ctx, _ = make_app()
+    ctx.memory.upsert_record(
+        USER,
+        GameRecord(
+            title="Done",
+            platforms=["PC"],
+            source="manual",
+            genre="RPG",
+            platform_availability=["PC"],
+            cover_url="https://img.example/keep.jpg",
+        ),
+    )
+
+    body = client.post("/api/library/enrich-all").json()
+
+    assert body["enriched"] == 0
+    assert body["records"][0]["cover_url"] == "https://img.example/keep.jpg"
+    assert body["records"][0]["genre"] == "RPG"
+
+
+def test_enrich_all_works_in_bounded_batches() -> None:
+    """CloudFront allows the origin 60s; a whole library would be cut off."""
+    client, ctx, _ = make_app()
+    for index in range(8):
+        ctx.memory.upsert_record(
+            USER, GameRecord(title=f"Game {index}", platforms=["PC"], source="manual")
+        )
+
+    first = client.post("/api/library/enrich-all").json()
+    assert first["enriched"] == 5  # _ENRICH_BATCH
+    assert first["remaining"] == 3
+
+    second = client.post("/api/library/enrich-all").json()
+    assert second["enriched"] == 3
+    assert second["remaining"] == 0
+
+
+def test_enrich_all_refresh_redoes_everything() -> None:
+    """Moving to a better art source must not mean opening each game."""
+    client, ctx, _ = make_app()
+    ctx.memory.upsert_record(
+        USER,
+        GameRecord(
+            title="Hades",
+            platforms=["PC"],
+            source="manual",
+            genre="RPG",
+            platform_availability=["PC"],
+            cover_url="https://img.example/old.jpg",
+        ),
+    )
+
+    assert client.post("/api/library/enrich-all").json()["enriched"] == 0
+
+    body = client.post("/api/library/enrich-all?refresh=true").json()
+    assert body["enriched"] == 1
+    assert body["records"][0]["cover_url"] == "https://img.example/Hades.jpg"
+
+
+def test_enrich_all_requires_authentication(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("COGNITO_USER_POOL_ID", "eu-north-1_test")
+    monkeypatch.setenv("AWS_REGION", "eu-north-1")
+    client, _, _ = make_app()
+
+    assert client.post("/api/library/enrich-all").status_code == 401
