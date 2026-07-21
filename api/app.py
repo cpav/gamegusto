@@ -181,6 +181,45 @@ def create_app(ctx: AppContext) -> FastAPI:
         ctx.memory.store_records(user, [enriched if r is record else r for r in records])
         return {"record": record_to_dict(enriched)}
 
+    @app.post("/api/library/artwork")
+    def backfill_artwork(user: str = Depends(current_user)) -> dict[str, Any]:
+        """Fill in cover art for records that have none.
+
+        Records enriched before ``cover_url`` existed have no image, and the
+        enricher fetches one *before* its ``is_enriched()`` early return — so
+        this costs one image search per record and no LLM classification.
+
+        A single endpoint rather than the client looping the per-record route:
+        that route reads every record, changes one, and writes them all back,
+        so N calls means N read-modify-writes racing each other. This does one
+        read and one write.
+
+        Failures are per-record and silent by design — ``find_image`` already
+        degrades to ``None`` on a rate limit, and a missing cover is cosmetic.
+        The count that comes back is what actually gained art, not what was
+        attempted.
+        """
+        records = ctx.memory.get_records(user)
+        missing = [record for record in records if record.cover_url is None]
+
+        for record in missing:
+            try:
+                ctx.enricher.enrich(record)
+            except BedrockServiceError:
+                # Only reachable for a record that also needs classification;
+                # the rest of the batch should still get its art.
+                continue
+
+        filled = [record for record in missing if record.cover_url is not None]
+        if filled:
+            ctx.memory.store_records(user, records)
+
+        return {
+            "filled": len(filled),
+            "remaining": len(missing) - len(filled),
+            "records": [record_to_dict(record) for record in records],
+        }
+
     @app.delete("/api/library/{dedup_key}", status_code=204)
     def remove_game(dedup_key: str, user: str = Depends(current_user)) -> Response:
         records = ctx.memory.get_records(user)

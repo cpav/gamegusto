@@ -35,6 +35,32 @@ export function LibraryView({ reloadKey }: { reloadKey: number }) {
   const [adding, setAdding] = useState(false);
   const [memoryDown, setMemoryDown] = useState(false);
   const [brokenCovers, setBrokenCovers] = useState<Set<string>>(new Set());
+  const [fetchingArt, setFetchingArt] = useState(false);
+  const [artResult, setArtResult] = useState<string | null>(null);
+
+  const missingArt = records.filter((record) => record.cover_url === null).length;
+
+  async function fetchMissingArt() {
+    setFetchingArt(true);
+    setArtResult(null);
+    try {
+      const result = await api.backfillArtwork();
+      setRecords(result.records);
+      // Say what actually happened, including the misses. Silently leaving a
+      // few tiles blank would read as the button not having worked.
+      setArtResult(
+        result.filled === 0
+          ? "No art found for those."
+          : result.remaining > 0
+            ? `Found ${result.filled} — ${result.remaining} still without.`
+            : `Found ${result.filled}.`,
+      );
+    } catch {
+      setArtResult("Couldn't reach the art search.");
+    } finally {
+      setFetchingArt(false);
+    }
+  }
 
   async function reload() {
     try {
@@ -134,6 +160,21 @@ export function LibraryView({ reloadKey }: { reloadKey: number }) {
             </button>
           ))}
         </div>
+
+        {/* Only when there is something to fetch. Records added from now on
+            get their art during enrichment, so this exists for the ones that
+            predate cover_url — and for the occasional search that finds
+            nothing. */}
+        {(missingArt > 0 || artResult) && (
+          <div className="art-backfill">
+            {missingArt > 0 && (
+              <button onClick={() => void fetchMissingArt()} disabled={fetchingArt}>
+                {fetchingArt ? "Looking…" : `✨ Find art for ${missingArt}`}
+              </button>
+            )}
+            {artResult && <span>{artResult}</span>}
+          </div>
+        )}
 
         {picks.length > 0 && (
           <>

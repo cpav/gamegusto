@@ -182,6 +182,17 @@ class Handler(BaseHTTPRequestHandler):
         body = self._body()
         if path == "/api/chat":
             self._chat(str(body.get("message", "")))
+        elif path == "/api/library/artwork":
+            # One title stays without art on purpose, so the client's
+            # "couldn't find N" path is exercised rather than assumed.
+            filled = 0
+            for record in STATE["records"]:
+                if record["cover_url"] is None and record["title"] != "Disco Elysium":
+                    slug = record["title"].lower().replace(" ", "-").replace(":", "")
+                    record["cover_url"] = f"https://placehold.co/460x215/181b2e/2de2e6?text={slug}"
+                    filled += 1
+            remaining = sum(1 for r in STATE["records"] if r["cover_url"] is None)
+            self._json({"filled": filled, "remaining": remaining, "records": STATE["records"]})
         elif path == "/api/library":
             title = str(body.get("title", "")).strip()
             platform = (body.get("platform") or "").strip()

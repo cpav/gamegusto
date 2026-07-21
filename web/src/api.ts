@@ -138,6 +138,11 @@ export const api = {
     request<{ record: GameRecord }>(`/api/library/${encodeURIComponent(key)}/enrich`, {
       method: "POST",
     }),
+  /** Fill cover art for every record that has none. See api/app.py. */
+  backfillArtwork: () =>
+    request<{ filled: number; remaining: number; records: GameRecord[] }>("/api/library/artwork", {
+      method: "POST",
+    }),
   removeGame: (key: string) =>
     request<void>(`/api/library/${encodeURIComponent(key)}`, { method: "DELETE" }),
   autocomplete: (q: string) =>

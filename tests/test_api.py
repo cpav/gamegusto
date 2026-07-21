@@ -105,11 +105,17 @@ class FakeEnricher(Enricher):
     """Fills the enrichment fields without any network calls."""
 
     def __init__(self) -> None:
-        pass
+        #: Titles for which the image search finds nothing, mirroring a real
+        #: Tavily miss or rate limit. Per instance, not shared on the class.
+        self.no_art: set[str] = set()
 
     def enrich(self, record: GameRecord) -> GameRecord:
         record.genre = "Roguelike"
         record.platform_availability = ["Switch", "PC"]
+        # Matches the real enricher: art is fetched before the is_enriched()
+        # early return, and a miss leaves cover_url as None.
+        if record.cover_url is None and record.title not in self.no_art:
+            record.cover_url = f"https://img.example/{record.title}.jpg"
         return record
 
 
@@ -543,3 +549,76 @@ def test_without_a_pool_the_api_is_open(monkeypatch: pytest.MonkeyPatch) -> None
     client, _, _ = make_app()
 
     assert client.get("/api/library").status_code == 200
+
+
+# --- artwork backfill ------------------------------------------------------
+
+
+def test_artwork_fills_only_records_without_covers() -> None:
+    """Records that already have art must not be re-fetched."""
+    client, ctx, _ = make_app()
+    ctx.memory.upsert_record(USER, GameRecord(title="No Art", platforms=["PC"], source="manual"))
+    ctx.memory.upsert_record(
+        USER,
+        GameRecord(
+            title="Has Art",
+            platforms=["PC"],
+            source="manual",
+            cover_url="https://img.example/original.jpg",
+        ),
+    )
+
+    response = client.post("/api/library/artwork")
+    assert response.status_code == 200
+    assert response.json()["filled"] == 1
+
+    by_title = {r["title"]: r for r in response.json()["records"]}
+    assert by_title["No Art"]["cover_url"] == "https://img.example/No Art.jpg"
+    # Untouched, not refreshed.
+    assert by_title["Has Art"]["cover_url"] == "https://img.example/original.jpg"
+
+
+def test_artwork_persists_across_requests() -> None:
+    """The point of the endpoint is that the covers survive; assert the write."""
+    client, ctx, _ = make_app()
+    ctx.memory.upsert_record(USER, GameRecord(title="Celeste", platforms=["PC"], source="manual"))
+
+    client.post("/api/library/artwork")
+
+    reread = client.get("/api/library").json()["records"]
+    assert reread[0]["cover_url"] == "https://img.example/Celeste.jpg"
+
+
+def test_artwork_reports_what_it_could_not_find() -> None:
+    """A Tavily miss is normal; the count must reflect reality, not attempts."""
+    client, ctx, _ = make_app()
+    assert isinstance(ctx.enricher, FakeEnricher)
+    ctx.enricher.no_art = {"Obscure Game"}
+    ctx.memory.upsert_record(USER, GameRecord(title="Found", platforms=["PC"], source="manual"))
+    ctx.memory.upsert_record(
+        USER, GameRecord(title="Obscure Game", platforms=["PC"], source="manual")
+    )
+
+    body = client.post("/api/library/artwork").json()
+    assert body["filled"] == 1
+    assert body["remaining"] == 1
+
+
+def test_artwork_on_a_fully_covered_library_is_a_no_op() -> None:
+    client, ctx, _ = make_app()
+    ctx.memory.upsert_record(
+        USER,
+        GameRecord(title="Done", platforms=["PC"], source="manual", cover_url="https://x/y.jpg"),
+    )
+
+    body = client.post("/api/library/artwork").json()
+    assert body["filled"] == 0
+    assert body["remaining"] == 0
+
+
+def test_artwork_requires_authentication(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("COGNITO_USER_POOL_ID", "eu-north-1_test")
+    monkeypatch.setenv("AWS_REGION", "eu-north-1")
+    client, _, _ = make_app()
+
+    assert client.post("/api/library/artwork").status_code == 401
