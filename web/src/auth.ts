@@ -86,6 +86,21 @@ function save(session: Session): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
 }
 
+/**
+ * Forget the session locally, without a round trip to Cognito.
+ *
+ * Used when the API rejects a token rather than when the user asks to leave:
+ * iOS evicts storage from installed PWAs that go unopened, so a session can
+ * disappear underneath a running app. Bouncing to Cognito's logout page in
+ * that situation would be noise — there is nothing left to log out of.
+ */
+export function clearSession(): void {
+  localStorage.removeItem(STORAGE_KEY);
+}
+
+/** Fired when the API rejects our token, so the shell can show sign-in. */
+export const AUTH_EXPIRED_EVENT = "gg-auth-expired";
+
 export function signOut(): void {
   localStorage.removeItem(STORAGE_KEY);
   if (authConfig) {

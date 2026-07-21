@@ -74,13 +74,17 @@ deploy-web: web-build ## Ship the PWA: sync to S3, then invalidate
 	echo "==> syncing web/dist to $$bucket"; \
 	AWS_PROFILE=$(PROFILE) aws s3 sync web/dist "s3://$$bucket" --delete \
 	  --cache-control "public,max-age=31536000,immutable" \
-	  --exclude "index.html" --exclude "*.webmanifest"; \
+	  --exclude "index.html" --exclude "*.webmanifest" --exclude "sw.js"; \
 	echo "==> uploading entry points (must not be cached)"; \
 	AWS_PROFILE=$(PROFILE) aws s3 cp web/dist/index.html "s3://$$bucket/index.html" \
 	  --cache-control "no-cache" --content-type "text/html"; \
 	AWS_PROFILE=$(PROFILE) aws s3 cp web/dist/manifest.webmanifest "s3://$$bucket/manifest.webmanifest" \
 	  --cache-control "no-cache" --content-type "application/manifest+json"; \
+	: "sw.js decides what every other file is allowed to be. Cached, it would" ; \
+	: "pin the app to an old worker with no way to push a fix."               ; \
+	AWS_PROFILE=$(PROFILE) aws s3 cp web/dist/sw.js "s3://$$bucket/sw.js" \
+	  --cache-control "no-cache" --content-type "text/javascript"; \
 	echo "==> invalidating"; \
 	AWS_PROFILE=$(PROFILE) aws cloudfront create-invalidation \
-	  --distribution-id "$$dist" --paths "/index.html" "/manifest.webmanifest" \
+	  --distribution-id "$$dist" --paths "/index.html" "/manifest.webmanifest" "/sw.js" \
 	  --query 'Invalidation.Status' --output text

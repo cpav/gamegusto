@@ -1,6 +1,17 @@
 /** Typed client for the GameGusto API (see `api/app.py`). */
 
-import { currentToken, payloadHash } from "./auth";
+import { AUTH_EXPIRED_EVENT, clearSession, currentToken, payloadHash } from "./auth";
+
+/**
+ * Drop the dead session and tell the shell.
+ *
+ * Centralised so every path that can see a 401 behaves identically: the user
+ * lands on the sign-in screen rather than on a view full of failed requests.
+ */
+function sessionExpired(): void {
+  clearSession();
+  window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+}
 
 export interface CommunityReview {
   score: number;
@@ -102,6 +113,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError("Can't reach GameGusto — check that the API is running.");
   }
   if (response.status === 401) {
+    sessionExpired();
     throw new AuthExpiredError("Session expired.");
   }
   if (!response.ok) {
@@ -176,6 +188,7 @@ export async function streamChat(
     return;
   }
   if (response.status === 401) {
+    sessionExpired();
     onEvent({ kind: "error", message: "Session expired — sign in again." });
     return;
   }

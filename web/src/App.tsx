@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type Platform } from "./api";
-import { authConfig, completeSignIn, isSignedIn, signIn, signOut } from "./auth";
+import { AUTH_EXPIRED_EVENT, authConfig, completeSignIn, isSignedIn, signIn, signOut } from "./auth";
 import { ChatView } from "./components/ChatView";
 import { LibraryView } from "./components/LibraryView";
 import { Logo } from "./components/Logo";
@@ -28,6 +28,15 @@ export default function App() {
     completeSignIn()
       .catch(() => undefined)
       .finally(() => setAuthed(isSignedIn()));
+  }, []);
+
+  // A session can vanish while the app is open — iOS evicts storage from
+  // installed PWAs that go unopened for a while. Without this the user would
+  // sit on a screen whose every request quietly fails.
+  useEffect(() => {
+    const onExpired = () => setAuthed(false);
+    window.addEventListener(AUTH_EXPIRED_EVENT, onExpired);
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired);
   }, []);
 
   useEffect(() => {
