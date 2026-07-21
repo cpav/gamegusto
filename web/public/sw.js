@@ -6,7 +6,7 @@
  * mode. The library and the agent both need the network, and pretending
  * otherwise by serving stale data would be worse than an honest message.
  *
- * Three rules, in order of how much they matter:
+ * Rules, in order of how much they matter:
  *
  *   1. /api/* is never intercepted. Not "not cached" — not intercepted at
  *      all. The chat endpoint is a token-by-token SSE stream, and passing a
@@ -16,20 +16,23 @@
  *
  *   2. Navigations are network-first. index.html names the current hashed
  *      bundles, so serving it from cache after a deploy would pin the app to
- *      a stale build — with the old JS already evicted. Cache is the
- *      fallback, not the default.
+ *      a stale build. Cache is the fallback, not the default — and only a
+ *      genuinely OK response is ever written back, or a transient 5xx would
+ *      poison the cache and the app would "sometimes" open broken.
  *
- *   3. Hashed assets are cache-first, because /assets/index-A1B2C3.js is
- *      immutable by construction: a new build produces a new name.
+ *   3. The bundles index.html names are precached with it, in the same step.
+ *      Caching them lazily on first fetch looks like it works and does not:
+ *      the shell and its scripts then live or die separately, so a deploy
+ *      followed by going offline leaves a cached page pointing at scripts
+ *      that were never stored — a blank screen, which is worse than an
+ *      error page. Shell and bundles are cached together or not at all.
  */
 
-const VERSION = "v1";
+const VERSION = "v2";
 const SHELL_CACHE = `gg-shell-${VERSION}`;
-const ASSET_CACHE = `gg-assets-${VERSION}`;
 
-/** Enough to render the shell offline. Unhashed, so listed explicitly. */
-const SHELL = [
-  "/",
+/** Unhashed files that every build needs. */
+const STATIC_SHELL = [
   "/index.html",
   "/manifest.webmanifest",
   "/icon.svg",
@@ -39,29 +42,46 @@ const SHELL = [
   "/fonts/share-tech-mono.woff2",
 ];
 
+/**
+ * Cache index.html together with every bundle it references.
+ *
+ * The asset names carry content hashes and change every build, so the list
+ * is read out of the HTML rather than hard-coded or generated at build time
+ * — that keeps the worker correct without coupling it to the bundler.
+ */
+async function cacheShellAndBundles(response) {
+  const cache = await caches.open(SHELL_CACHE);
+  const html = await response.clone().text();
+
+  const bundles = [...html.matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)].map((m) => m[1]);
+
+  await cache.put("/index.html", response.clone());
+  await Promise.allSettled(bundles.map((url) => cache.add(url)));
+}
+
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches
-      .open(SHELL_CACHE)
-      // Individually, and tolerant of failures: one 404 in addAll rejects the
-      // whole install and leaves the app with no worker at all.
-      .then((cache) => Promise.allSettled(SHELL.map((url) => cache.add(url))))
-      .then(() => self.skipWaiting()),
+    (async () => {
+      const cache = await caches.open(SHELL_CACHE);
+      // Individually and tolerantly: one 404 inside addAll rejects the whole
+      // install and leaves the app with no worker at all.
+      await Promise.allSettled(STATIC_SHELL.map((url) => cache.add(url)));
+
+      const index = await fetch("/index.html", { cache: "reload" }).catch(() => null);
+      if (index?.ok) await cacheShellAndBundles(index);
+
+      await self.skipWaiting();
+    })(),
   );
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches
-      .keys()
-      .then((names) =>
-        Promise.all(
-          names
-            .filter((name) => name !== SHELL_CACHE && name !== ASSET_CACHE)
-            .map((name) => caches.delete(name)),
-        ),
-      )
-      .then(() => self.clients.claim()),
+    (async () => {
+      const names = await caches.keys();
+      await Promise.all(names.filter((n) => n !== SHELL_CACHE).map((n) => caches.delete(n)));
+      await self.clients.claim();
+    })(),
   );
 });
 
@@ -73,46 +93,43 @@ self.addEventListener("fetch", (event) => {
   // the browser untouched, which is what keeps the SSE stream intact.
   if (url.pathname.startsWith("/api/")) return;
 
-  // Only our own origin, and only GET. Cognito's token endpoint is a POST to
-  // another origin and must never be touched.
+  // Same-origin GETs only. Cognito's token endpoint is a cross-origin POST
+  // and must never be touched.
   if (request.method !== "GET" || url.origin !== self.location.origin) return;
 
-  // Rule 2.
+  // Rule 2 + 3.
   if (request.mode === "navigate") {
     event.respondWith(
-      fetch(request)
-        .then((response) => {
-          const copy = response.clone();
-          caches.open(SHELL_CACHE).then((cache) => cache.put("/index.html", copy));
+      (async () => {
+        try {
+          const response = await fetch(request);
+          if (response.ok) {
+            // waitUntil, not fire-and-forget: without it the write is
+            // abandoned when the page navigates away, which is exactly how
+            // the bundles silently failed to cache.
+            event.waitUntil(cacheShellAndBundles(response));
+          }
           return response;
-        })
-        .catch(() => caches.match("/index.html").then((hit) => hit || offlineFallback())),
+        } catch {
+          return (await caches.match("/index.html")) ?? offlineFallback();
+        }
+      })(),
     );
     return;
   }
 
-  // Rule 3, plus the shell's own unhashed files.
   event.respondWith(
-    caches.match(request).then((hit) => {
+    (async () => {
+      const hit = await caches.match(request);
       if (hit) return hit;
-      return fetch(request)
-        .then((response) => {
-          if (response.ok && (url.pathname.startsWith("/assets/") || isShellAsset(url.pathname))) {
-            const copy = response.clone();
-            caches.open(ASSET_CACHE).then((cache) => cache.put(request, copy));
-          }
-          return response;
-        })
-        .catch(() => hit);
-    }),
+      try {
+        return await fetch(request);
+      } catch {
+        return Response.error();
+      }
+    })(),
   );
 });
-
-function isShellAsset(pathname) {
-  return (
-    pathname.startsWith("/fonts/") || pathname.endsWith(".png") || pathname.endsWith(".svg")
-  );
-}
 
 /** Last resort: the cache was evicted and there is no network. */
 function offlineFallback() {
