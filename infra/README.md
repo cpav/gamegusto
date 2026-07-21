@@ -22,7 +22,9 @@ automation — after it, no console clicking is needed.
    one existing table, read this project's SSM parameters, write its own logs.
    Nothing else.
 3. **`gamegusto-deploy`** — the policy Terraform runs under.
-4. **`gamegusto-deploy`** — the role carrying that policy, assumable by you.
+4. **`gamegusto-deploy`** — the role carrying that policy.
+5. **`gamegusto-terraform`** — an IAM user whose only permission is to assume
+   that role, so no admin credential needs to live on a laptop.
 
 ## Running it
 
@@ -74,8 +76,8 @@ python verify_policy.py /tmp/deploy.json
 It evaluates the rendered policy against the paths that matter and exits
 non-zero if any regressed — that the role cannot rewrite its own boundary,
 cannot create a role without one, cannot delete or even read the live table,
-cannot break the v1 user, cannot reach outside the project, and can still do
-its actual job.
+cannot touch the user it runs as, cannot reach outside the project, and can
+still do its actual job.
 
 ## What is deliberately out of reach
 
@@ -83,8 +85,9 @@ its actual job.
   and platforms, and Terraform does not manage it. The deploy role may call
   `DescribeTable` and nothing else — an explicit Deny blocks every other
   action, including reads. `terraform destroy` cannot touch your data.
-- **The `gamegusto` IAM user.** Long-lived keys for the v1 Streamlit deploy.
-  Denied outright, so v1 keeps running untouched until Phase 4 retires it.
+- **`gamegusto-terraform`**, the user Terraform assumes the role from. The
+  prefix rules would otherwise cover it, letting a run rewrite the very
+  credential it is running under.
 
 ## Known limits of the scoping
 
@@ -106,17 +109,39 @@ instead by a required `Project` tag) and most of `cloudfront:*` appear with
 `Resource "*"`. Within those two services the role is broader than the prefix
 suggests. The Denies and the boundary are what actually bound the damage.
 
-## Credential chain, and the admin key
+## Credential chain
 
-The deploy role trusts the identity that bootstrapped it — your admin user —
-so `~/.aws/config` chains `gamegusto-deploy` off the `admin` profile.
+```
+gamegusto-terraform  ──assume──▶  gamegusto-deploy  ──▶  the stack
+   (assume-only)                    (scoped, bounded)
+```
 
-That makes the admin access key load-bearing: **deleting it breaks the ability
-to assume the deploy role at all.** If you want it gone (reasonable — it is the
-highest-value credential on the machine), the fix is a dedicated IAM user whose
-only permission is `sts:AssumeRole` on `gamegusto-deploy`, listed in
-`deploy_principals`. The key on disk then grants nothing but the ability to
-become an already-bounded role.
+`gamegusto-terraform` can do exactly one thing: assume `gamegusto-deploy`. Its
+access key is close to worthless on its own — stealing it buys the deploy
+role, which already cannot touch the live library or its own permissions.
+That is the whole point: the credential sitting on a laptop should be boring.
+
+The admin user still exists, because bootstrap changes need it — the deploy
+role is deliberately forbidden from editing its own policy. But admin is now
+an occasional, deliberate act rather than the ambient credential on disk. Mint
+a key when you need one, and delete it when you are done.
+
+No access key is created by Terraform, deliberately: it would be written into
+state, and state is a file that gets copied around.
+
+```bash
+aws iam create-access-key --user-name gamegusto-terraform --profile admin
+aws configure --profile gamegusto-terraform     # paste the two values
+```
+
+Then point the deploy profile at it in `~/.aws/config`:
+
+```
+[profile gamegusto-deploy]
+role_arn       = arn:aws:iam::<account>:role/gamegusto-deploy
+source_profile = gamegusto-terraform
+region         = eu-north-1
+```
 
 `bootstrap/terraform.tfstate` is git-ignored. Losing it is recoverable — the
 four resources are stable and importable — so it is not worth a second

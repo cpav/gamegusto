@@ -141,11 +141,21 @@ def build_cases(account: str, prefix: str, table: str) -> list[tuple[str, str, s
             {},
             "DENY",
         ),
-        # --- the v1 deploy ---------------------------------------------------
+        # --- the identity it runs as -----------------------------------------
+        # Terraform assumes the deploy role from a dedicated assume-only user.
+        # The gamegusto-* prefix rules would otherwise cover that user, letting
+        # a run rewrite the credential it is running under.
         (
-            "cannot break the v1 Streamlit user's keys",
+            "cannot touch the user it runs as",
             "iam:DeleteAccessKey",
-            f"arn:aws:iam::{account}:user/{prefix}",
+            f"arn:aws:iam::{account}:user/{prefix}-terraform",
+            {},
+            "DENY",
+        ),
+        (
+            "cannot grant itself more via that user",
+            "iam:PutUserPolicy",
+            f"arn:aws:iam::{account}:user/{prefix}-terraform",
             {},
             "DENY",
         ),
