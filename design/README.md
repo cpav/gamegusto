@@ -51,12 +51,17 @@ Radii: cards 14px, buttons 10px, inputs/pills 999px.
 
 ## Logo — Panel
 
-`logo-panel.svg` is the permanent mark (tab bar, favicon, wordmark lockup,
-App Store tile). `logo-panel-steam.svg` — three amber wisps off the hot ball,
-"something's cooking" — is a contextual dress ONLY: splash screen, empty
-states, and while the agent is thinking. Steam is always lamp-amber, never
-pink or cyan. The SVGs ship dark-mode colors; when inlined, bind the deck
-stroke to `--gg-ink` and keep ball/buttons on their role tokens.
+`logo-panel.svg` is the mark — the only one. It is used everywhere without
+variation: tab bar, favicon, wordmark lockup, app icon, splash, empty states,
+and while the agent is thinking.
+
+There is deliberately no second version. An earlier draft added a "steam"
+dress (amber wisps off the hot ball) for thinking and empty states; it was
+removed. One mark used consistently reads as an identity, whereas a mark that
+changes with context reads as two logos and makes every surface a decision.
+
+The SVG ships dark-mode colors; when inlined, bind the deck stroke to
+`--gg-ink` and keep ball and buttons on their role tokens.
 
 `tokens.css` (custom properties, `data-theme` switched) and `tokens.json`
 (machine-readable, for the frontend build) are the source of truth.

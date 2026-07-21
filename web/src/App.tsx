@@ -81,7 +81,7 @@ export default function App() {
     return (
       <div className="app signin">
         <div className="signin-panel">
-          <Logo className="logo" steam />
+          <Logo className="logo" />
           <h1>GAMEGUSTO</h1>
           <p>Your next game, picked for tonight.</p>
           <button className="signin-button" onClick={() => void signIn()}>

@@ -380,7 +380,7 @@ textarea {
   }
 }
 
-/* the agent is cooking: the Steam logo variant, only while thinking */
+/* the agent is cooking: the Panel mark, gently pulsing while thinking */
 .thinking {
   display: flex;
   align-items: center;
@@ -390,12 +390,12 @@ textarea {
   font-size: 11px;
   color: var(--gg-sub);
 }
-.thinking .steam {
+.thinking .mark {
   width: 22px;
   height: 22px;
 }
 @media (prefers-reduced-motion: no-preference) {
-  .thinking .steam {
+  .thinking .mark {
     animation: gg-simmer 2.2s ease-in-out infinite;
   }
   @keyframes gg-simmer {
@@ -461,7 +461,7 @@ textarea {
   padding: 34px 24px 12px;
   color: var(--gg-sub);
 }
-.empty-state .steam {
+.empty-state .mark {
   width: 54px;
   height: 54px;
   margin-bottom: 10px;

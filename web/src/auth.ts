@@ -119,7 +119,13 @@ async function exchange(params: Record<string, string>): Promise<Session | null>
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ client_id: authConfig.clientId, ...params }),
   });
-  if (!response.ok) return null;
+  if (!response.ok) {
+    // Do not fail silently. Without this the only symptom is bouncing back to
+    // the sign-in screen, which looks like a wrong password rather than a
+    // malformed request — exactly how a missing redirect_uri hid here.
+    console.error("Token exchange failed:", response.status, await response.text().catch(() => ""));
+    return null;
+  }
 
   const data = (await response.json()) as {
     id_token: string;
@@ -147,7 +153,14 @@ export async function completeSignIn(): Promise<boolean> {
   const verifier = sessionStorage.getItem(VERIFIER_KEY) ?? "";
   sessionStorage.removeItem(VERIFIER_KEY);
 
-  await exchange({ grant_type: "authorization_code", code, code_verifier: verifier });
+  await exchange({
+    grant_type: "authorization_code",
+    code,
+    code_verifier: verifier,
+    // Required by RFC 6749 §4.1.3 whenever the authorization request carried
+    // one, and Cognito enforces it. Omitting it fails with invalid_grant.
+    redirect_uri: authConfig.redirectUri,
+  });
 
   // Drop ?code= so a refresh does not try to redeem a spent code.
   window.history.replaceState({}, "", window.location.pathname);
