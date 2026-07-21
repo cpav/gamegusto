@@ -65,10 +65,16 @@ resource "aws_cognito_user_pool_client" "web" {
   allowed_oauth_scopes                 = ["openid", "email", "profile"]
   supported_identity_providers         = ["COGNITO"]
 
-  # The CloudFront URL is appended in cloudfront.tf once the distribution
-  # exists. localhost stays for local development against the real pool.
-  callback_urls = concat(["http://localhost:5173/"], var.extra_callback_urls)
-  logout_urls   = concat(["http://localhost:5173/"], var.extra_callback_urls)
+  # The deployed app plus localhost, so the same pool serves local development
+  # and production without a second client.
+  callback_urls = concat(
+    ["http://localhost:5173/", "https://${aws_cloudfront_distribution.main.domain_name}/"],
+    var.extra_callback_urls,
+  )
+  logout_urls = concat(
+    ["http://localhost:5173/", "https://${aws_cloudfront_distribution.main.domain_name}/"],
+    var.extra_callback_urls,
+  )
 
   access_token_validity  = 60 # minutes
   id_token_validity      = 60

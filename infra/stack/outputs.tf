@@ -1,3 +1,18 @@
+output "app_url" {
+  description = "The app. Open this in Safari on the phone and Add to Home Screen."
+  value       = "https://${aws_cloudfront_distribution.main.domain_name}"
+}
+
+output "site_bucket" {
+  description = "Where the built PWA is synced. Not public — CloudFront reads it via OAC."
+  value       = aws_s3_bucket.site.id
+}
+
+output "distribution_id" {
+  description = "Needed to invalidate the cache after a deploy."
+  value       = aws_cloudfront_distribution.main.id
+}
+
 output "user_pool_id" {
   description = "Cognito user pool. The API validates tokens against its JWKS."
   value       = aws_cognito_user_pool.main.id

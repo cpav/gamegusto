@@ -95,8 +95,18 @@ resource "aws_lambda_function" "api" {
       DEALS_REGION        = var.deals_region
       TAVILY_PARAMETER    = aws_ssm_parameter.tavily_api_key.name
 
+      # Only the pool id. The client id is deliberately absent: taking it here
+      # would close a dependency cycle — the Cognito client needs CloudFront's
+      # domain for its callback URL, CloudFront needs the Function URL, and
+      # the function would need the client.
+      #
+      # Nothing is lost. Validation checks the signature against the pool's
+      # JWKS, that `iss` is this pool, and that `token_use` is "access". With
+      # exactly one client in the pool, the issuer check already pins the
+      # audience; a client_id claim check would be a tautology. If a second
+      # client is ever added, pass the id through SSM by its static name
+      # rather than by a resource reference.
       COGNITO_USER_POOL_ID = aws_cognito_user_pool.main.id
-      COGNITO_CLIENT_ID    = aws_cognito_user_pool_client.web.id
     }
   }
 
