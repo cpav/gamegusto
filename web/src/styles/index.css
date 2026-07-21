@@ -1251,6 +1251,11 @@ textarea {
   .rec-actions {
     max-width: 240px;
   }
+  /* The sidebar carries the running cost on desktop; showing it inline as
+     well printed the same figure twice on one screen. */
+  .usage {
+    display: none;
+  }
   .composer {
     padding: 0 12px;
   }
