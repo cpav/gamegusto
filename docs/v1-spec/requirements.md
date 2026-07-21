@@ -7,9 +7,9 @@
 >
 > Its UI chapters are **historical**: the Streamlit app they describe was
 > retired in Phase 4. The deployed system is a React PWA on CloudFront over a
-> streaming FastAPI Lambda; see [`../../../README.md`](../../../README.md),
-> [`../../../infra/README.md`](../../../infra/README.md) and
-> [`../../../CLAUDE.md`](../../../CLAUDE.md).
+> streaming FastAPI Lambda; see [`../../README.md`](../../README.md),
+> [`../../infra/README.md`](../../infra/README.md) and
+> [`../../CLAUDE.md`](../../CLAUDE.md).
 
 ## Introduction
 
