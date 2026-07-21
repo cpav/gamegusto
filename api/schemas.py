@@ -35,7 +35,20 @@ class AddGameRequest(BaseModel):
         return value.strip() or None
 
 
-class SetPlatformRequest(BaseModel):
+class RecordRequest(BaseModel):
+    """Identifies a library record by its dedup key.
+
+    The key is carried in the BODY, never the URL path. A dedup key is
+    ``title|platform``, and platforms like "Xbox Series X/S" contain a slash:
+    percent-encoded into a path, CloudFront decodes %2F back to a literal "/",
+    which splits the path segment so the route stops matching and the API
+    answers 404. A body is not touched by any of that.
+    """
+
+    dedup_key: TrimmedStr
+
+
+class SetPlatformRequest(RecordRequest):
     """Set the platform on a library record (single platform, like the UI)."""
 
     platform: TrimmedStr

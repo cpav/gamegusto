@@ -132,6 +132,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.status === 204 ? (undefined as T) : ((await response.json()) as T);
 }
 
+/**
+ * Record-scoped actions send the dedup key in the BODY, never the URL.
+ *
+ * A dedup key is `title|platform`, and platforms like "Xbox Series X/S"
+ * contain a slash. Percent-encoded into a path, CloudFront decodes %2F back
+ * into a real separator, the path segment splits, and the API 404s on a game
+ * that plainly exists — which is exactly what happened to every Xbox title in
+ * the library.
+ */
 export const api = {
   library: () => request<{ records: GameRecord[]; memory_available: boolean }>("/api/library"),
   addGame: (title: string, platform?: string) =>
@@ -140,13 +149,14 @@ export const api = {
       body: JSON.stringify({ title, platform: platform ?? null }),
     }),
   setPlatform: (key: string, platform: string) =>
-    request<{ record: GameRecord }>(`/api/library/${encodeURIComponent(key)}/platform`, {
+    request<{ record: GameRecord }>("/api/library/platform", {
       method: "PUT",
-      body: JSON.stringify({ platform }),
+      body: JSON.stringify({ dedup_key: key, platform }),
     }),
   enrich: (key: string) =>
-    request<{ record: GameRecord }>(`/api/library/${encodeURIComponent(key)}/enrich`, {
+    request<{ record: GameRecord }>("/api/library/enrich", {
       method: "POST",
+      body: JSON.stringify({ dedup_key: key }),
     }),
   /** Fill cover art for every record that has none. See api/app.py. */
   backfillArtwork: () =>
@@ -154,7 +164,10 @@ export const api = {
       method: "POST",
     }),
   removeGame: (key: string) =>
-    request<void>(`/api/library/${encodeURIComponent(key)}`, { method: "DELETE" }),
+    request<void>("/api/library/remove", {
+      method: "POST",
+      body: JSON.stringify({ dedup_key: key }),
+    }),
   autocomplete: (q: string) =>
     request<{ suggestions: string[] }>(`/api/autocomplete?q=${encodeURIComponent(q)}`),
 

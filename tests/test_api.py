@@ -209,9 +209,9 @@ def test_add_list_and_remove_game() -> None:
     listed = client.get("/api/library").json()
     assert [r["title"] for r in listed["records"]] == ["Hades"]
 
-    assert client.delete("/api/library/hades|switch").status_code == 204
+    assert client.post("/api/library/remove", json={"dedup_key": "hades|switch"}).status_code == 204
     assert client.get("/api/library").json()["records"] == []
-    assert client.delete("/api/library/hades|switch").status_code == 404
+    assert client.post("/api/library/remove", json={"dedup_key": "hades|switch"}).status_code == 404
 
 
 def test_add_game_rejects_blank_title() -> None:
@@ -226,14 +226,17 @@ def test_blank_platform_means_no_platform() -> None:
     created = client.post("/api/library", json={"title": "Hades", "platform": "  "})
     assert created.status_code == 201
     assert created.json()["record"]["platforms"] == []
-    assert client.put("/api/library/hades|/platform", json={"platform": " "}).status_code == 422
+    blank = client.put("/api/library/platform", json={"dedup_key": "hades|", "platform": " "})
+    assert blank.status_code == 422
     assert client.post("/api/platforms", json={"name": "  "}).status_code == 422
 
 
 def test_set_platform_persists_and_rekeys() -> None:
     client, _, _ = make_app()
     client.post("/api/library", json={"title": "Celeste"})
-    updated = client.put("/api/library/celeste|/platform", json={"platform": "Switch"})
+    updated = client.put(
+        "/api/library/platform", json={"dedup_key": "celeste|", "platform": "Switch"}
+    )
     assert updated.status_code == 200
     assert updated.json()["record"]["platforms"] == ["Switch"]
     records = client.get("/api/library").json()["records"]
@@ -243,7 +246,7 @@ def test_set_platform_persists_and_rekeys() -> None:
 def test_enrich_fills_fields_and_persists() -> None:
     client, _, _ = make_app()
     client.post("/api/library", json={"title": "Hades", "platform": "Switch"})
-    enriched = client.post("/api/library/hades|switch/enrich")
+    enriched = client.post("/api/library/enrich", json={"dedup_key": "hades|switch"})
     assert enriched.status_code == 200
     assert enriched.json()["record"]["is_enriched"] is True
     assert client.get("/api/library").json()["records"][0]["genre"] == "Roguelike"
@@ -643,7 +646,7 @@ def test_enrich_replaces_an_existing_cover() -> None:
     )
     key = ctx.memory.get_records(USER)[0].dedup_key
 
-    body = client.post(f"/api/library/{key}/enrich").json()
+    body = client.post("/api/library/enrich", json={"dedup_key": key}).json()
     assert body["record"]["cover_url"] == "https://img.example/Batman.jpg"
 
 
@@ -663,5 +666,32 @@ def test_enrich_keeps_the_old_cover_when_the_search_finds_nothing() -> None:
     )
     key = ctx.memory.get_records(USER)[0].dedup_key
 
-    body = client.post(f"/api/library/{key}/enrich").json()
+    body = client.post("/api/library/enrich", json={"dedup_key": key}).json()
     assert body["record"]["cover_url"] == "https://img.example/keep.jpg"
+
+
+def test_a_platform_containing_a_slash_is_reachable() -> None:
+    """The production bug: "Xbox Series X/S" makes the dedup key contain "/".
+
+    Percent-encoded into a URL path, CloudFront decodes %2F back into a real
+    separator, the path segment splits, the route stops matching, and the API
+    404s on a game that exists. Keys travel in the body precisely so that a
+    platform's punctuation cannot decide whether a record is reachable.
+    """
+    client, ctx, _ = make_app()
+    ctx.memory.upsert_record(
+        USER,
+        GameRecord(title="Sunset Overdrive", platforms=["Xbox Series X/S"], source="manual"),
+    )
+    key = ctx.memory.get_records(USER)[0].dedup_key
+    assert "/" in key
+
+    assert client.post("/api/library/enrich", json={"dedup_key": key}).status_code == 200
+    assert (
+        client.put("/api/library/platform", json={"dedup_key": key, "platform": "PC"}).status_code
+        == 200
+    )
+
+    moved = ctx.memory.get_records(USER)[0].dedup_key
+    assert client.post("/api/library/remove", json={"dedup_key": moved}).status_code == 204
+    assert ctx.memory.get_records(USER) == []

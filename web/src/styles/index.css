@@ -27,6 +27,29 @@ body,
   height: 100%;
 }
 
+/* The canvas, not just the page.
+   body carried the background while html carried none, so anything the body
+   box did not cover painted the browser's default white — which is the band
+   that appears along the bottom of an installed shortcut once the phone's
+   toolbar hides and the visual viewport grows taller than the layout one.
+   color-scheme keeps form controls, scrollbars and the overscroll gutter in
+   the same world. */
+html {
+  background-color: var(--gg-bg);
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+/* Fill the dynamic viewport: 100% resolves against the layout viewport, which
+   is the shorter one exactly when the toolbar is hidden. */
+@supports (height: 100dvh) {
+  body {
+    min-height: 100dvh;
+  }
+}
+
 body {
   margin: 0;
   background: radial-gradient(circle at 50% 0%, var(--gg-bg2) 0%, var(--gg-bg) 72%);

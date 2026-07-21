@@ -38,6 +38,8 @@ FIXTURES: list[tuple[str, str, str, float, float, int]] = [
     ("Zelda: Tears of the Kingdom", "Nintendo Switch", "Adventure", 95, 9.6, 19),
     ("Dead Cells", "Nintendo Switch", "Roguelike", 25, 8.8, 9),
     ("Disco Elysium", "PC", "RPG", 28, 9.4, 15),
+    # A slash in the platform: the shape that 404'd in production.
+    ("Sunset Overdrive", "Xbox Series X/S", "Action", 15, 7.8, 8),
 ]
 
 
@@ -182,6 +184,11 @@ class Handler(BaseHTTPRequestHandler):
         body = self._body()
         if path == "/api/chat":
             self._chat(str(body.get("message", "")))
+        elif path == "/api/library/remove":
+            key = str(body.get("dedup_key", ""))
+            before = len(STATE["records"])
+            STATE["records"] = [r for r in STATE["records"] if r["dedup_key"] != key]
+            self._empty(204 if len(STATE["records"]) < before else 404)
         elif path == "/api/library/artwork":
             # One title stays without art on purpose, so the client's
             # "couldn't find N" path is exercised rather than assumed.
@@ -222,20 +229,19 @@ class Handler(BaseHTTPRequestHandler):
                 if pick["game_title"] == title:
                     pick["verdict"] = body.get("verdict")
             self._json({"title": title, "verdict": body.get("verdict")})
-        elif match := re.fullmatch(r"/api/library/(.+)/enrich", path):
-            key = unquote(match.group(1))
+        elif path == "/api/library/enrich":
+            key = str(body.get("dedup_key", ""))
             for record in STATE["records"]:
                 if record["dedup_key"] == key:
                     record.update(
-                        genre=record["genre"] or "Adventure",
-                        platform_availability=record["platform_availability"] or ["PC"],
+                        genre=record["genre"] or "Action",
+                        estimated_playtime_hours=record["estimated_playtime_hours"] or 12,
                         is_enriched=True,
                     )
                     self._json({"record": record})
-                    return
-            self._empty(404)
-        else:
-            self._empty(404)
+                    break
+            else:
+                self._json({"detail": "game not found"}, 404)
 
     def do_PUT(self) -> None:  # noqa: N802
         path = urlparse(self.path).path
@@ -259,11 +265,6 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/picks":
             STATE["picks"] = []
             self._empty()
-        elif match := re.fullmatch(r"/api/library/(.+)", path):
-            key = unquote(match.group(1))
-            before = len(STATE["records"])
-            STATE["records"] = [r for r in STATE["records"] if r["dedup_key"] != key]
-            self._empty(204 if len(STATE["records"]) < before else 404)
         else:
             self._empty(404)
 

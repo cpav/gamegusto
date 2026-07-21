@@ -31,6 +31,7 @@ from api.schemas import (
     ChatRequest,
     FeedbackRequest,
     PlatformRequest,
+    RecordRequest,
     SetPlatformRequest,
     pick_to_dict,
     platform_to_dict,
@@ -161,22 +162,28 @@ def create_app(ctx: AppContext) -> FastAPI:
                 return record
         raise HTTPException(status_code=404, detail="game not found")
 
-    @app.put("/api/library/{dedup_key}/platform")
+    # The dedup key travels in the body on every one of these, never the path.
+    # It is "title|platform", and platforms such as "Xbox Series X/S" contain a
+    # slash: percent-encoded into a path segment, CloudFront decodes %2F back
+    # into a real "/", the segment splits, the route stops matching, and the
+    # API answers 404 for a record that exists. Half the library was
+    # unreachable this way.
+    @app.put("/api/library/platform")
     def set_game_platform(
-        dedup_key: str, body: SetPlatformRequest, user: str = Depends(current_user)
+        body: SetPlatformRequest, user: str = Depends(current_user)
     ) -> dict[str, Any]:
         records = ctx.memory.get_records(user)
-        record = _find_record(records, dedup_key)
+        record = _find_record(records, body.dedup_key)
         record.platforms = [body.platform]
         # Persist the WHOLE list: the edit changes the dedup key, and a full
         # store is what keeps the old-keyed duplicate from lingering.
         ctx.memory.store_records(user, records)
         return {"record": record_to_dict(record)}
 
-    @app.post("/api/library/{dedup_key}/enrich")
-    def enrich_game(dedup_key: str, user: str = Depends(current_user)) -> dict[str, Any]:
+    @app.post("/api/library/enrich")
+    def enrich_game(body: RecordRequest, user: str = Depends(current_user)) -> dict[str, Any]:
         records = ctx.memory.get_records(user)
-        record = _find_record(records, dedup_key)
+        record = _find_record(records, body.dedup_key)
         # Asked for explicitly, so refresh the cover too: this is the only way
         # to replace art the image search got wrong.
         enriched = ctx.enricher.enrich(record, refresh_cover=True)
@@ -222,10 +229,12 @@ def create_app(ctx: AppContext) -> FastAPI:
             "records": [record_to_dict(record) for record in records],
         }
 
-    @app.delete("/api/library/{dedup_key}", status_code=204)
-    def remove_game(dedup_key: str, user: str = Depends(current_user)) -> Response:
+    # POST rather than DELETE: a DELETE carrying a body is legal but poorly
+    # supported by intermediaries, and the key cannot go in the path.
+    @app.post("/api/library/remove", status_code=204)
+    def remove_game(body: RecordRequest, user: str = Depends(current_user)) -> Response:
         records = ctx.memory.get_records(user)
-        remaining = [r for r in records if r.dedup_key != dedup_key]
+        remaining = [r for r in records if r.dedup_key != body.dedup_key]
         if len(remaining) == len(records):
             raise HTTPException(status_code=404, detail="game not found")
         ctx.memory.store_records(user, remaining)
