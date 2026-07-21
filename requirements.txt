@@ -3,7 +3,6 @@
 #
 # The other files layer on top:
 #   requirements-api.txt        FastAPI + uvicorn  (the v2 HTTP service)
-#   requirements-streamlit.txt  the v1 UI          (retires in Phase 4)
 #   requirements-gmail.txt      Gmail import       (local only — the OAuth
 #                               token never leaves your machine, so the
 #                               deployed API omits these entirely)

@@ -19,7 +19,7 @@ for the full requirements/design.
 
 ## Run locally
 
-Requires Python 3.11+ (the deployment runs 3.13 — see `runtime.txt`):
+Requires Python 3.11+ (the deployed Lambda runs 3.13):
 
 ```bash
 python3.13 -m venv .venv && source .venv/bin/activate   # or: uv venv --python 3.13 .venv
