@@ -44,6 +44,70 @@ _TOKEN_SKEW_SECONDS = 60
 _IMAGE_TEMPLATE = "https://images.igdb.com/igdb/image/upload/t_cover_big/{image_id}.jpg"
 
 
+#: Publisher/collection branding that prefixes a store listing but is not part
+#: of the game's name in any catalogue. "ACA NEOGEO METAL SLUG" is Metal Slug.
+_PREFIXES = ("aca neogeo ", "arcade archives ", "nintendo switch online ")
+
+#: Edition and packaging suffixes, which stores add and catalogues do not.
+_SUFFIX = re.compile(
+    r"\s*[-–—:]\s*(digital|standard|deluxe|premium|complete|definitive|legendary|gold|"
+    r"ultimate|year \d+|game of the year|goty|anniversary)\b.*$",
+    re.IGNORECASE,
+)
+
+#: Trailing "(2026)", "(Video Game 2025)", and anything after a stray rating.
+_PARENTHETICAL = re.compile(r"\s*[\(\[][^\)\]]*[\)\]]\s*$")
+_RATING_TAIL = re.compile(r"\s*[⭐★]\s*[\d.]+\s*$")
+
+_ROMAN = {"2": "II", "3": "III", "4": "IV", "5": "V", "6": "VI", "7": "VII"}
+
+
+def _search_variants(title: str) -> list[str]:
+    """Progressively plainer forms of a title, best first.
+
+    Library titles come from purchase emails and manual entry, so they carry
+    what a shop wrote: trademark symbols, edition suffixes, collection
+    prefixes, a scraped rating. Catalogues carry none of that, so searching
+    the raw string finds nothing — which is most of what still fell back to
+    the web image search.
+    """
+    variants: list[str] = []
+
+    def add(value: str) -> None:
+        value = re.sub(r"\s+", " ", value).strip(" -–—:")
+        if value and value not in variants:
+            variants.append(value)
+
+    cleaned = title.replace("™", "").replace("®", "").replace("©", "")
+    add(cleaned)
+
+    without_tail = _RATING_TAIL.sub("", cleaned)
+    add(without_tail)
+    add(_PARENTHETICAL.sub("", without_tail))
+
+    base = _SUFFIX.sub("", _PARENTHETICAL.sub("", without_tail))
+    add(base)
+
+    lowered = base.casefold()
+    for prefix in _PREFIXES:
+        if lowered.startswith(prefix):
+            add(base[len(prefix) :])
+
+    # "CTR: Crash Team Racing" is catalogued as "Crash Team Racing". Only a
+    # short leading token qualifies, and only as a late variant, so a real
+    # subtitle ("Zelda: Tears of the Kingdom") has already matched in full.
+    head, sep, tail = base.partition(":")
+    if sep and len(head.strip()) <= 5 and len(tail.strip()) > 4:
+        add(tail)
+
+    # "Dragon's Dogma 2" is catalogued as "Dragon's Dogma II".
+    trailing = re.search(r"\b(\d)$", base)
+    if trailing and trailing.group(1) in _ROMAN:
+        add(base[: trailing.start()] + _ROMAN[trailing.group(1)])
+
+    return variants
+
+
 def _normalise(name: str) -> str:
     """Reduce a title to comparable letters and digits."""
     return re.sub(r"[^a-z0-9]+", "", name.casefold())
@@ -116,6 +180,17 @@ class IgdbService:
         if token is None:
             return None
 
+        for variant in _search_variants(title):
+            cover = self._search_one(variant, token)
+            if cover:
+                return cover
+
+        logger.info("IGDB had no match for %r; falling back to image search", title)
+        return None
+
+    def _search_one(self, title: str, token: str) -> str | None:
+        """One search, one best-match decision."""
+
         # Only "has a cover" is filtered. An earlier version also required
         # `category = 0` to drop DLC — it matched NOTHING, including plain main
         # games, because that attribute is no longer populated the way it was.
@@ -147,12 +222,10 @@ class IgdbService:
             return None
 
         if not isinstance(games, list) or not games:
-            logger.info("IGDB had no match for %r; falling back to image search", title)
             return None
 
         best = _best_match(title, games)
         if best is None:
-            logger.info("IGDB match for %r was too loose; falling back", title)
             return None
 
         image_id = (best.get("cover") or {}).get("image_id")

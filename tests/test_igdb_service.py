@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from services.igdb_service import IgdbService
+from services.igdb_service import IgdbService, _search_variants
 
 
 class FakeResponse:
@@ -163,3 +163,56 @@ def test_the_query_no_longer_filters_on_category() -> None:
     _, kwargs = next(c for c in http.calls if "games" in c[0])
     assert "category" not in kwargs["data"]
     assert "cover != null" in kwargs["data"]
+
+
+# --- messy library titles --------------------------------------------------
+#
+# Titles arrive from purchase emails and manual entry, so they carry whatever
+# a shop wrote. Searching the raw string found nothing for a quarter of a real
+# 77-game library; these are the exact shapes that failed.
+
+
+def test_store_branding_is_stripped_before_searching() -> None:
+    """Store branding is not part of the name any catalogue uses.
+
+    Casing is left as the source wrote it — IGDB's search is case-insensitive,
+    so normalising it would be work that buys nothing.
+    """
+    assert "METAL SLUG" in _search_variants("ACA NEOGEO METAL SLUG")
+    assert "SUNSETRIDERS" in _search_variants("Arcade Archives SUNSETRIDERS")
+
+
+def test_trademark_symbols_never_reach_the_search() -> None:
+    assert "Far Cry 5" in _search_variants("Far Cry® 5")
+    assert "LEGO 2K Drive" in _search_variants("LEGO® 2K Drive")
+
+
+def test_edition_suffixes_are_dropped() -> None:
+    assert "It Takes Two" in _search_variants("It Takes Two - Digital Version")
+    assert "Warhammer 40,000: Space Marine 2" in _search_variants(
+        "Warhammer 40,000: Space Marine 2 – Year 1 Edition"
+    )
+
+
+def test_parentheticals_and_scraped_ratings_are_dropped() -> None:
+    """One record's title had a star rating scraped onto the end of it."""
+    assert "Star Fox" in _search_variants("Star Fox (2026)")
+    assert "Final Fantasy Tactics: The Ivalice Chronicles" in _search_variants(
+        "Final Fantasy Tactics: The Ivalice Chronicles (Video Game 2025) ⭐ 8.0"
+    )
+
+
+def test_a_trailing_numeral_is_also_tried_as_a_roman_one() -> None:
+    """IGDB lists "Dragon's Dogma II"; the receipt said 2."""
+    assert "Dragon's Dogma II" in _search_variants("Dragon's Dogma 2")
+
+
+def test_a_short_abbreviation_prefix_is_tried_without_it() -> None:
+    assert "Crash Team Racing" in _search_variants("CTR: Crash Team Racing")
+
+
+def test_a_real_subtitle_is_not_mistaken_for_an_abbreviation() -> None:
+    """The full title must be tried first, and must remain a candidate."""
+    variants = _search_variants("Zelda: Tears of the Kingdom")
+    assert variants[0] == "Zelda: Tears of the Kingdom"
+    assert "Tears of the Kingdom" not in variants[:1]
