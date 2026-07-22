@@ -1,17 +1,21 @@
-"""Tavily search service: web search and manual-entry autocomplete.
+"""Tavily search service: web search and cover-art image search.
 
 Boundary to the Tavily Search API. It powers two things:
 
 * :meth:`web_search` — raw web snippets used by the agent's ``web_search`` tool
   and by the LLM-assisted :class:`~agent.enricher.Enricher` to populate game
   metadata (genre, playtime, platform availability, community review).
-* :meth:`autocomplete` — manual-entry suggestions, active only at >= 3
-  characters (Req 3.4).
+* :meth:`find_image` — a fallback cover-art image when IGDB has no match.
 
 The service is free-tier rate limited (Req 5.4). Every failure degrades
 gracefully — searches return ``[]`` — so a Tavily outage never raises to callers
 (Req 5.5, 10.3). Interpreting the search results into structured fields is the
 enricher's job, not this service's.
+
+Manual-entry title autocomplete used to live here too; it moved to IGDB
+(:class:`~services.igdb_service.IgdbService`), the games industry's own
+catalogue, which returns real titles with platforms and box art rather than
+web-page headings.
 """
 
 from __future__ import annotations
@@ -43,7 +47,7 @@ _DEEP_CONTENT_CHARS = 3000
 
 
 class TavilyService:
-    """Searches the web and serves autocomplete via the Tavily API."""
+    """Searches the web and finds fallback cover art via the Tavily API."""
 
     FREE_TIER_RPM = 60
 
@@ -126,21 +130,6 @@ class TavilyService:
                 return url
         return None
 
-    def autocomplete(self, query: str) -> list[str]:
-        """Return title suggestions for manual entry, active only at >= 3 chars.
-
-        Below the threshold no request is made and ``[]`` is returned (Req 3.4).
-        A rate-limit miss or any failure also degrades to ``[]`` (Req 5.4, 10.3).
-        """
-        if len(query) < 3 or not self._available or not self._check_rate_limit():
-            return []
-        try:
-            data = self._search(f"{query} video game")
-        except Exception as exc:  # noqa: BLE001 - degrade on any Tavily failure (Req 10.3)
-            self._degrade(exc)
-            return []
-        return self._extract_titles(data)
-
     @property
     def is_available(self) -> bool:
         """False once a Tavily call has failed; enables graceful degradation."""
@@ -195,39 +184,3 @@ class TavilyService:
         if not isinstance(results, list):
             return []
         return [r for r in results if isinstance(r, dict)]
-
-    @staticmethod
-    def _extract_titles(data: dict[str, Any]) -> list[str]:
-        """Return cleaned, deduplicated game titles for autocomplete (Req 3.4).
-
-        Web result titles are page titles like "Hollow Knight - Wikipedia" or
-        "Elden Ring | Steam"; the site suffix is stripped so a suggestion is just
-        the game title.
-        """
-        titles: list[str] = []
-        seen: set[str] = set()
-        for result in TavilyService._results(data):
-            raw = result.get("title")
-            if not isinstance(raw, str):
-                continue
-            title = TavilyService._clean_title(raw)
-            key = title.casefold()
-            if title and key not in seen:
-                seen.add(key)
-                titles.append(title)
-        return titles
-
-    @staticmethod
-    def _clean_title(title: str) -> str:
-        """Strip a trailing ' - Site' / ' | Site' suffix from a page title.
-
-        Cuts at the earliest separator surrounded by spaces (so colons and
-        hyphenated words inside a real title, e.g. 'Spider-Man', are preserved).
-        """
-        cleaned = title.strip()
-        cut = len(cleaned)
-        for separator in (" - ", " – ", " — ", " | "):
-            index = cleaned.find(separator)
-            if index != -1:
-                cut = min(cut, index)
-        return cleaned[:cut].strip()

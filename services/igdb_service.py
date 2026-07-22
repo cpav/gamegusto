@@ -25,6 +25,7 @@ from __future__ import annotations
 import logging
 import re
 import time
+from dataclasses import dataclass
 from typing import Any, Protocol
 
 import requests
@@ -38,10 +39,37 @@ _TIMEOUT = 8
 #: Refresh a little before expiry so a lookup never races the boundary.
 _TOKEN_SKEW_SECONDS = 60
 
-#: IGDB serves several sizes from one image id. This is the box-art aspect the
-#: library grid is built around; "t_cover_big" is 264x374, retina-ish at the
-#: card sizes used and small enough to stay snappy on a phone.
-_IMAGE_TEMPLATE = "https://images.igdb.com/igdb/image/upload/t_cover_big/{image_id}.jpg"
+#: IGDB serves several sizes from one image id. "cover_big" (264x374) is the
+#: box-art aspect the library grid is built around — retina-ish at the card
+#: sizes used and small enough to stay snappy on a phone; "cover_small"
+#: (90x128) backs the add-game suggestion thumbnails, where the art only has to
+#: confirm the title is the right one.
+_IMAGE_TEMPLATE = "https://images.igdb.com/igdb/image/upload/t_{size}/{image_id}.jpg"
+
+
+def _cover_url(image_id: str, size: str = "cover_big") -> str:
+    """Build the CDN URL for an IGDB image id at one of its served sizes."""
+    return _IMAGE_TEMPLATE.format(size=size, image_id=image_id)
+
+
+#: IGDB spells the desktop platform "PC (Microsoft Windows)"; the library, and
+#: everyone typing a platform by hand, says "PC". No other name needs mapping —
+#: "Nintendo Switch", "PlayStation 5" and the rest already read naturally.
+_PLATFORM_LABELS = {"PC (Microsoft Windows)": "PC"}
+
+
+def _platform_label(name: str) -> str:
+    """Present an IGDB platform name the way the library writes it."""
+    return _PLATFORM_LABELS.get(name, name)
+
+
+@dataclass(frozen=True)
+class GameSuggestion:
+    """One candidate game for the add-game search: enough to pick it with confidence."""
+
+    name: str
+    platforms: tuple[str, ...]
+    cover_url: str | None
 
 
 #: Publisher/collection branding that prefixes a store listing but is not part
@@ -139,6 +167,56 @@ def _best_match(title: str, games: list[dict[str, Any]]) -> dict[str, Any] | Non
     return None
 
 
+#: How many candidates to pull before re-ranking. Generous, because IGDB's own
+#: relevance can bury the exact match several rows down; the pool is trimmed to
+#: the caller's ``limit`` after re-ranking.
+_SEARCH_POOL = 20
+
+
+def _rank_by_name(query: str, games: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Reorder IGDB results so the closest title to ``query`` comes first.
+
+    An exact name wins, then a name that starts with the query, then one that
+    merely contains it; shorter names rank ahead of longer within a tier, so
+    the bare title beats its subtitled relatives. Python's stable sort keeps
+    IGDB's own relevance order as the final tiebreak.
+    """
+    target = _normalise(query)
+
+    def rank(game: dict[str, Any]) -> tuple[int, int]:
+        name = _normalise(str(game.get("name", "")))
+        if name == target:
+            tier = 0
+        elif name.startswith(target):
+            tier = 1
+        elif target and target in name:
+            tier = 2
+        else:
+            tier = 3
+        return (tier, len(name))
+
+    return sorted(games, key=rank)
+
+
+def _to_suggestion(game: dict[str, Any]) -> GameSuggestion | None:
+    """Parse one IGDB search row into a suggestion, or ``None`` if it is unusable."""
+    if not isinstance(game, dict):
+        return None
+    name = str(game.get("name", "")).strip()
+    if not name:
+        return None
+    image_id = (game.get("cover") or {}).get("image_id")
+    cover = _cover_url(str(image_id), "cover_small") if image_id else None
+    platforms = sorted(
+        {
+            _platform_label(str(entry.get("name", "")))
+            for entry in game.get("platforms") or []
+            if isinstance(entry, dict) and entry.get("name")
+        }
+    )
+    return GameSuggestion(name=name, platforms=tuple(platforms), cover_url=cover)
+
+
 class _Http(Protocol):
     """The slice of ``requests`` used here, so tests need no network."""
 
@@ -229,7 +307,63 @@ class IgdbService:
             return None
 
         image_id = (best.get("cover") or {}).get("image_id")
-        return _IMAGE_TEMPLATE.format(image_id=image_id) if image_id else None
+        return _cover_url(str(image_id)) if image_id else None
+
+    def search_games(self, query: str, limit: int = 8) -> list[GameSuggestion]:
+        """Live title suggestions for the add-game box, best match first.
+
+        This is the store-search feel: a partial title in, a short list of real
+        games out — each with the platforms it shipped on and its box art, so
+        the picker confirms *this* game (there are three "Star Wars
+        Battlefront"s) before adding it. Unlike :meth:`find_cover` the query is
+        passed through untouched: IGDB's search is built for partial, live-typed
+        input, and the variant cleaning exists for messy *stored* titles, not
+        for someone halfway through typing one.
+
+        Two things keep the list looking like a shelf rather than a database
+        dump. ``parent_game`` and ``version_parent`` are null-filtered at the
+        source, dropping add-ons, skins and Deluxe/GOTY editions — IGDB's own
+        relevance otherwise put *five* "Batman" skin packs above the game. Then
+        a generous pool is re-ranked locally so the closest title floats to the
+        top, because relevance alone still buried "Super Mario Odyssey" beneath
+        its spin-offs. Degrades to ``[]`` on any failure — free-text Add stays.
+        """
+        if not self.is_available or not query.strip():
+            return []
+
+        token = self._access_token()
+        if token is None:
+            return []
+
+        body = (
+            f'search "{query.replace(chr(34), "")}";'
+            " fields name, cover.image_id, platforms.name;"
+            " where version_parent = null & parent_game = null & cover != null;"
+            f" limit {_SEARCH_POOL};"
+        )
+
+        try:
+            response = self._http.post(
+                _API_URL,
+                headers={
+                    "Client-ID": str(self._client_id),
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/json",
+                },
+                data=body,
+                timeout=_TIMEOUT,
+            )
+            response.raise_for_status()
+            games = response.json()
+        except Exception as exc:  # noqa: BLE001 - degrade on any IGDB failure
+            logger.warning("IGDB search failed for %r: %s", query, exc)
+            return []
+
+        if not isinstance(games, list):
+            return []
+        ranked = _rank_by_name(query, [g for g in games if isinstance(g, dict)])
+        suggestions = [s for s in (_to_suggestion(game) for game in ranked) if s is not None]
+        return suggestions[:limit]
 
     def _access_token(self) -> str | None:
         """A valid bearer token, fetching one only when the last has expired."""

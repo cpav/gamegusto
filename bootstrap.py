@@ -42,6 +42,7 @@ class AppContext:
     user_id: str
     memory: MemoryService
     tavily: TavilyService
+    igdb: IgdbService
     library: LibraryService
     enricher: Enricher
     runtime: AgentRuntime
@@ -92,6 +93,7 @@ def build_app(
         user_id=user_id,
         memory=memory,
         tavily=tavily,
+        igdb=igdb,
         library=library,
         enricher=enricher,
         runtime=runtime,

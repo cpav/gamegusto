@@ -325,6 +325,7 @@ export function LibraryView({ reloadKey }: { reloadKey: number }) {
       {adding && (
         <AddGameSheet
           owned={records}
+          platforms={platforms}
           onClose={() => setAdding(false)}
           onAdded={() => void reload()}
         />

@@ -16,6 +16,7 @@ from bootstrap import AppContext
 from config import Config
 from models.game_record import GameRecord
 from services.bedrock_service import BedrockServiceError
+from services.igdb_service import IgdbService
 from services.memory_service import MemoryService
 from services.sources.manual_source import ManualSource
 from services.tavily_service import TavilyService
@@ -92,6 +93,7 @@ def _ctx(runtime: Any) -> tuple[AppContext, MemoryService]:
         user_id=USER_ID,
         memory=memory,
         tavily=tavily,
+        igdb=IgdbService(None, None),
         library=library,
         enricher=enricher,  # type: ignore[arg-type]
         runtime=runtime,

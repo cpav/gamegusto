@@ -162,17 +162,34 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"picks": STATE["picks"]})
         elif path == "/api/conversation":
             self._json({"messages": STATE["conversation"]})
-        elif path == "/api/autocomplete":
+        elif path == "/api/catalog/search":
             query = (parse_qs(url.query).get("q") or [""])[0].strip()
             if len(query) < 3:
-                self._json({"suggestions": []})
+                self._json({"results": []})
             else:
+                stub = query.title().replace(" ", "-").replace(":", "")
+                cover = f"https://placehold.co/90x128/181b2e/2de2e6?text={stub}"
+                # Mirrors IGDB's shape: real title + platforms + box art, an exact
+                # match first, and one entry without a cover to exercise the
+                # placeholder tile in the picker.
                 self._json(
                     {
-                        "suggestions": [
-                            f"{query.title()}",
-                            f"{query.title()} II",
-                            f"{query.title()} DX",
+                        "results": [
+                            {
+                                "name": query.title(),
+                                "platforms": ["Nintendo Switch", "PC", "PlayStation 5"],
+                                "cover_url": cover,
+                            },
+                            {
+                                "name": f"{query.title()} II",
+                                "platforms": ["PC", "Xbox Series X/S"],
+                                "cover_url": cover,
+                            },
+                            {
+                                "name": f"{query.title()}: Definitive Edition",
+                                "platforms": ["PlayStation 5"],
+                                "cover_url": None,
+                            },
                         ]
                     }
                 )

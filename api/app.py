@@ -36,6 +36,7 @@ from api.schemas import (
     pick_to_dict,
     platform_to_dict,
     record_to_dict,
+    suggestion_to_dict,
 )
 from bootstrap import AppContext
 from models.game_record import GameRecord
@@ -48,8 +49,8 @@ logger = logging.getLogger(__name__)
 _CORS_ENV = "GAMEGUSTO_CORS_ORIGINS"
 _DEFAULT_CORS = "http://localhost:5173,http://127.0.0.1:5173"
 
-#: Minimum query length before autocomplete hits the search service (matches the UI).
-_AUTOCOMPLETE_MIN_CHARS = 3
+#: Minimum query length before the catalog search hits IGDB (matches the UI).
+_CATALOG_MIN_CHARS = 3
 
 #: Records enriched per bulk request. Each costs a web search plus a model
 #: call, and CloudFront allows the origin 60 seconds — a whole library in one
@@ -272,12 +273,19 @@ def create_app(ctx: AppContext) -> FastAPI:
         ctx.memory.store_records(user, remaining)
         return Response(status_code=204)
 
-    @app.get("/api/autocomplete")
-    def autocomplete(q: str = "") -> dict[str, Any]:
+    @app.get("/api/catalog/search")
+    def catalog_search(q: str = "") -> dict[str, Any]:
+        """Live game-title suggestions from IGDB for the add-game box.
+
+        Each result carries the platforms the game shipped on and its box art,
+        so the picker gets the title right and then chooses the platform they
+        own it on. IGDB is the games industry's own catalogue — strictly better
+        for this than the general web search the field used to lean on.
+        """
         query = q.strip()
-        if len(query) < _AUTOCOMPLETE_MIN_CHARS:
-            return {"suggestions": []}
-        return {"suggestions": ctx.tavily.autocomplete(query)}
+        if len(query) < _CATALOG_MIN_CHARS:
+            return {"results": []}
+        return {"results": [suggestion_to_dict(s) for s in ctx.igdb.search_games(query)]}
 
     # --- platforms ---
 
