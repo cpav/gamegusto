@@ -24,17 +24,23 @@ _GOOD_JSON = (
 class _FakeTavily:
     """A TavilyService whose web_search returns preset snippets (or none)."""
 
-    def __init__(self, snippets: list[dict[str, str]], image: str | None = None) -> None:
+    def __init__(self, snippets: list[dict[str, str]]) -> None:
         self._snippets = snippets
-        self._image = image
-        self.image_queries: list[str] = []
 
     def web_search(self, query: str) -> list[dict[str, str]]:
         return list(self._snippets)
 
-    def find_image(self, query: str) -> str | None:
-        self.image_queries.append(query)
-        return self._image
+
+class _FakeIgdb:
+    """An IgdbService whose find_cover returns a preset URL (or None)."""
+
+    def __init__(self, cover: str | None = None) -> None:
+        self._cover = cover
+        self.queries: list[str] = []
+
+    def find_cover(self, title: str, platform: str | None = None) -> str | None:
+        self.queries.append(title)
+        return self._cover
 
 
 class _FakeBedrock:
@@ -56,10 +62,11 @@ _SNIPPETS = [{"title": "Metal Slug", "content": "Run-and-gun arcade shooter.", "
 
 
 def _enricher(
-    bedrock: Any, snippets: list[dict[str, str]] | None = None, image: str | None = None
+    bedrock: Any, snippets: list[dict[str, str]] | None = None, cover: str | None = None
 ) -> Enricher:
-    tavily = _FakeTavily(_SNIPPETS if snippets is None else snippets, image)
-    return Enricher(bedrock, tavily)  # type: ignore[arg-type]
+    tavily = _FakeTavily(_SNIPPETS if snippets is None else snippets)
+    igdb = _FakeIgdb(cover)
+    return Enricher(bedrock, tavily, igdb)  # type: ignore[arg-type]
 
 
 def test_successful_enrichment_populates_fields() -> None:
@@ -138,22 +145,22 @@ def test_partial_classification_fills_only_known_fields() -> None:
     assert result.community_review is None
 
 
-# --- cover art (contract v3.1) ---
+# --- cover art (IGDB, contract v3.1) ---
 
 
-def test_cover_url_is_filled_from_the_image_search() -> None:
+def test_cover_url_is_filled_from_igdb() -> None:
     record = GameRecord(title="Metal Slug", source="gmail")
-    enricher = _enricher(_FakeBedrock(_GOOD_JSON), image="https://img.example/ms.jpg")
+    enricher = _enricher(_FakeBedrock(_GOOD_JSON), cover="https://images.igdb.com/ms.jpg")
     result = enricher.enrich(record)
 
-    assert result.cover_url == "https://img.example/ms.jpg"
+    assert result.cover_url == "https://images.igdb.com/ms.jpg"
 
 
 def test_cover_url_is_fetched_even_when_already_enriched() -> None:
     """Records enriched under an earlier contract still gain a cover.
 
     They are already "enriched" (genre + availability), so the classification
-    short-circuits — but the cheap image search must still run, otherwise an
+    short-circuits — but the cheap IGDB lookup must still run, otherwise an
     existing library could never show art.
     """
     record = GameRecord(
@@ -163,24 +170,25 @@ def test_cover_url_is_fetched_even_when_already_enriched() -> None:
         source="gmail",
     )
     bedrock = _FakeBedrock(_GOOD_JSON)
-    result = _enricher(bedrock, image="https://img.example/hades.jpg").enrich(record)
+    result = _enricher(bedrock, cover="https://images.igdb.com/hades.jpg").enrich(record)
 
-    assert result.cover_url == "https://img.example/hades.jpg"
+    assert result.cover_url == "https://images.igdb.com/hades.jpg"
     assert bedrock.calls == 0  # no LLM re-classification was paid for
 
 
 def test_existing_cover_url_is_never_refetched() -> None:
     record = GameRecord(title="Hades", cover_url="https://img.example/keep.jpg", source="manual")
-    tavily = _FakeTavily(_SNIPPETS, image="https://img.example/other.jpg")
-    Enricher(_FakeBedrock(_GOOD_JSON), tavily).enrich(record)  # type: ignore[arg-type]
+    igdb = _FakeIgdb(cover="https://images.igdb.com/other.jpg")
+    Enricher(_FakeBedrock(_GOOD_JSON), _FakeTavily(_SNIPPETS), igdb).enrich(record)  # type: ignore[arg-type]
 
     assert record.cover_url == "https://img.example/keep.jpg"
-    assert tavily.image_queries == []
+    assert igdb.queries == []
 
 
 def test_missing_cover_leaves_record_usable() -> None:
+    """A game IGDB has never heard of gets no cover, but the rest still fills in."""
     record = GameRecord(title="Obscure Game", source="manual")
-    result = _enricher(_FakeBedrock(_GOOD_JSON), image=None).enrich(record)
+    result = _enricher(_FakeBedrock(_GOOD_JSON), cover=None).enrich(record)
 
     assert result.cover_url is None
     assert result.genre == "Run-and-gun shooter"  # the rest of enrichment is unaffected

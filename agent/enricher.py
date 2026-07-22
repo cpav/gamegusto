@@ -28,17 +28,6 @@ from services.tavily_service import TavilyService
 _MAX_SNIPPETS = 6
 
 
-def _cover_query(record: GameRecord) -> str:
-    """Build the image-search query for a game's cover.
-
-    "cover art" alone pulls in fan art, screenshots and wallpapers — the
-    results looked nothing like a shelf of boxes. Naming the packaging and the
-    platform biases the search towards the real product shot.
-    """
-    platform = record.platforms[0] if record.platforms else ""
-    return f"{record.title} {platform} official box art packshot".strip()
-
-
 class Enricher:
     """Populates missing ``GameRecord`` metadata via Tavily search + the LLM."""
 
@@ -59,15 +48,14 @@ class Enricher:
         Returns the record unchanged when it is already enriched, when Tavily
         yields no snippets, or when the model call/JSON parse fails (Req 5.5, 10.3).
 
-        ``refresh_cover`` replaces existing art rather than only filling a gap.
-        Image search returns whatever the web offers, so a wrong or unpleasant
-        cover is a normal outcome — asking again is the only remedy, and
-        without this the answer was always the same one.
+        ``refresh_cover`` re-fetches the cover even when one already exists — the
+        way a record picks up IGDB art after a title fix makes it match, or moves
+        off an older fallback.
         """
         # Cover art is filled BEFORE the cache-first return: it is a v3.1 addition,
         # so records enriched under an earlier contract are "enriched" yet have no
-        # cover. Fetching it here lets them gain one from a single cheap image
-        # search, without paying for a full LLM re-classification they don't need.
+        # cover. Fetching it here lets them gain one from a single cheap IGDB
+        # lookup, without paying for a full LLM re-classification they don't need.
         # It stays out of is_enriched(): art is presentation, never a data gate.
         if record.cover_url is None or refresh_cover:
             found = self._find_cover(record)
@@ -90,20 +78,17 @@ class Enricher:
         return self._apply(record, data, source_count=len(snippets))
 
     def _find_cover(self, record: GameRecord) -> str | None:
-        """IGDB first, image search second.
+        """Cover art from IGDB, the games industry's own catalogue.
 
-        IGDB returns the actual product shot at a consistent aspect ratio; the
-        web image search returns whatever exists for the words "cover art",
-        which is where the wrong and unpleasant covers came from. The search
-        stays as a fallback so a library without IGDB credentials, or a game
-        IGDB has never heard of, still gets something.
+        IGDB returns the actual product shot at a consistent aspect ratio. A game
+        it has never heard of — or a library with no IGDB credentials — simply
+        gets no cover and renders the placeholder tile, which beats the wrong,
+        unpleasant art a general web image search used to return.
         """
-        if self._igdb is not None:
-            platform = record.platforms[0] if record.platforms else None
-            cover = self._igdb.find_cover(record.title, platform)
-            if cover:
-                return cover
-        return self._tavily.find_image(_cover_query(record))
+        if self._igdb is None:
+            return None
+        platform = record.platforms[0] if record.platforms else None
+        return self._igdb.find_cover(record.title, platform)
 
     def _classify(self, title: str, snippets: list[dict[str, str]]) -> dict[str, Any]:
         """Ask the model to classify the title into structured fields.
