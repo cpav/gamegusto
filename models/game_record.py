@@ -31,7 +31,7 @@ Course = Literal["starter", "main", "dessert"]
 
 @dataclass
 class CommunityReview:
-    """Aggregated community review signal populated by enrichment (Tavily)."""
+    """Aggregated community review signal populated by enrichment (web search)."""
 
     score: float
     """Normalized review score on a 0.0-10.0 scale."""

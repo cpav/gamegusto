@@ -10,7 +10,7 @@ Encodes two correctness properties from ``design.md``:
 Everything is exercised against in-process fakes: ``FakeSource`` implements the
 ``RecordSource`` protocol, ``FakeMemory`` subclasses :class:`MemoryService` with
 its two record methods overridden, and ``IdentityEnricher`` returns records
-untouched. No network, AWS, Tavily, or Bedrock call is ever made, so
+untouched. No network, AWS, search, or Bedrock call is ever made, so
 dedup/precedence is observed without enrichment noise.
 """
 

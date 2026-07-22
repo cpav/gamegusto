@@ -93,7 +93,7 @@ resource "aws_lambda_function" "api" {
       BEDROCK_MODEL_ID    = var.bedrock_model_id
       DYNAMODB_TABLE_NAME = data.aws_dynamodb_table.library.name
       DEALS_REGION        = var.deals_region
-      TAVILY_PARAMETER    = aws_ssm_parameter.tavily_api_key.name
+      BRAVE_PARAMETER    = aws_ssm_parameter.brave_api_key.name
       IGDB_PARAMETER      = aws_ssm_parameter.igdb_credentials.name
 
       # Only the pool id. The client id is deliberately absent: taking it here

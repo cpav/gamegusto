@@ -13,7 +13,7 @@ is same-origin and SSE needs no CORS negotiation.
 
 ```bash
 # 1. an API on :8000 — either the real one…
-uvicorn --factory api.main:build --reload --port 8000     # needs AWS + Tavily
+uvicorn --factory api.main:build --reload --port 8000     # needs AWS + Brave
 
 #    …or the offline mock (no credentials, no Bedrock spend)
 python scripts/mock_api.py

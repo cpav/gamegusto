@@ -16,7 +16,7 @@ from config import Config, ConfigError, load_env_file
 _REQUIRED = {
     "AWS_REGION": "eu-north-1",
     "BEDROCK_MODEL_ID": "eu.anthropic.claude-sonnet-4-6",
-    "TAVILY_API_KEY": "tvly-secret-key",
+    "BRAVE_API_KEY": "tvly-secret-key",
     "DYNAMODB_TABLE_NAME": "gamegusto",
 }
 
@@ -43,9 +43,9 @@ def test_missing_required_variable_names_it_without_values(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _set_required(monkeypatch)
-    monkeypatch.delenv("TAVILY_API_KEY")
+    monkeypatch.delenv("BRAVE_API_KEY")
 
-    with pytest.raises(ConfigError, match="TAVILY_API_KEY"):
+    with pytest.raises(ConfigError, match="BRAVE_API_KEY"):
         Config.from_env()
 
 
@@ -84,7 +84,7 @@ def test_repr_masks_secrets(monkeypatch: pytest.MonkeyPatch) -> None:
     rendered = repr(Config.from_env())
 
     assert "tvly-secret-key" not in rendered  # the secret value never renders (Req 10.1)
-    assert "tavily_api_key=***" in rendered
+    assert "brave_api_key=***" in rendered
     assert "eu-north-1" in rendered  # non-secret fields render normally
 
 

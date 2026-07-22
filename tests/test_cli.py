@@ -18,15 +18,15 @@ from models.game_record import GameRecord
 from services.bedrock_service import BedrockServiceError
 from services.igdb_service import IgdbService
 from services.memory_service import MemoryService
+from services.search_service import SearchService
 from services.sources.manual_source import ManualSource
-from services.tavily_service import TavilyService
 
 USER_ID = "cli-user"
 
 CONFIG = Config(
     aws_region="eu-north-1",
     bedrock_model_id="m",
-    tavily_api_key="x",
+    brave_api_key="x",
     dynamodb_table_name="t",
 )
 
@@ -49,11 +49,6 @@ class _InMemoryClient:
 
     def clear_events(self, user_id: str, key: str) -> None:
         pass  # this stub stores no events (append_event is a no-op)
-
-
-class _NoopTavilyClient:
-    def search(self, query: str, **kwargs: Any) -> dict[str, Any]:
-        return {}
 
 
 class _IdentityEnricher:
@@ -85,14 +80,14 @@ class _FakeRuntime:
 
 def _ctx(runtime: Any) -> tuple[AppContext, MemoryService]:
     memory = MemoryService(_InMemoryClient())
-    tavily = TavilyService(api_key="x", client=_NoopTavilyClient())
+    search = SearchService(api_key=None)
     enricher = _IdentityEnricher()
     library = LibraryService([ManualSource(memory, USER_ID)], enricher, memory)  # type: ignore[arg-type]
     ctx = AppContext(
         config=CONFIG,
         user_id=USER_ID,
         memory=memory,
-        tavily=tavily,
+        search=search,
         igdb=IgdbService(None, None),
         library=library,
         enricher=enricher,  # type: ignore[arg-type]

@@ -209,7 +209,7 @@ already; nothing accumulates it.
 - **Per-user `TurnGuard`** falls out of the change for free, since it is keyed
   by whatever `current_user` returns.
 - **A shared enrichment cache.** Game metadata is not personal; if two people
-  add Hades you pay Tavily and Bedrock twice. A `GAME#<dedup_key>` item
+  add Hades you pay Brave and Bedrock twice. A `GAME#<dedup_key>` item
   outside user partitions fixes that. Only worth it beyond ~3 users.
 - **Decide the invitation policy explicitly.** Even with Path B done,
   `allow_admin_create_user_only` should probably stay on: adding people via

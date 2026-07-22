@@ -14,7 +14,7 @@ loop (`agent/runtime.py`) over tools that wrap the services
 (`agent/tools.py`): platforms, library, enrichment, web search (with deep page
 reads for store deals), persistence.
 Memory is a single DynamoDB table; the LLM is a hard dependency while memory and
-Tavily degrade gracefully. [`docs/v1-spec/`](docs/v1-spec/) holds the v1
+Brave degrade gracefully. [`docs/v1-spec/`](docs/v1-spec/) holds the v1
 requirements and correctness properties, still cited by ~108 code comments;
 its UI chapters are historical.
 
@@ -44,7 +44,7 @@ runs. Layer on what you need:
 | `requirements-dev.txt` | tests, lint, types |
 
 Required env (see `.env.example`): `AWS_REGION`, `BEDROCK_MODEL_ID`,
-`DYNAMODB_TABLE_NAME`, `TAVILY_API_KEY` (plus AWS credentials via your profile or
+`DYNAMODB_TABLE_NAME`, `BRAVE_API_KEY` (plus AWS credentials via your profile or
 `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`). Gmail is optional — with
 `requirements-gmail.txt` uninstalled the source is simply unavailable.
 
@@ -82,4 +82,4 @@ Install it by opening that URL in Safari: **Add to Home Screen** on iPhone,
 token on every request.
 
 Real secrets are never committed: `.env` is git-ignored, and the deployed
-Tavily key lives in SSM Parameter Store, never in Terraform state.
+Brave key lives in SSM Parameter Store, never in Terraform state.

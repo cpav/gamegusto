@@ -19,7 +19,7 @@ assumptions. This document records that exploration:
 
 - Section 3 — the **Gmail purchase-confirmation email** structure per supported
   retailer (Nintendo eShop, Microsoft Store).
-- Section 4 — the **Tavily** enrichment response fields.
+- Section 4 — the **Brave** enrichment response fields.
 
 For every exposed field, the exploration records an explicit **include / exclude**
 decision (Req 2.4). Section 5 defines the normalized **dedup key** (Req 2.3) and
@@ -46,7 +46,7 @@ observable response shapes of each source:
 - **Gmail** — the Gmail REST API (`users.messages.list` / `users.messages.get`)
   under the `gmail.readonly` scope, inspecting real purchase-confirmation message
   headers and bodies from the two supported retailers.
-- **Tavily** — the Tavily Search API response envelope used for enrichment.
+- **Brave** — the Brave Search API response envelope used for enrichment.
 
 Caveat: these are external, third-party surfaces that can change without notice.
 Where a field's availability is unreliable, that is noted and the field is either
@@ -107,22 +107,22 @@ returns one `GameRecord` per item.
   no PlayStation purchase receipts (only marketing mail), so no PlayStation parser is
   defined yet; it can be added when a real receipt format is available.
 - Genre, playtime, platform availability, and community review are **not** present in
-  purchase emails — they are enrichment fields (Tavily, Req 5.1).
+  purchase emails — they are enrichment fields (Brave, Req 5.1).
 
-## 4. Tavily enrichment — exposed fields
+## 4. Brave enrichment — exposed fields
 
-Tavily-populated fields carry `source = "enrichment"` when a record originates
+Brave-populated fields carry `source = "enrichment"` when a record originates
 purely from enrichment; when enriching an existing source record, enrichment
 fills the optional fields without changing the record's original `source`.
 
-Tavily returns a search envelope. We do **not** keyword-parse it directly;
+Brave returns a search envelope. We do **not** keyword-parse it directly;
 instead `agent.enricher.Enricher` feeds the `answer` + `results[].content`
 snippets to the Bedrock model, which (using its own knowledge of the title plus
 the snippets) returns a structured JSON classification — `genre`,
 `estimated_playtime_hours` (main-story completion time), `platform_availability`,
 and `community_review {score, summary}`. This reliably classifies titles that
 keyword matching mislabels (e.g. Metal Slug as a run-and-gun shooter, not
-"Puzzle"). The Tavily fields below are the raw inputs to that step:
+"Puzzle"). The Brave fields below are the raw inputs to that step:
 
 | Exposed field | Type (raw) | Description | Decision | Mapped to contract | Rationale |
 |---|---|---|---|---|---|
@@ -131,7 +131,7 @@ keyword matching mislabels (e.g. Metal Slug as a run-and-gun shooter, not
 | `results[].title` | string | Result page title | **Include (parsed)** | autocomplete suggestions; cross-check | Used for manual-entry autocomplete (Req 3.4) and to corroborate the game title. |
 | `results[].url` | string | Source URL | **Exclude** | — | Provenance only; not a contract field. |
 | `results[].content` | string | Snippet text | **Include (parsed)** | `community_review.sentiment_summary`, `platform_availability` | Mined for platform availability and review sentiment. |
-| `results[].score` | float | Tavily relevance score | **Exclude** | — | Search relevance, not a game review score. Must not be confused with `community_review.score`. |
+| `results[].score` | float | Brave relevance score | **Exclude** | — | Search relevance, not a game review score. Must not be confused with `community_review.score`. |
 | `images` | list | Optional images (`include_images`) | **Include (first valid URL)** | `cover_url` | Presentation-only cover art for the v2 card grid (v3.1). Chosen over a dedicated art API (IGDB/RAWG) so no extra credential is needed; never affects matching or reasoning. |
 | `response_time` | float | API latency | **Exclude** | — | Diagnostic only. |
 | — (LLM) genre | — | Model-classified from snippets + own knowledge | **Include** | `genre` | Req 5.1. |
@@ -140,9 +140,9 @@ keyword matching mislabels (e.g. Metal Slug as a run-and-gun shooter, not
 | — (LLM) review score | — | Model-normalized 0.0–10.0 | **Include** | `community_review.score` | Req 7.2 ranking. |
 | — (derived) review source count | — | Count of snippets fed to the model | **Include** | `community_review.source_count` | Confidence signal. |
 
-**Tavily notes**
+**Brave notes**
 
-- Tavily fields are best-effort: any field that cannot be derived is left unset
+- Brave fields are best-effort: any field that cannot be derived is left unset
   and the record is treated as incomplete (Req 5.5). `is_enriched()` gates
   cache-first enrichment.
 - `results[].score` (search relevance) is explicitly **not** the community review
@@ -194,9 +194,9 @@ exploration task; all sources and consumers conform to it from this point on.
 | `platforms` | `list[str]` | no | `[]` | gmail, manual | Platforms the user owns the title on. First entry feeds the dedup key. |
 | `source` | `Literal["gmail","manual","enrichment"]` | no | `"manual"` | — | Provenance; the only permitted values (Req 2.2). |
 | `purchase_date` | `date \| None` | no | `None` | gmail | Set for Gmail imports (Req 3.3); `None` otherwise. |
-| `genre` | `str \| None` | no | `None` | enrichment | Tavily (Req 5.1). |
-| `estimated_playtime_hours` | `float \| None` | no | `None` | enrichment | HOURS (e.g. `12.5`); Tavily (Req 5.1). Contract v2 stored minutes as `estimated_playtime`; the store converts legacy values on read (minutes/60, 1 decimal). |
-| `community_review` | `CommunityReview \| None` | no | `None` | enrichment | Tavily (Req 5.1, 7.2). |
+| `genre` | `str \| None` | no | `None` | enrichment | Brave (Req 5.1). |
+| `estimated_playtime_hours` | `float \| None` | no | `None` | enrichment | HOURS (e.g. `12.5`); Brave (Req 5.1). Contract v2 stored minutes as `estimated_playtime`; the store converts legacy values on read (minutes/60, 1 decimal). |
+| `community_review` | `CommunityReview \| None` | no | `None` | enrichment | Brave (Req 5.1, 7.2). |
 | `platform_availability` | `list[str]` | no | `[]` | enrichment | Platforms the game is available on (Req 5.3); drives the playable filter. |
 | `external_ids` | `dict[str, str]` | no | `{}` | — | Reserved/optional. Currently **unused** (formerly held the Xbox `titleId`); retained for future source-specific IDs. Defaults to `{}`. |
 | `cover_url` | `str \| None` | no | `None` | enrichment | Cover/key art URL for the v2 client's card grid (v3.1). **Presentation-only** — excluded from `is_enriched()`, dedup, and recommendation reasoning; a record without one renders a placeholder. |
@@ -259,7 +259,7 @@ the library UI, never touched by any record source or by enrichment.
 
 | Version | Change | Type |
 |---|---|---|
-| `1.0.0` | Initial locked contract (sources: Xbox, Gmail, manual; enrichment via Tavily). | — |
+| `1.0.0` | Initial locked contract (sources: Xbox, Gmail, manual; enrichment via Brave). | — |
 | `2.0.0` | Removed the `xbox` provenance value and the Xbox source exploration. Permitted `source` set narrowed to (`gmail`, `manual`, `enrichment`). This is a **MAJOR** bump because removing a permitted `source` value is a breaking change to the contract's permitted source set. | Major |
 | `3.0.0` | `estimated_playtime` (minutes, `int`) replaced by `estimated_playtime_hours` (hours, `float`). **MAJOR**: a field was renamed and its unit/type changed; legacy values convert on read. | Major |
 | `3.1.0` | Added optional `cover_url` (enrichment-populated, presentation-only) for the v2 client's card grid. **MINOR**: a backward-compatible new optional field — pre-v3.1 records simply read back as `None`. | Minor |

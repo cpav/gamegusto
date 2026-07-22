@@ -25,7 +25,7 @@ only plain `PyJWT`.
 Requirements are split by concern: `requirements.txt` (core), `-api`, `-gmail`
 (local only, imported lazily), `-dev`. Pin exact versions.
 
-Secrets come from the environment via `config.py`; the deployed Tavily key
+Secrets come from the environment via `config.py`; the deployed Brave key
 lives in SSM and is fetched by the Lambda entrypoint, never by Terraform.
 Never echo a secret value.
 

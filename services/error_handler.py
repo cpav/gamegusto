@@ -25,7 +25,7 @@ class ErrorHandler:
         "memory_unavailable": (
             "Personalization is temporarily limited. Recommendations still work."
         ),
-        "tavily_unavailable": (
+        "search_unavailable": (
             "Game lookup is temporarily unavailable. Using available information."
         ),
         "gmail_unavailable": (

@@ -24,8 +24,8 @@ from agent.runtime import (
 from agent.tools import ToolRegistry
 from services.bedrock_service import BedrockServiceError, ConverseResult, ToolUse
 from services.memory_service import MemoryService
+from services.search_service import SearchService
 from services.sources.manual_source import ManualSource
-from services.tavily_service import TavilyService
 
 USER_ID = "runtime-user"
 
@@ -82,11 +82,6 @@ class _InMemoryClient:
         self._events.pop((user_id, key), None)
 
 
-class _NoopTavilyClient:
-    def search(self, query: str, **kwargs: Any) -> dict[str, Any]:
-        return {}
-
-
 def _final(text: str) -> ConverseResult:
     return ConverseResult(stop_reason="end_turn", text=text, assistant_content=[{"text": text}])
 
@@ -105,10 +100,10 @@ def _tool_call(use: ToolUse, preface: str = "") -> ConverseResult:
 
 def _runtime(bedrock: Any) -> tuple[AgentRuntime, MemoryService]:
     memory = MemoryService(_InMemoryClient())
-    tavily = TavilyService(api_key="x", client=_NoopTavilyClient())
-    enricher = Enricher(bedrock, tavily)
+    search = SearchService(api_key=None)
+    enricher = Enricher(bedrock, search)
     library = LibraryService([ManualSource(memory, USER_ID)], enricher, memory)
-    tools = ToolRegistry(memory, library, tavily, enricher, USER_ID)
+    tools = ToolRegistry(memory, library, search, enricher, USER_ID)
     return AgentRuntime(bedrock, tools, memory), memory
 
 
@@ -288,11 +283,11 @@ def test_callable_system_prompt_is_resolved_fresh_each_turn() -> None:
     fresh in a long-lived session)."""
     stamps = iter(["day one", "day two"])
     bedrock = _ScriptedBedrock([_final("one"), _final("two")])
-    tavily = TavilyService(api_key="x", client=_NoopTavilyClient())
+    search = SearchService(api_key=None)
     memory = MemoryService(_InMemoryClient())
-    enricher = Enricher(bedrock, tavily)  # type: ignore[arg-type]
+    enricher = Enricher(bedrock, search)  # type: ignore[arg-type]
     library = LibraryService([ManualSource(memory, USER_ID)], enricher, memory)
-    tools = ToolRegistry(memory, library, tavily, enricher, USER_ID)
+    tools = ToolRegistry(memory, library, search, enricher, USER_ID)
     runtime = AgentRuntime(
         bedrock,  # type: ignore[arg-type]
         tools,
@@ -371,11 +366,11 @@ class _StatelessMemory:
 
 def test_stateless_flag_reflects_memory_health() -> None:
     bedrock = _ScriptedBedrock([_final("hi")])
-    tavily = TavilyService(api_key="x", client=_NoopTavilyClient())
+    search = SearchService(api_key=None)
     memory = MemoryService(_InMemoryClient())
-    enricher = Enricher(bedrock, tavily)  # type: ignore[arg-type]
+    enricher = Enricher(bedrock, search)  # type: ignore[arg-type]
     library = LibraryService([ManualSource(memory, USER_ID)], enricher, memory)
-    tools = ToolRegistry(memory, library, tavily, enricher, USER_ID)
+    tools = ToolRegistry(memory, library, search, enricher, USER_ID)
     runtime = AgentRuntime(bedrock, tools, _StatelessMemory())  # type: ignore[arg-type]
 
     reply = runtime.send("hi")

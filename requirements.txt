@@ -11,4 +11,3 @@
 # Pinned for reproducible installs.
 boto3==1.43.40
 requests==2.34.2
-tavily-python==0.7.26

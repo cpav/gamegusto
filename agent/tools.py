@@ -2,7 +2,7 @@
 
 Each tool is a thin function plus a Converse ``toolSpec`` (JSON schema) that wraps
 existing services — :class:`MemoryService`, :class:`LibraryService`, and
-:class:`TavilyService`. The model decides which tools to call and when; the
+:class:`SearchService`. The model decides which tools to call and when; the
 registry only declares the surface and dispatches calls. Selection of the actual
 game is the model's job, not a tool — it reads the library, applies the user's
 stated taste/mood/time/owned platforms, and may enrich or web-search to fill gaps.
@@ -26,7 +26,7 @@ from models.platform import OwnedPlatform
 from models.recommendation import Recommendation
 from models.session import SessionData
 from services.memory_service import MemoryService
-from services.tavily_service import TavilyService
+from services.search_service import SearchService
 
 logger = logging.getLogger(__name__)
 
@@ -58,14 +58,14 @@ class ToolRegistry:
         self,
         memory: MemoryService,
         library: LibraryService,
-        tavily: TavilyService,
+        search: SearchService,
         enricher: Enricher,
         user_id: str,
     ) -> None:
         """Build the registry around the shared service graph for ``user_id``."""
         self._memory = memory
         self._library = library
-        self._tavily = tavily
+        self._search = search
         self._enricher = enricher
         self._user_id = user_id
         self._handlers: dict[str, ToolHandler] = {
@@ -197,7 +197,7 @@ class ToolRegistry:
         site = str(tool_input.get("site", "")).strip()
         include_domains = [site] if site else None
         deep = bool(tool_input.get("deep"))
-        return {"results": self._tavily.web_search(query, include_domains, deep)}
+        return {"results": self._search.web_search(query, include_domains, deep)}
 
     # --- personalization tools (Req 8) ---
 

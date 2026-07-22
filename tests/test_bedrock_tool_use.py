@@ -18,7 +18,7 @@ from services.bedrock_service import BedrockService, BedrockServiceError, ToolUs
 CONFIG = Config(
     aws_region="eu-north-1",
     bedrock_model_id="eu.anthropic.claude-sonnet-4-6",
-    tavily_api_key="secret",
+    brave_api_key="secret",
     dynamodb_table_name="gamegusto",
 )
 

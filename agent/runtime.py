@@ -10,7 +10,7 @@ conversation, so the running ``messages`` history is the entire state.
 
 The LLM is a hard dependency: a Bedrock failure propagates as
 ``BedrockServiceError`` (sanitized) rather than degrading to canned output.
-Memory and Tavily degrade gracefully via the tools they back.
+Memory and web search degrade gracefully via the tools they back.
 """
 
 from __future__ import annotations
