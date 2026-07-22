@@ -8,7 +8,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from services.igdb_service import IgdbService, _search_variants
+from services.igdb_service import (
+    GameSuggestion,
+    IgdbService,
+    _rank_by_name,
+    _search_variants,
+    _to_suggestion,
+)
 
 
 class FakeResponse:
@@ -216,3 +222,100 @@ def test_a_real_subtitle_is_not_mistaken_for_an_abbreviation() -> None:
     variants = _search_variants("Zelda: Tears of the Kingdom")
     assert variants[0] == "Zelda: Tears of the Kingdom"
     assert "Tears of the Kingdom" not in variants[:1]
+
+
+# --- add-game search (search_games) ----------------------------------------
+#
+# The add box searches IGDB directly: real titles, the platforms they shipped
+# on, and box art, so the picker gets both the title and the platform right.
+
+
+def _catalog(*games: dict[str, Any]) -> FakeHttp:
+    return FakeHttp(games=FakeResponse(list(games)))
+
+
+def _entry(name: str, image_id: str | None = "co1", *platforms: str) -> dict[str, Any]:
+    game: dict[str, Any] = {"name": name}
+    if image_id is not None:
+        game["cover"] = {"image_id": image_id}
+    if platforms:
+        game["platforms"] = [{"name": p} for p in platforms]
+    return game
+
+
+def test_search_games_returns_title_platforms_and_thumbnail() -> None:
+    http = _catalog(_entry("Hades", "co1", "Nintendo Switch", "PC (Microsoft Windows)"))
+    results = IgdbService("id", "secret", http=http).search_games("hades")
+
+    assert results == [
+        GameSuggestion(
+            name="Hades",
+            # "PC (Microsoft Windows)" is presented the way the library writes it,
+            # and platforms come back sorted.
+            platforms=("Nintendo Switch", "PC"),
+            cover_url="https://images.igdb.com/igdb/image/upload/t_cover_small/co1.jpg",
+        )
+    ]
+
+
+def test_search_games_floats_the_exact_title_above_spin_offs() -> None:
+    """IGDB relevance buried the real game beneath its spin-offs and mods."""
+    http = _catalog(
+        _entry("Super Mario Odyssey F.L.U.D.D.", "co1", "Nintendo Switch"),
+        _entry("Super Mario Odyssey 64", "co2", "Nintendo 64"),
+        _entry("Super Mario Odyssey", "co3", "Nintendo Switch"),
+    )
+    results = IgdbService("id", "secret", http=http).search_games("Super Mario Odyssey")
+
+    assert results[0].name == "Super Mario Odyssey"
+
+
+def test_search_games_query_filters_add_ons_and_editions() -> None:
+    """parent_game/version_parent are the relationship fields; the flaky
+    category enum that once matched nothing is never used."""
+    http = _catalog(_entry("Hollow Knight"))
+    IgdbService("id", "secret", http=http).search_games("hollow")
+
+    _, kwargs = next(c for c in http.calls if "games" in c[0])
+    body = kwargs["data"]
+    assert "parent_game = null" in body
+    assert "version_parent = null" in body
+    assert "cover != null" in body
+    assert "category" not in body
+
+
+def test_search_games_trims_to_the_requested_limit() -> None:
+    http = _catalog(*[_entry(f"Game {i}", f"co{i}") for i in range(20)])
+    results = IgdbService("id", "secret", http=http).search_games("game", limit=3)
+
+    assert len(results) == 3
+
+
+def test_search_games_without_credentials_is_empty() -> None:
+    assert IgdbService(None, None, http=_catalog(_entry("Hades"))).search_games("hades") == []
+
+
+def test_search_games_degrades_to_empty_on_failure() -> None:
+    http = FakeHttp(games=FakeResponse({}, status=503))
+    assert IgdbService("id", "secret", http=http).search_games("hades") == []
+
+
+def test_search_games_ignores_a_blank_query_without_calling() -> None:
+    http = _catalog(_entry("Hades"))
+    assert IgdbService("id", "secret", http=http).search_games("   ") == []
+    assert not any("games" in url for url, _ in http.calls)
+
+
+def test_to_suggestion_tolerates_missing_cover_and_platforms() -> None:
+    assert _to_suggestion({"name": "Obscure"}) == GameSuggestion("Obscure", (), None)
+    assert _to_suggestion({"cover": {"image_id": "x"}}) is None  # no name → unusable
+
+
+def test_rank_prefers_exact_then_prefix_then_contains() -> None:
+    games = [
+        {"name": "Batman: Arkham Knight"},
+        {"name": "Batman"},
+        {"name": "Gotham by Batman"},
+    ]
+    ranked = [g["name"] for g in _rank_by_name("Batman", games)]
+    assert ranked == ["Batman", "Batman: Arkham Knight", "Gotham by Batman"]

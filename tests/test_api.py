@@ -1,10 +1,10 @@
 """API layer tests: the FastAPI adapter over the service graph.
 
-Everything runs against fakes (no AWS, no Tavily): a dict-backed memory
-client behind the real ``MemoryService``, a scripted ``BedrockService`` for
-the agent loop, and a canned enricher/autocomplete. The chat tests parse the
-actual SSE wire format, and the busy-turn test exercises the 409 guard with
-a genuinely open stream.
+Everything runs against fakes (no AWS, no Tavily, no IGDB): a dict-backed
+memory client behind the real ``MemoryService``, a scripted ``BedrockService``
+for the agent loop, a canned enricher, and a canned IGDB catalog search. The
+chat tests parse the actual SSE wire format, and the busy-turn test exercises
+the 409 guard with a genuinely open stream.
 """
 
 from __future__ import annotations
@@ -34,6 +34,7 @@ from services.bedrock_service import (
     ConverseResult,
     ToolUse,
 )
+from services.igdb_service import GameSuggestion, IgdbService
 from services.memory_service import MemoryService
 from services.sources.base import RecordSource
 from services.sources.manual_source import ManualSource
@@ -125,13 +126,27 @@ class FakeEnricher(Enricher):
 
 
 class FakeTavily(TavilyService):
-    """Serves canned autocomplete suggestions; nothing else is exercised."""
+    """A stand-in Tavily; the agent's web search is scripted via Bedrock, not here."""
 
     def __init__(self) -> None:
         pass
 
-    def autocomplete(self, query: str) -> list[str]:
-        return ["Hades", "Hades II"]
+
+class FakeIgdb(IgdbService):
+    """Serves canned catalog suggestions; the query is echoed so the gate is testable."""
+
+    def __init__(self) -> None:
+        pass
+
+    @property
+    def is_available(self) -> bool:
+        return True
+
+    def search_games(self, query: str, limit: int = 8) -> list[GameSuggestion]:
+        return [
+            GameSuggestion(query.title(), ("Nintendo Switch", "PC"), "https://img.example/a.jpg"),
+            GameSuggestion(f"{query.title()} II", ("PC",), None),
+        ]
 
 
 def make_app(
@@ -142,6 +157,7 @@ def make_app(
     store = FakeMemoryClient()
     memory = MemoryService(store)
     tavily = FakeTavily()
+    igdb = FakeIgdb()
     enricher = FakeEnricher()
     sources: list[RecordSource] = [ManualSource(memory, USER)]
     library = LibraryService(sources=sources, enricher=enricher, memory=memory)
@@ -165,6 +181,7 @@ def make_app(
         user_id=USER,
         memory=memory,
         tavily=tavily,
+        igdb=igdb,
         library=library,
         enricher=enricher,
         runtime=runtime,
@@ -257,11 +274,20 @@ def test_enrich_unknown_game_is_404() -> None:
     assert client.post("/api/library/nope|/enrich").status_code == 404
 
 
-def test_autocomplete_min_length_gate() -> None:
+def test_catalog_search_min_length_gate_and_shape() -> None:
     client, _, _ = make_app()
-    assert client.get("/api/autocomplete", params={"q": "ha"}).json() == {"suggestions": []}
-    long_enough = client.get("/api/autocomplete", params={"q": "had"}).json()
-    assert long_enough == {"suggestions": ["Hades", "Hades II"]}
+    # Below the threshold IGDB is never hit.
+    assert client.get("/api/catalog/search", params={"q": "ha"}).json() == {"results": []}
+    # At the threshold, structured suggestions come back (title + platforms + art).
+    results = client.get("/api/catalog/search", params={"q": "had"}).json()["results"]
+    assert results == [
+        {
+            "name": "Had",
+            "platforms": ["Nintendo Switch", "PC"],
+            "cover_url": "https://img.example/a.jpg",
+        },
+        {"name": "Had II", "platforms": ["PC"], "cover_url": None},
+    ]
 
 
 # --- platforms ---
@@ -474,6 +500,7 @@ def test_conversation_restores_agent_context_after_restart() -> None:
         user_id=USER,
         memory=memory,
         tavily=tavily,
+        igdb=ctx.igdb,
         library=library,
         enricher=enricher,
         runtime=runtime,

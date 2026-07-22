@@ -14,6 +14,7 @@ from pydantic import BaseModel, StringConstraints, field_validator
 from models.game_record import GameRecord
 from models.platform import OwnedPlatform
 from models.recommendation import Recommendation
+from services.igdb_service import GameSuggestion
 
 #: Required text field: stripped BEFORE the length check, so whitespace-only
 #: input is a 422 instead of quietly becoming an empty title/name downstream.
@@ -95,6 +96,15 @@ def record_to_dict(record: GameRecord) -> dict[str, Any]:
 def platform_to_dict(platform: OwnedPlatform) -> dict[str, str]:
     """Serialize an owned platform."""
     return {"platform_id": platform.platform_id, "name": platform.name}
+
+
+def suggestion_to_dict(suggestion: GameSuggestion) -> dict[str, Any]:
+    """Serialize an IGDB add-game suggestion (title + platforms + thumbnail)."""
+    return {
+        "name": suggestion.name,
+        "platforms": list(suggestion.platforms),
+        "cover_url": suggestion.cover_url,
+    }
 
 
 def pick_to_dict(rec: Recommendation, verdict: str | None, owned: bool) -> dict[str, Any]:

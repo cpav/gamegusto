@@ -39,6 +39,13 @@ export interface Platform {
   name: string;
 }
 
+/** One IGDB add-game suggestion: enough to pick the right title and platform. */
+export interface GameSuggestion {
+  name: string;
+  platforms: string[];
+  cover_url: string | null;
+}
+
 export type Verdict = "loved" | "not_for_me" | null;
 
 export interface Pick {
@@ -175,8 +182,14 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ dedup_key: key }),
     }),
-  autocomplete: (q: string) =>
-    request<{ suggestions: string[] }>(`/api/autocomplete?q=${encodeURIComponent(q)}`),
+  /**
+   * Live title suggestions from IGDB for the add-game box.
+   *
+   * Each result carries the platforms the game shipped on and its box art, so
+   * the picker confirms the title and then chooses the platform they own it on.
+   */
+  catalogSearch: (q: string) =>
+    request<{ results: GameSuggestion[] }>(`/api/catalog/search?q=${encodeURIComponent(q)}`),
 
   platforms: () => request<{ platforms: Platform[] }>("/api/platforms"),
   addPlatform: (name: string) =>

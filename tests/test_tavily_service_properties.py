@@ -1,15 +1,15 @@
 """Property-based tests for :class:`TavilyService` behavior (task 3.7).
 
-Encodes two correctness properties from ``design.md``:
+Encodes a correctness property from ``design.md``:
 
-* **Property 3 -- Autocomplete activation threshold** (Req 3.4): a query shorter
-  than 3 characters never triggers a Tavily request and yields ``[]``; a query of
-  3+ characters triggers exactly one request and surfaces the extracted titles.
 * **Property 13 -- Tavily rate-limit compliance** (Req 5.4): across any sequence
-  of web-search/autocomplete calls within a single minute, the number of real API
-  calls never exceeds the free-tier cap (60 RPM); excess calls degrade gracefully
-  (return ``[]``) without hitting the API, and the budget is restored once the
-  minute window rolls over.
+  of search calls within a single minute, the number of real API calls never
+  exceeds the free-tier cap (60 RPM); excess calls degrade gracefully (return
+  ``[]``) without hitting the API, and the budget is restored once the minute
+  window rolls over.
+
+(Manual-entry autocomplete moved to IGDB; its activation-threshold property now
+lives against the ``/api/catalog/search`` route in ``test_api.py``.)
 
 A fake search client is injected so no test ever touches the real Tavily API.
 Time is driven by a fake clock patched onto the service module so the sliding
@@ -37,7 +37,6 @@ CANNED_RESPONSE: dict[str, Any] = {
         {"title": "Hollow Knight", "content": "Metroidvania on PC and Switch."},
     ],
 }
-EXPECTED_TITLES = ["Hades", "Celeste", "Hollow Knight"]
 
 
 class FakeSearchClient:
@@ -75,77 +74,10 @@ def _make_service(fake: FakeSearchClient) -> TavilyService:
 
 
 # ---------------------------------------------------------------------------
-# Property 3: Autocomplete activation threshold (Req 3.4)
-# ---------------------------------------------------------------------------
-
-
-@given(query=st.text(max_size=2))
-def test_autocomplete_below_threshold_never_searches(query: str) -> None:
-    """Sub-3-character queries return ``[]`` and never call the API.
-
-    **Validates: Requirements 3.4**
-    """
-    assert len(query) < 3  # generator invariant for the assertion below
-    fake = FakeSearchClient(CANNED_RESPONSE)
-    service = _make_service(fake)
-
-    result = service.autocomplete(query)
-
-    assert result == []
-    assert fake.call_count == 0
-
-
-@given(query=st.text(min_size=3, max_size=40))
-def test_autocomplete_at_or_above_threshold_searches_and_returns_titles(query: str) -> None:
-    """Queries of 3+ characters issue exactly one search and surface its titles.
-
-    **Validates: Requirements 3.4**
-    """
-    assert len(query) >= 3  # generator invariant
-    fake = FakeSearchClient(CANNED_RESPONSE)
-    service = _make_service(fake)
-
-    result = service.autocomplete(query)
-
-    assert result == EXPECTED_TITLES
-    assert fake.call_count == 1
-
-
-@given(length=st.integers(min_value=0, max_value=2))
-def test_autocomplete_boundary_lengths_below(length: int) -> None:
-    """Explicit boundary lengths 0, 1, 2 stay below the activation threshold.
-
-    **Validates: Requirements 3.4**
-    """
-    fake = FakeSearchClient(CANNED_RESPONSE)
-    service = _make_service(fake)
-
-    result = service.autocomplete("a" * length)
-
-    assert result == []
-    assert fake.call_count == 0
-
-
-@given(length=st.integers(min_value=3, max_value=12))
-def test_autocomplete_boundary_lengths_at_or_above(length: int) -> None:
-    """Explicit boundary lengths 3..12 cross the activation threshold.
-
-    **Validates: Requirements 3.4**
-    """
-    fake = FakeSearchClient(CANNED_RESPONSE)
-    service = _make_service(fake)
-
-    result = service.autocomplete("a" * length)
-
-    assert result == EXPECTED_TITLES
-    assert fake.call_count == 1
-
-
-# ---------------------------------------------------------------------------
 # Property 13: Tavily rate-limit compliance (Req 5.4)
 # ---------------------------------------------------------------------------
 
-_OPS = st.lists(st.sampled_from(["auto", "web"]), max_size=150)
+_OPS = st.lists(st.sampled_from(["deep", "web"]), max_size=150)
 
 
 @given(ops=_OPS)
@@ -167,10 +99,7 @@ def test_rate_limit_never_exceeds_free_tier_within_window(ops: list[str]) -> Non
         service = _make_service(fake)
 
         for op in ops:
-            if op == "auto":
-                service.autocomplete("zelda")
-            else:
-                service.web_search("some game")
+            service.web_search("some game", deep=(op == "deep"))
 
         # The cap is never exceeded, and within one window we make exactly as
         # many real calls as are permitted.
@@ -179,19 +108,18 @@ def test_rate_limit_never_exceeds_free_tier_within_window(ops: list[str]) -> Non
 
         # One more call at the same instant: it degrades iff we are at the cap.
         count_before = fake.call_count
-        extra = service.autocomplete("portal")
+        extra = service.web_search("portal")
         if count_before >= cap:
             assert extra == []
             assert fake.call_count == count_before  # no API call made
         else:
-            assert extra == EXPECTED_TITLES
+            assert extra != []
             assert fake.call_count == count_before + 1
 
         # Rolling the window over restores the budget: a search is permitted.
         count_before = fake.call_count
         clock.advance(60.0)
-        recovered = service.autocomplete("metroid")
-        assert recovered == EXPECTED_TITLES
+        assert service.web_search("metroid") != []
         assert fake.call_count == count_before + 1
 
 
@@ -200,8 +128,8 @@ def test_rate_limit_never_exceeds_free_tier_within_window(ops: list[str]) -> Non
 def test_calls_beyond_cap_degrade_without_api(extra_calls: int) -> None:
     """After the cap is reached, further calls degrade and never hit the API.
 
-    Both autocomplete and web_search return ``[]`` without incrementing the real
-    API call count.
+    Both web_search and find_image return their empty value without incrementing
+    the real API call count.
 
     **Validates: Requirements 5.4**
     """
@@ -214,37 +142,16 @@ def test_calls_beyond_cap_degrade_without_api(extra_calls: int) -> None:
 
         # Saturate the window with exactly ``cap`` real calls.
         for _ in range(cap):
-            service.autocomplete("hades")
+            service.web_search("hades")
         assert fake.call_count == cap
 
         # Every extra call within the same minute degrades gracefully.
         for _ in range(extra_calls):
-            assert service.autocomplete("celeste") == []
-            assert service.web_search("stardew valley") == []
+            assert service.web_search("celeste") == []
+            assert service.find_image("stardew valley") is None
 
         # No degraded call ever reached the API.
         assert fake.call_count == cap
-
-
-def test_autocomplete_strips_site_suffixes_from_titles() -> None:
-    """Autocomplete returns just the game title, not the web page's site suffix."""
-    response = {
-        "results": [
-            {"title": "Hollow Knight - Wikipedia"},
-            {"title": "Elden Ring | Steam"},
-            {"title": "Marvel's Spider-Man — IGN"},
-            {"title": "Hades"},
-            {"title": "Hades - Metacritic"},  # dedupes with the clean "Hades"
-        ]
-    }
-    service = _make_service(FakeSearchClient(response))
-
-    assert service.autocomplete("game") == [
-        "Hollow Knight",
-        "Elden Ring",
-        "Marvel's Spider-Man",
-        "Hades",
-    ]
 
 
 # --- find_image (cover art, contract v3.1) ---

@@ -1052,20 +1052,87 @@ textarea {
 }
 .suggestions button {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
   gap: 10px;
-  padding: 9px 12px;
+  padding: 7px 10px;
   border-radius: 10px;
   border: 1px solid var(--gg-line);
   background: var(--gg-surface);
   font-size: 13px;
   text-align: left;
 }
-.suggestions .owned {
-  color: var(--gg-success);
+/* Box-art thumbnail; the placeholder keeps rows the same height when a
+   suggestion (or the manual pick) has no cover. */
+.sugg-cover {
+  width: 34px;
+  height: 46px;
+  flex: none;
+  object-fit: cover;
+  border-radius: 5px;
+  background: var(--gg-bg);
+}
+.sugg-cover.placeholder {
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  opacity: 0.6;
+}
+.sugg-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.sugg-name {
+  font-size: 13px;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sugg-plats {
   font-family: var(--gg-font-data);
-  font-size: 10px;
+  font-size: 9.5px;
+  color: var(--gg-sub);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sugg-add {
+  flex: none;
+  color: var(--gg-charge);
+  font-size: 15px;
+}
+
+/* The chosen game, sitting above the platform picker. */
+.selected-game {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0 12px;
+}
+.selected-game .sugg-name {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: normal;
+}
+
+/* Text-button used for "change" and "add manually". */
+.link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--gg-charge);
+  font-family: var(--gg-font-data);
+  font-size: 11px;
+  cursor: pointer;
+}
+.add-manual {
+  display: block;
+  margin: 10px 2px 2px;
+  text-align: left;
 }
 
 /* ---- usage caption ---- */
