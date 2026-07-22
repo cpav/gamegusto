@@ -1,6 +1,6 @@
 """Application wiring: build the agent + service graph from configuration.
 
-A single place that constructs the real service graph (Bedrock model, Tavily,
+A single place that constructs the real service graph (Bedrock model, Brave search,
 DynamoDB-backed memory, record sources, library assembly, the tool registry, and
 the agent runtime) from a :class:`~config.Config`. The future Streamlit UI and
 the headless CLI both build on this, so the wiring lives in one place.
@@ -24,9 +24,9 @@ from services.bedrock_service import BedrockService
 from services.dynamodb_memory_client import DynamoDBMemoryClient
 from services.igdb_service import IgdbService
 from services.memory_service import MemoryService
+from services.search_service import SearchService
 from services.sources.base import RecordSource
 from services.sources.manual_source import ManualSource
-from services.tavily_service import TavilyService
 
 if TYPE_CHECKING:
     # Annotation only — see _build_gmail_source for why this is not a runtime
@@ -41,7 +41,7 @@ class AppContext:
     config: Config
     user_id: str
     memory: MemoryService
-    tavily: TavilyService
+    search: SearchService
     igdb: IgdbService
     library: LibraryService
     enricher: Enricher
@@ -61,7 +61,7 @@ def build_app(
     """
     region = config.deals_region or detected_region or DEFAULT_DEALS_REGION
     bedrock = BedrockService(config)
-    tavily = TavilyService(config.tavily_api_key)
+    search = SearchService(config.brave_api_key)
     memory = MemoryService(
         DynamoDBMemoryClient(config.dynamodb_table_name, region_name=config.aws_region)
     )
@@ -73,10 +73,10 @@ def build_app(
     sources.append(ManualSource(memory, user_id))
 
     igdb = IgdbService(config.igdb_client_id, config.igdb_client_secret)
-    enricher = Enricher(bedrock, tavily, igdb)
+    enricher = Enricher(bedrock, search, igdb)
     library = LibraryService(sources=sources, enricher=enricher, memory=memory)
     tools = ToolRegistry(
-        memory=memory, library=library, tavily=tavily, enricher=enricher, user_id=user_id
+        memory=memory, library=library, search=search, enricher=enricher, user_id=user_id
     )
     runtime = AgentRuntime(
         bedrock=bedrock,
@@ -92,7 +92,7 @@ def build_app(
         config=config,
         user_id=user_id,
         memory=memory,
-        tavily=tavily,
+        search=search,
         igdb=igdb,
         library=library,
         enricher=enricher,

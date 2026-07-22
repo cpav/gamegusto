@@ -48,7 +48,6 @@ module = [
     # from source needs a Rust/OpenSSL toolchain. Only the auth tests import
     # it, to generate real RSA keys.
     "cryptography.*",
-    "tavily.*",
     "googleapiclient.*",
     "google.*",
     "google_auth_oauthlib.*",

@@ -51,11 +51,11 @@ data "aws_iam_policy_document" "lambda_runtime" {
   }
 
   statement {
-    sid     = "ReadTavilyKey"
+    sid     = "ReadBraveKey"
     effect  = "Allow"
     actions = ["ssm:GetParameter", "ssm:GetParameters"]
     resources = [
-      aws_ssm_parameter.tavily_api_key.arn,
+      aws_ssm_parameter.brave_api_key.arn,
       aws_ssm_parameter.igdb_credentials.arn,
     ]
   }

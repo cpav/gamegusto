@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# The Tavily API key.
+# The Brave Search API key.
 #
 # Created as a SecureString with a placeholder, then written out of band. The
 # real value is deliberately NOT a Terraform variable: anything Terraform
@@ -8,8 +8,8 @@
 #
 # Set it once, after the first apply:
 #
-#   aws ssm put-parameter --name /gamegusto/tavily_api_key \
-#     --value "$(grep '^TAVILY_API_KEY=' .env | cut -d= -f2-)" \
+#   aws ssm put-parameter --name /gamegusto/brave_api_key \
+#     --value "$(grep '^BRAVE_API_KEY=' .env | cut -d= -f2-)" \
 #     --type SecureString --overwrite --profile gamegusto-deploy
 #
 # SSM Parameter Store rather than Secrets Manager: SecureStrings are free at
@@ -17,9 +17,9 @@
 # rotation or cross-account sharing.
 # ---------------------------------------------------------------------------
 
-resource "aws_ssm_parameter" "tavily_api_key" {
-  name        = "/${local.prefix}/tavily_api_key"
-  description = "Tavily key for metadata enrichment and autocomplete."
+resource "aws_ssm_parameter" "brave_api_key" {
+  name        = "/${local.prefix}/brave_api_key"
+  description = "Brave Search API key for web search (agent + enrichment)."
   type        = "SecureString"
   value       = "placeholder-set-out-of-band"
 

@@ -1,14 +1,14 @@
 """LLM-assisted enrichment of game records.
 
 Replaces brittle keyword matching: for a record missing metadata, the enricher
-runs a Tavily web search and asks the Bedrock model to read the snippets (plus
-its own knowledge of the title) and return structured fields — genre, main-story
+runs a web search and asks the Bedrock model to read the snippets (plus its own
+knowledge of the title) and return structured fields — genre, main-story
 completion time, platform availability, and a community-review score/summary.
 This reliably classifies titles that keyword matching mislabels (e.g. Metal Slug
 as a run-and-gun shooter rather than "Puzzle").
 
 Enrichment is **cache-first** (an already-enriched record is returned untouched)
-and **degrades gracefully**: if Tavily returns nothing, or the model call fails,
+and **degrades gracefully**: if the search returns nothing, or the model call fails,
 or the reply is not parseable JSON, the record is returned unchanged rather than
 blocking library assembly. (Conversational reasoning remains a hard LLM
 dependency in the runtime; auxiliary enrichment does not.)
@@ -22,30 +22,30 @@ from typing import Any
 from models.game_record import CommunityReview, GameRecord
 from services.bedrock_service import BedrockService, BedrockServiceError
 from services.igdb_service import IgdbService
-from services.tavily_service import TavilyService
+from services.search_service import SearchService
 
 #: Cap on snippets fed to the model, keeping the prompt bounded.
 _MAX_SNIPPETS = 6
 
 
 class Enricher:
-    """Populates missing ``GameRecord`` metadata via Tavily search + the LLM."""
+    """Populates missing ``GameRecord`` metadata via web search + the LLM."""
 
     def __init__(
         self,
         bedrock: BedrockService,
-        tavily: TavilyService,
+        search: SearchService,
         igdb: IgdbService | None = None,
     ) -> None:
         """Build the enricher around the model, the search, and cover art."""
         self._bedrock = bedrock
-        self._tavily = tavily
+        self._search = search
         self._igdb = igdb
 
     def enrich(self, record: GameRecord, *, refresh_cover: bool = False) -> GameRecord:
         """Fill any unset enrichment fields of ``record`` (cache-first, degrading).
 
-        Returns the record unchanged when it is already enriched, when Tavily
+        Returns the record unchanged when it is already enriched, when the search
         yields no snippets, or when the model call/JSON parse fails (Req 5.5, 10.3).
 
         ``refresh_cover`` re-fetches the cover even when one already exists — the
@@ -66,7 +66,7 @@ class Enricher:
 
         if record.is_enriched():
             return record
-        snippets = self._tavily.web_search(
+        snippets = self._search.web_search(
             f"{record.title} video game genre length to beat platforms review score"
         )
         if not snippets:

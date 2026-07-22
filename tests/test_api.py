@@ -1,6 +1,6 @@
 """API layer tests: the FastAPI adapter over the service graph.
 
-Everything runs against fakes (no AWS, no Tavily, no IGDB): a dict-backed
+Everything runs against fakes (no AWS, no search, no IGDB): a dict-backed
 memory client behind the real ``MemoryService``, a scripted ``BedrockService``
 for the agent loop, a canned enricher, and a canned IGDB catalog search. The
 chat tests parse the actual SSE wire format, and the busy-turn test exercises
@@ -36,9 +36,9 @@ from services.bedrock_service import (
 )
 from services.igdb_service import GameSuggestion, IgdbService
 from services.memory_service import MemoryService
+from services.search_service import SearchService
 from services.sources.base import RecordSource
 from services.sources.manual_source import ManualSource
-from services.tavily_service import TavilyService
 
 USER = "default"
 
@@ -107,7 +107,7 @@ class FakeEnricher(Enricher):
 
     def __init__(self) -> None:
         #: Titles for which the image search finds nothing, mirroring a real
-        #: Tavily miss or rate limit. Per instance, not shared on the class.
+        #: search miss or rate limit. Per instance, not shared on the class.
         self.no_art: set[str] = set()
 
     def enrich(self, record: GameRecord, *, refresh_cover: bool = False) -> GameRecord:
@@ -125,8 +125,8 @@ class FakeEnricher(Enricher):
         return record
 
 
-class FakeTavily(TavilyService):
-    """A stand-in Tavily; the agent's web search is scripted via Bedrock, not here."""
+class FakeSearch(SearchService):
+    """A stand-in search; the agent's web search is scripted via Bedrock, not here."""
 
     def __init__(self) -> None:
         pass
@@ -156,13 +156,13 @@ def make_app(
     """Wire the full graph over fakes and return a test client onto it."""
     store = FakeMemoryClient()
     memory = MemoryService(store)
-    tavily = FakeTavily()
+    search = FakeSearch()
     igdb = FakeIgdb()
     enricher = FakeEnricher()
     sources: list[RecordSource] = [ManualSource(memory, USER)]
     library = LibraryService(sources=sources, enricher=enricher, memory=memory)
     tools = ToolRegistry(
-        memory=memory, library=library, tavily=tavily, enricher=enricher, user_id=USER
+        memory=memory, library=library, search=search, enricher=enricher, user_id=USER
     )
     runtime = AgentRuntime(
         bedrock=bedrock or FakeBedrock(script or []),
@@ -173,14 +173,14 @@ def make_app(
     config = Config(
         aws_region="eu-west-1",
         bedrock_model_id="test-model",
-        tavily_api_key="test-key",
+        brave_api_key="test-key",
         dynamodb_table_name="test-table",
     )
     ctx = AppContext(
         config=config,
         user_id=USER,
         memory=memory,
-        tavily=tavily,
+        search=search,
         igdb=igdb,
         library=library,
         enricher=enricher,
@@ -528,11 +528,11 @@ def test_conversation_restores_agent_context_after_restart() -> None:
 
     # Same store, brand-new app/runtime — as after a server restart.
     memory = MemoryService(store)
-    tavily = FakeTavily()
+    search = FakeSearch()
     enricher = FakeEnricher()
     library = LibraryService(sources=[ManualSource(memory, USER)], enricher=enricher, memory=memory)
     tools = ToolRegistry(
-        memory=memory, library=library, tavily=tavily, enricher=enricher, user_id=USER
+        memory=memory, library=library, search=search, enricher=enricher, user_id=USER
     )
     runtime = AgentRuntime(
         bedrock=FakeBedrock([_answer_round("A follow-up pick.")]),
@@ -544,7 +544,7 @@ def test_conversation_restores_agent_context_after_restart() -> None:
         config=ctx.config,
         user_id=USER,
         memory=memory,
-        tavily=tavily,
+        search=search,
         igdb=ctx.igdb,
         library=library,
         enricher=enricher,
@@ -565,7 +565,7 @@ def test_main_build_wires_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     for key, value in {
         "AWS_REGION": "eu-west-1",
         "BEDROCK_MODEL_ID": "test-model",
-        "TAVILY_API_KEY": "test-key",
+        "BRAVE_API_KEY": "test-key",
         "DYNAMODB_TABLE_NAME": "test-table",
     }.items():
         monkeypatch.setenv(key, value)

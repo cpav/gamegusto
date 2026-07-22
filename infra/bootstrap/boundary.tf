@@ -56,7 +56,7 @@ data "aws_iam_policy_document" "boundary" {
     ]
   }
 
-  # The Tavily key, held as an SSM SecureString. Read-only, and only under
+  # The Brave key, held as an SSM SecureString. Read-only, and only under
   # this project's parameter path.
   statement {
     sid    = "ReadProjectSecrets"

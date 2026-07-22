@@ -33,7 +33,7 @@ output "lambda_role_arn" {
   value       = aws_iam_role.lambda.arn
 }
 
-output "tavily_parameter_name" {
+output "brave_parameter_name" {
   description = "Write the real key here — see ssm.tf. Terraform never holds the value."
-  value       = aws_ssm_parameter.tavily_api_key.name
+  value       = aws_ssm_parameter.brave_api_key.name
 }

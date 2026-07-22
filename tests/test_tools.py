@@ -1,7 +1,7 @@
 """Unit tests for the agent tool registry (agent.tools).
 
 Each tool is exercised over the real service graph with the network edge faked:
-an in-memory ``MemoryClient``, a fake Tavily search client, the real
+an in-memory ``MemoryClient``, a fake web-search client, the real
 ``LibraryService`` and ``ManualSource``. Verifies dispatch wiring, input
 validation, family-aware library filtering, and graceful error results.
 """
@@ -15,8 +15,8 @@ from agent.library_service import LibraryService
 from agent.tools import ToolRegistry
 from models.game_record import GameRecord
 from services.memory_service import MemoryService
+from services.search_service import SearchService
 from services.sources.manual_source import ManualSource
-from services.tavily_service import TavilyService
 
 USER_ID = "tools-user"
 
@@ -61,24 +61,36 @@ class _InMemoryClient:
         self._events.pop((user_id, key), None)
 
 
-class _FakeTavilyClient:
-    """Returns canned search data so enrichment/web_search are deterministic."""
+class _FakeResponse:
+    def raise_for_status(self) -> None: ...
 
-    def search(self, query: str, **kwargs: Any) -> dict[str, Any]:
+    def json(self) -> dict[str, Any]:
         return {
-            "answer": "A great role-playing game. 90/100.",
-            "results": [
-                {"title": "Review", "content": "Available on Nintendo Switch. RPG.", "url": "u"}
-            ],
+            "web": {
+                "results": [
+                    {
+                        "title": "Review",
+                        "url": "https://ex/review",
+                        "description": "Available on Nintendo Switch. RPG.",
+                    }
+                ]
+            }
         }
+
+
+class _FakeSearchHttp:
+    """A Brave HTTP client returning canned results so web_search is deterministic."""
+
+    def get(self, url: str, **kwargs: Any) -> _FakeResponse:
+        return _FakeResponse()
 
 
 def _registry() -> tuple[ToolRegistry, MemoryService]:
     memory = MemoryService(_InMemoryClient())
-    tavily = TavilyService(api_key="x", client=_FakeTavilyClient())
-    enricher = Enricher(_FakeBedrock(_ENRICH_JSON), tavily)  # type: ignore[arg-type]
+    search = SearchService(api_key="x", http=_FakeSearchHttp())
+    enricher = Enricher(_FakeBedrock(_ENRICH_JSON), search)  # type: ignore[arg-type]
     library = LibraryService([ManualSource(memory, USER_ID)], enricher, memory)
-    return ToolRegistry(memory, library, tavily, enricher, USER_ID), memory
+    return ToolRegistry(memory, library, search, enricher, USER_ID), memory
 
 
 def test_platform_tools_round_trip() -> None:

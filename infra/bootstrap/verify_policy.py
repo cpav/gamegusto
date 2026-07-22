@@ -174,7 +174,7 @@ def build_cases(account: str, prefix: str, table: str) -> list[tuple[str, str, s
         (
             "can read its own project's secrets",
             "ssm:GetParameter",
-            f"arn:aws:ssm:*:{account}:parameter/{prefix}/tavily_api_key",
+            f"arn:aws:ssm:*:{account}:parameter/{prefix}/brave_api_key",
             {},
             "ALLOW",
         ),

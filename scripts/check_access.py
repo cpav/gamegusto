@@ -3,7 +3,7 @@
 Validates connectivity and configuration for the services GameGusto depends on
 and prints a clear PASS / FAIL / SKIPPED report:
 
-* Required services (AWS / Bedrock, Tavily, DynamoDB) report PASS or FAIL.
+* Required services (AWS / Bedrock, Brave, DynamoDB) report PASS or FAIL.
 * Optional services (Gmail) report SKIPPED when their environment variables
   are unset, otherwise PASS or FAIL.
 
@@ -22,13 +22,13 @@ from enum import StrEnum
 
 import boto3
 from botocore.config import Config as BotoConfig
-from tavily import TavilyClient
 
 # Ensure the repo root is importable when this script is run directly
 # (e.g. ``python scripts/check_access.py``) so ``config`` can be reused.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import Config, ConfigError, load_env_file  # noqa: E402
+from services.search_service import SearchService  # noqa: E402
 
 # Short, bounded timeouts so the preflight check can never hang on a slow or
 # unreachable endpoint.
@@ -107,9 +107,9 @@ def check_aws(config: Config | None, config_error: str | None) -> CheckResult:
     )
 
 
-def check_tavily(config: Config | None, config_error: str | None) -> CheckResult:
-    """Check that the Tavily API key is present and accepted."""
-    service = "Tavily"
+def check_brave(config: Config | None, config_error: str | None) -> CheckResult:
+    """Check that the Brave Search API key is present and accepted."""
+    service = "Brave Search"
     if config is None:
         return CheckResult(
             service,
@@ -117,13 +117,16 @@ def check_tavily(config: Config | None, config_error: str | None) -> CheckResult
             f"configuration incomplete ({config_error})",
             required=True,
         )
-    try:
-        client = TavilyClient(api_key=config.tavily_api_key)
-        # Minimal reachability check; verifies the key is accepted.
-        client.search("gamegusto preflight", max_results=1)
-    except Exception as exc:  # noqa: BLE001 - any failure is reported, never raised
-        return CheckResult(service, Status.FAIL, _sanitize_failure(exc), required=True)
-    return CheckResult(service, Status.PASS, "API key accepted", required=True)
+    # Exercise the real service exactly as the app does. web_search degrades to
+    # [] on any failure rather than raising, so the outcome is read off
+    # is_available/last_error rather than caught.
+    search = SearchService(config.brave_api_key)
+    results = search.web_search("gamegusto preflight")
+    if not search.is_available:
+        return CheckResult(service, Status.FAIL, search.last_error or "unavailable", required=True)
+    return CheckResult(
+        service, Status.PASS, f"API key accepted ({len(results)} results)", required=True
+    )
 
 
 def check_dynamodb(config: Config | None, config_error: str | None) -> CheckResult:
@@ -183,7 +186,7 @@ def main() -> None:
     config, config_error = _load_config()
     results = [
         check_aws(config, config_error),
-        check_tavily(config, config_error),
+        check_brave(config, config_error),
         check_dynamodb(config, config_error),
         check_gmail(config),
     ]

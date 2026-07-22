@@ -65,18 +65,18 @@ cat > "$BUILD/run.sh" <<'ENTRY'
 #!/bin/bash
 set -euo pipefail
 
-# Resolve the Tavily key from SSM into the environment the app already
+# Resolve the Brave key from SSM into the environment the app already
 # expects. Doing it here rather than in config.py keeps secret resolution at
-# the deployment boundary: the application reads TAVILY_API_KEY from the
+# the deployment boundary: the application reads BRAVE_API_KEY from the
 # environment exactly as it does on a laptop, and the value never sits in
 # Terraform state or in the function's visible configuration.
-if [[ -n "${TAVILY_PARAMETER:-}" ]]; then
-  TAVILY_API_KEY="$(python -c "
+if [[ -n "${BRAVE_PARAMETER:-}" ]]; then
+  BRAVE_API_KEY="$(python -c "
 import boto3, os
 ssm = boto3.client('ssm')
-print(ssm.get_parameter(Name=os.environ['TAVILY_PARAMETER'], WithDecryption=True)['Parameter']['Value'])
+print(ssm.get_parameter(Name=os.environ['BRAVE_PARAMETER'], WithDecryption=True)['Parameter']['Value'])
 ")"
-  export TAVILY_API_KEY
+  export BRAVE_API_KEY
 fi
 
 # IGDB cover art, stored as "client_id:client_secret" in one parameter. A miss

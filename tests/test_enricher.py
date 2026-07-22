@@ -1,8 +1,8 @@
 """Unit tests for the LLM-assisted :class:`~agent.enricher.Enricher` (no network).
 
-A fake Tavily client supplies snippets and a fake Bedrock returns (or fails to
+A fake search client supplies snippets and a fake Bedrock returns (or fails to
 return) a JSON classification. Covers a successful enrichment, cache-first
-short-circuiting, and graceful degradation when Tavily is empty, the model
+short-circuiting, and graceful degradation when search is empty, the model
 fails, or the reply is not parseable JSON.
 """
 
@@ -21,8 +21,8 @@ _GOOD_JSON = (
 )
 
 
-class _FakeTavily:
-    """A TavilyService whose web_search returns preset snippets (or none)."""
+class _FakeSearch:
+    """A SearchService whose web_search returns preset snippets (or none)."""
 
     def __init__(self, snippets: list[dict[str, str]]) -> None:
         self._snippets = snippets
@@ -64,9 +64,9 @@ _SNIPPETS = [{"title": "Metal Slug", "content": "Run-and-gun arcade shooter.", "
 def _enricher(
     bedrock: Any, snippets: list[dict[str, str]] | None = None, cover: str | None = None
 ) -> Enricher:
-    tavily = _FakeTavily(_SNIPPETS if snippets is None else snippets)
+    search = _FakeSearch(_SNIPPETS if snippets is None else snippets)
     igdb = _FakeIgdb(cover)
-    return Enricher(bedrock, tavily, igdb)  # type: ignore[arg-type]
+    return Enricher(bedrock, search, igdb)  # type: ignore[arg-type]
 
 
 def test_successful_enrichment_populates_fields() -> None:
@@ -116,7 +116,7 @@ def test_no_snippets_returns_record_unchanged() -> None:
     result = _enricher(bedrock, snippets=[]).enrich(record)
 
     assert result.genre is None
-    assert bedrock.calls == 0  # Tavily empty -> never calls the model
+    assert bedrock.calls == 0  # search empty -> never calls the model
 
 
 def test_bad_json_degrades_gracefully() -> None:
@@ -179,7 +179,7 @@ def test_cover_url_is_fetched_even_when_already_enriched() -> None:
 def test_existing_cover_url_is_never_refetched() -> None:
     record = GameRecord(title="Hades", cover_url="https://img.example/keep.jpg", source="manual")
     igdb = _FakeIgdb(cover="https://images.igdb.com/other.jpg")
-    Enricher(_FakeBedrock(_GOOD_JSON), _FakeTavily(_SNIPPETS), igdb).enrich(record)  # type: ignore[arg-type]
+    Enricher(_FakeBedrock(_GOOD_JSON), _FakeSearch(_SNIPPETS), igdb).enrich(record)  # type: ignore[arg-type]
 
     assert record.cover_url == "https://img.example/keep.jpg"
     assert igdb.queries == []

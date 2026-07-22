@@ -78,7 +78,7 @@ def _optional_int(name: str, default: int) -> int:
 
 
 # Names of fields whose values are sensitive and must never be rendered.
-_SECRET_FIELDS = frozenset({"tavily_api_key"})
+_SECRET_FIELDS = frozenset({"brave_api_key"})
 
 
 @dataclass(frozen=True)
@@ -91,7 +91,9 @@ class Config:
     """Bedrock model id or cross-Region inference-profile id for the base model
     (e.g. a ``global.anthropic.claude-sonnet-4-6-...`` inference profile)."""
 
-    tavily_api_key: str
+    brave_api_key: str
+    """Brave Search API subscription token, backing web search for the agent and
+    enrichment (:class:`~services.search_service.SearchService`)."""
     dynamodb_table_name: str
     """Name of the DynamoDB table backing the memory store."""
 
@@ -105,9 +107,9 @@ class Config:
     here always wins. See ``bootstrap.build_app`` / ``ui.bootstrap``."""
 
     igdb_client_id: str | None = None
-    """Twitch app credentials backing IGDB cover art. When unset, covers fall
-    back to the Tavily image search — art is presentation, never a hard
-    dependency."""
+    """Twitch app credentials backing IGDB cover art. When unset, a game simply
+    has no cover and renders the placeholder tile — art is presentation, never a
+    hard dependency."""
     igdb_client_secret: str | None = None
 
     # Optional (feature-gated integrations).
@@ -119,7 +121,7 @@ class Config:
         return cls(
             aws_region=_require("AWS_REGION"),
             bedrock_model_id=_require("BEDROCK_MODEL_ID"),
-            tavily_api_key=_require("TAVILY_API_KEY"),
+            brave_api_key=_require("BRAVE_API_KEY"),
             dynamodb_table_name=_require("DYNAMODB_TABLE_NAME"),
             bedrock_reasoning_budget_tokens=_optional_int(
                 "BEDROCK_REASONING_BUDGET_TOKENS", _DEFAULT_REASONING_BUDGET_TOKENS

@@ -1,6 +1,6 @@
 """Wiring tests for :func:`bootstrap.build_app` (no network).
 
-Construction must not touch the network: boto3 and Tavily clients are created
+Construction must not touch the network: boto3 and search clients are created
 lazily/offline, so building the graph for a test config yields a fully wired
 ``AppContext`` with the agent runtime and shared services in place.
 """
@@ -16,7 +16,7 @@ from config import Config
 CONFIG = Config(
     aws_region="eu-north-1",
     bedrock_model_id="eu.anthropic.claude-sonnet-4-6",
-    tavily_api_key="x",
+    brave_api_key="x",
     dynamodb_table_name="gamegusto",
 )
 
@@ -27,7 +27,7 @@ def test_build_app_wires_runtime_without_gmail() -> None:
     assert ctx.user_id == "u1"
     assert isinstance(ctx.runtime, AgentRuntime)
     assert ctx.memory is not None
-    assert ctx.tavily is not None
+    assert ctx.search is not None
     assert ctx.library is not None
     assert ctx.gmail is None  # Gmail not configured -> source omitted (Req 3.6)
 
@@ -41,7 +41,7 @@ def _with_region(region: str | None) -> Config:
     return Config(
         aws_region="eu-north-1",
         bedrock_model_id="m",
-        tavily_api_key="x",
+        brave_api_key="x",
         dynamodb_table_name="t",
         deals_region=region,
     )

@@ -2,7 +2,7 @@
 
 Wires the real ``ToolRegistry``, ``LibraryService``, ``ManualSource``,
 ``MemoryService`` and ``AgentRuntime`` together, faking only the network edges
-(Bedrock and Tavily). A scripted model drives a realistic multi-turn journey mirroring the discovery
+(Bedrock and search). A scripted model drives a realistic multi-turn journey mirroring the discovery
 flow: a taste-rich request yields a strong NEW (unowned) title matching the taste
 inferred from the owned library, and an "I already played it" follow-up offers
 the next best within the same conversation — without re-asking what is known.
@@ -21,8 +21,8 @@ from models.game_record import CommunityReview, GameRecord
 from models.platform import OwnedPlatform
 from services.bedrock_service import ConverseResult, ToolUse
 from services.memory_service import MemoryService
+from services.search_service import SearchService
 from services.sources.manual_source import ManualSource
-from services.tavily_service import TavilyService
 
 USER_ID = "e2e-user"
 
@@ -58,11 +58,6 @@ class _InMemoryClient:
 
     def clear_events(self, user_id: str, key: str) -> None:
         self._events.pop((user_id, key), None)
-
-
-class _NoopTavilyClient:
-    def search(self, query: str, **kwargs: Any) -> dict[str, Any]:
-        return {}
 
 
 class _IdentityEnricher:
@@ -115,10 +110,10 @@ def test_taste_match_then_already_played_followup() -> None:
         ],
     )
 
-    tavily = TavilyService(api_key="x", client=_NoopTavilyClient())
+    search = SearchService(api_key=None)
     enricher = _IdentityEnricher()
     library = LibraryService([ManualSource(memory, USER_ID)], enricher, memory)  # type: ignore[arg-type]
-    tools = ToolRegistry(memory, library, tavily, enricher, USER_ID)  # type: ignore[arg-type]
+    tools = ToolRegistry(memory, library, search, enricher, USER_ID)  # type: ignore[arg-type]
 
     # The owned library (above) signals taste + is the exclusion set; the model
     # recommends NEW titles the user does not own.
