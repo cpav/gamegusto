@@ -1,6 +1,6 @@
 # GameGusto Data Contract
 
-**Contract version:** `3.1.0` (v3.1: optional `cover_url` added for the v2 client's card grid; v3: `estimated_playtime` minutes -> `estimated_playtime_hours` hours, legacy values convert on read)
+**Contract version:** `3.2.0` (v3.2: optional user-set `taste`, `course`, `taste_note` added — the player's own cooking-themed rating, read by the agent to learn taste; v3.1: optional `cover_url` added for the v2 client's card grid; v3: `estimated_playtime` minutes -> `estimated_playtime_hours` hours, legacy values convert on read)
 **Status:** Locked
 **Last updated:** 2026-07-20
 **Owns:** `models/game_record.py` (`GameRecord`, `CommunityReview`)
@@ -200,6 +200,9 @@ exploration task; all sources and consumers conform to it from this point on.
 | `platform_availability` | `list[str]` | no | `[]` | enrichment | Platforms the game is available on (Req 5.3); drives the playable filter. |
 | `external_ids` | `dict[str, str]` | no | `{}` | — | Reserved/optional. Currently **unused** (formerly held the Xbox `titleId`); retained for future source-specific IDs. Defaults to `{}`. |
 | `cover_url` | `str \| None` | no | `None` | enrichment | Cover/key art URL for the v2 client's card grid (v3.1). **Presentation-only** — excluded from `is_enriched()`, dedup, and recommendation reasoning; a record without one renders a placeholder. |
+| `taste` | `Literal["chefs_kiss","hidden_gem","guilty_pleasure","bland","sent_back"] \| None` | no | `None` | **user** | The user's own verdict on a game they've played (v3.2). Set by hand from the library, never by enrichment. First-hand taste — the agent leans toward what loved games share and away from rejected ones. |
+| `course` | `Literal["starter","main","dessert"] \| None` | no | `None` | **user** | What kind of experience the game is / when the user reaches for it (v3.2): a quick starter, a main event, or a dessert wind-down. Paired with the time available to decide what fits tonight. |
+| `taste_note` | `str \| None` | no | `None` | **user** | The user's own short free-text comment on the game (v3.2). Handed to the agent verbatim. |
 
 ### 6.3 Derived members
 
@@ -218,20 +221,25 @@ exploration task; all sources and consumers conform to it from this point on.
 
 ### 6.5 Field provenance matrix
 
-Which source can populate which field (✓ = populates, — = leaves at default):
+Which source can populate which field (✓ = populates, — = leaves at default).
+The `user` column is a fourth provenance: fields the player sets directly through
+the library UI, never touched by any record source or by enrichment.
 
-| Field | gmail | manual | enrichment |
-|---|---|---|---|
-| `title` | ✓ | ✓ | — |
-| `platforms` | ✓ | ✓ | — |
-| `source` | ✓ | ✓ | ✓ |
-| `purchase_date` | ✓ | optional | — |
-| `genre` | — | optional | ✓ |
-| `estimated_playtime_hours` | — | optional | ✓ |
-| `community_review` | — | — | ✓ |
-| `platform_availability` | — | — | ✓ |
-| `external_ids` | — | — | — |
-| `cover_url` | — | — | ✓ |
+| Field | gmail | manual | enrichment | user |
+|---|---|---|---|---|
+| `title` | ✓ | ✓ | — | — |
+| `platforms` | ✓ | ✓ | — | — |
+| `source` | ✓ | ✓ | ✓ | — |
+| `purchase_date` | ✓ | optional | — | — |
+| `genre` | — | optional | ✓ | — |
+| `estimated_playtime_hours` | — | optional | ✓ | — |
+| `community_review` | — | — | ✓ | — |
+| `platform_availability` | — | — | ✓ | — |
+| `external_ids` | — | — | — | — |
+| `cover_url` | — | — | ✓ | — |
+| `taste` | — | — | — | ✓ |
+| `course` | — | — | — | ✓ |
+| `taste_note` | — | — | — | ✓ |
 
 ## 7. Versioning policy
 

@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { api, streamChat, type ChatEvent, type Message, type Pick, type Usage, type Verdict } from "../api";
+import { api, streamChat, type ChatEvent, type Message, type Pick, type Usage } from "../api";
 import { Logo } from "./Logo";
 import { Markdown } from "../markdown";
 import { RecCard } from "./RecCard";
@@ -103,13 +103,6 @@ export function ChatView({
     // newest-first, so the most recent match wins.
     const lead = text.split(/\n\s*\n/)[0]?.toLowerCase() ?? "";
     return picks.find((pick) => lead.includes(pick.game_title.toLowerCase()));
-  }
-
-  async function setVerdict(pick: Pick, verdict: Verdict) {
-    setPicks((prior) =>
-      prior.map((item) => (item.game_title === pick.game_title ? { ...item, verdict } : item)),
-    );
-    await api.setFeedback(pick.game_title, verdict).catch(() => undefined);
   }
 
   async function addPick(pick: Pick) {
@@ -247,10 +240,6 @@ export function ChatView({
               <RecCard
                 text={message.content}
                 pick={pickFor(message.content)}
-                onFeedback={(verdict) => {
-                  const pick = pickFor(message.content);
-                  if (pick) void setVerdict(pick, verdict);
-                }}
                 onAdd={() => {
                   const pick = pickFor(message.content);
                   if (pick) void addPick(pick);

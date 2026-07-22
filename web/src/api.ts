@@ -1,6 +1,7 @@
 /** Typed client for the GameGusto API (see `api/app.py`). */
 
 import { AUTH_EXPIRED_EVENT, clearSession, currentToken, payloadHash } from "./auth";
+import type { Course, TasteVerdict } from "./taste";
 
 /**
  * Drop the dead session and tell the shell.
@@ -30,6 +31,9 @@ export interface GameRecord {
   platform_availability: string[];
   external_ids: Record<string, string>;
   cover_url: string | null;
+  taste: TasteVerdict | null;
+  course: Course | null;
+  taste_note: string | null;
   dedup_key: string;
   is_enriched: boolean;
 }
@@ -46,13 +50,10 @@ export interface GameSuggestion {
   cover_url: string | null;
 }
 
-export type Verdict = "loved" | "not_for_me" | null;
-
 export interface Pick {
   game_title: string;
   reasoning: string;
   estimated_playtime: number | null;
-  verdict: Verdict;
   owned: boolean;
 }
 
@@ -200,12 +201,24 @@ export const api = {
   removePlatform: (id: string) =>
     request<void>(`/api/platforms/${encodeURIComponent(id)}`, { method: "DELETE" }),
 
-  picks: () => request<{ picks: Pick[] }>("/api/picks"),
-  setFeedback: (title: string, verdict: Verdict) =>
-    request<unknown>("/api/picks/feedback", {
-      method: "POST",
-      body: JSON.stringify({ title, verdict }),
+  /**
+   * Rate an owned game — the user's own verdict, course, and note.
+   *
+   * The full intended state is always sent (a field left `null` is cleared), so
+   * the server never has to merge. This is the taste the agent learns from.
+   */
+  setTaste: (
+    key: string,
+    taste: TasteVerdict | null,
+    course: Course | null,
+    note: string | null,
+  ) =>
+    request<{ record: GameRecord }>("/api/library/taste", {
+      method: "PUT",
+      body: JSON.stringify({ dedup_key: key, taste, course, note }),
     }),
+
+  picks: () => request<{ picks: Pick[] }>("/api/picks"),
   clearPicks: () => request<void>("/api/picks", { method: "DELETE" }),
 
   conversation: () => request<{ messages: Message[] }>("/api/conversation"),

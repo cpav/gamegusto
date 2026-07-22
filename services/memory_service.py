@@ -64,7 +64,6 @@ class MemoryService:
     PLATFORMS_KEY = "platforms"
     SESSIONS_KEY = "sessions"
     CONVERSATION_KEY = "conversation"
-    FEEDBACK_KEY = "feedback"
 
     #: Cap on persisted transcript messages, bounding the conversation document
     #: (DynamoDB items are limited to 400KB) while keeping plenty of context.
@@ -237,37 +236,6 @@ class MemoryService:
             self._mark_unavailable(exc)
             return False
 
-    # --- recommendation feedback (loved / not for me) ---
-
-    def set_feedback(self, user_id: str, game_title: str, verdict: str | None) -> bool:
-        """Record the user's verdict on a recommended title (``None`` clears it)."""
-        feedback = self.get_feedback(user_id)
-        key = game_title.strip().casefold()
-        if verdict is None:
-            feedback.pop(key, None)
-        else:
-            feedback[key] = {"title": game_title.strip(), "verdict": verdict}
-        try:
-            self._client.put_value(user_id, self.FEEDBACK_KEY, {"feedback": feedback})
-            self._mark_available()
-            return True
-        except Exception as exc:
-            self._mark_unavailable(exc)
-            return False
-
-    def get_feedback(self, user_id: str) -> dict[str, dict[str, str]]:
-        """Return feedback keyed by casefolded title: ``{key: {"title", "verdict"}}``."""
-        try:
-            document = self._client.get_value(user_id, self.FEEDBACK_KEY)
-            self._mark_available()
-            if not document:
-                return {}
-            raw = document.get("feedback", {})
-            return {k: v for k, v in raw.items() if isinstance(v, dict) and v.get("verdict")}
-        except Exception as exc:
-            self._mark_unavailable(exc)
-            return {}
-
     @property
     def is_available(self) -> bool:
         """Whether the backing store is currently reachable (drives stateless mode, Req 10.2)."""
@@ -317,7 +285,7 @@ class MemoryService:
 
     @staticmethod
     def _record_to_dict(record: GameRecord) -> dict[str, Any]:
-        """Serialize a record to its ten contract fields only (Req 4.2)."""
+        """Serialize a record to its contract fields (Req 4.2)."""
         return {
             "title": record.title,
             "platforms": list(record.platforms),
@@ -331,6 +299,9 @@ class MemoryService:
             "platform_availability": list(record.platform_availability),
             "external_ids": dict(record.external_ids),
             "cover_url": record.cover_url,
+            "taste": record.taste,
+            "course": record.course,
+            "taste_note": record.taste_note,
         }
 
     @staticmethod
@@ -365,6 +336,9 @@ class MemoryService:
             platform_availability=list(data.get("platform_availability", [])),
             external_ids=dict(data.get("external_ids", {})),
             cover_url=data.get("cover_url"),  # absent on pre-v3.1 records
+            taste=data.get("taste"),  # absent on pre-v3.2 records
+            course=data.get("course"),
+            taste_note=data.get("taste_note"),
         )
 
     @staticmethod

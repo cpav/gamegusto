@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, type GameRecord, type Pick, type Platform, type Verdict } from "../api";
+import { api, type GameRecord, type Pick, type Platform } from "../api";
+import { courseOf, verdictOf } from "../taste";
 import { GameSheet } from "./GameSheet";
 import { AddGameSheet } from "./AddGameSheet";
 
@@ -148,14 +149,6 @@ export function LibraryView({ reloadKey }: { reloadKey: number }) {
     });
   }, [records, query, filter]);
 
-  async function setVerdict(pick: Pick, verdict: Exclude<Verdict, null>) {
-    const next = pick.verdict === verdict ? null : verdict;
-    setPicks((prior) =>
-      prior.map((item) => (item.game_title === pick.game_title ? { ...item, verdict: next } : item)),
-    );
-    await api.setFeedback(pick.game_title, next).catch(() => undefined);
-  }
-
   return (
     <>
       <div className="screen">
@@ -218,31 +211,13 @@ export function LibraryView({ reloadKey }: { reloadKey: number }) {
           <>
             <div className="section-line">
               <h3>Recent picks</h3>
-              <span className="hint">👍/👎 teaches the agent</span>
+              <span className="hint">what I suggested lately</span>
             </div>
             <div className="picks-row">
               {picks.map((pick) => (
                 <span className="pick" key={pick.game_title}>
                   🎯 {pick.game_title}
-                  {pick.verdict && (
-                    <span className="verdict">
-                      {pick.verdict === "loved" ? "💚 loved" : "🚫 not for me"}
-                    </span>
-                  )}
-                  <button
-                    aria-pressed={pick.verdict === "loved"}
-                    onClick={() => void setVerdict(pick, "loved")}
-                    aria-label={`Loved ${pick.game_title}`}
-                  >
-                    👍
-                  </button>
-                  <button
-                    aria-pressed={pick.verdict === "not_for_me"}
-                    onClick={() => void setVerdict(pick, "not_for_me")}
-                    aria-label={`Not for me: ${pick.game_title}`}
-                  >
-                    👎
-                  </button>
+                  {pick.owned && <span className="verdict">✓ in library</span>}
                 </span>
               ))}
             </div>
@@ -292,6 +267,19 @@ export function LibraryView({ reloadKey }: { reloadKey: number }) {
                     />
                   ) : (
                     <span className="initials">{initials(record.title)}</span>
+                  )}
+                  {(record.taste || record.course) && (
+                    <span
+                      className="taste-badge"
+                      title={
+                        [verdictOf(record.taste)?.label, courseOf(record.course)?.label]
+                          .filter(Boolean)
+                          .join(" · ") || undefined
+                      }
+                    >
+                      {verdictOf(record.taste)?.emoji}
+                      {courseOf(record.course)?.emoji}
+                    </span>
                   )}
                 </span>
                 <span className="cover-cap">

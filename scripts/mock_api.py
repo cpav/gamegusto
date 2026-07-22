@@ -20,7 +20,7 @@ import re
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import parse_qs, urlparse
 
 PORT = 8000
 
@@ -61,6 +61,9 @@ def _record(
         "platform_availability": [platform, "PC"],
         "external_ids": {},
         "cover_url": None,  # exercises the neon placeholder tile
+        "taste": None,
+        "course": None,
+        "taste_note": None,
         "dedup_key": f"{title.strip().casefold()}|{platform.strip().casefold()}",
         "is_enriched": True,
     }
@@ -74,19 +77,24 @@ STATE: dict[str, Any] = {
             "game_title": "Death's Door",
             "reasoning": "Tight combat in short sessions.",
             "estimated_playtime": 9,
-            "verdict": "loved",
             "owned": False,
         },
         {
             "game_title": "Sea of Stars",
             "reasoning": "Turn-based, gorgeous.",
             "estimated_playtime": 30,
-            "verdict": None,
             "owned": False,
         },
     ],
     "conversation": [],
 }
+
+# A couple of pre-rated games, so the taste badges and the rating sheet have
+# something to show without needing a round-trip first.
+STATE["records"][0].update(
+    taste="chefs_kiss", course="starter", taste_note="combat sings in 20-minute bursts"
+)
+STATE["records"][3].update(taste="hidden_gem", course="dessert")  # Celeste
 
 CANNED_REPLY = (
     "**Death's Door** — action-adventure, ~9 h, on Switch, and not in your library.\n\n"
@@ -254,12 +262,6 @@ class Handler(BaseHTTPRequestHandler):
             }
             STATE["platforms"].append(platform)
             self._json({"platform": platform}, 201)
-        elif path == "/api/picks/feedback":
-            title = str(body.get("title", ""))
-            for pick in STATE["picks"]:
-                if pick["game_title"] == title:
-                    pick["verdict"] = body.get("verdict")
-            self._json({"title": title, "verdict": body.get("verdict")})
         elif path == "/api/library/enrich":
             key = str(body.get("dedup_key", ""))
             for record in STATE["records"]:
@@ -275,18 +277,27 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"detail": "game not found"}, 404)
 
     def do_PUT(self) -> None:  # noqa: N802
+        # Both record edits carry the dedup key in the BODY, mirroring the real
+        # API (a slash in a platform name breaks a path segment through CloudFront).
         path = urlparse(self.path).path
         body = self._body()
-        if match := re.fullmatch(r"/api/library/(.+)/platform", path):
-            key = unquote(match.group(1))
+        key = str(body.get("dedup_key", ""))
+        record = next((r for r in STATE["records"] if r["dedup_key"] == key), None)
+        if record is None:
+            self._json({"detail": "game not found"}, 404)
+            return
+        if path == "/api/library/platform":
             platform = str(body.get("platform", "")).strip()
-            for record in STATE["records"]:
-                if record["dedup_key"] == key:
-                    record["platforms"] = [platform]
-                    record["dedup_key"] = f"{record['title'].casefold()}|{platform.casefold()}"
-                    self._json({"record": record})
-                    return
-        self._empty(404)
+            record["platforms"] = [platform]
+            record["dedup_key"] = f"{record['title'].casefold()}|{platform.casefold()}"
+            self._json({"record": record})
+        elif path == "/api/library/taste":
+            record.update(
+                taste=body.get("taste"), course=body.get("course"), taste_note=body.get("note")
+            )
+            self._json({"record": record})
+        else:
+            self._empty(404)
 
     def do_DELETE(self) -> None:  # noqa: N802
         path = urlparse(self.path).path

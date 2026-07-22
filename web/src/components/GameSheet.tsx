@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, type GameRecord, type Platform } from "../api";
+import { COURSES, type Course, type TasteVerdict, VERDICTS, courseOf, verdictOf } from "../taste";
 
 /**
  * Game detail sheet — the bottom-sheet layer that replaces Streamlit's ⋯ menu.
@@ -20,13 +21,45 @@ export function GameSheet({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // The user's rating. Persisted as it changes (below) rather than behind a save
+  // button — a tap should just stick. A dirty flag makes closing the sheet
+  // refresh the card badge without a reload after every single tap.
+  const [taste, setTaste] = useState<TasteVerdict | null>(record.taste);
+  const [course, setCourse] = useState<Course | null>(record.course);
+  const [note, setNote] = useState(record.taste_note ?? "");
+  const rated = useRef(false);
+
+  // The sheet closes without reloading; if the rating changed, reload on close
+  // so the library card picks up the new badge.
+  function close() {
+    if (rated.current) onChanged();
+    else onClose();
+  }
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") close();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  });
+
+  async function saveTaste(
+    nextTaste: TasteVerdict | null,
+    nextCourse: Course | null,
+    nextNote: string,
+  ) {
+    setTaste(nextTaste);
+    setCourse(nextCourse);
+    rated.current = true;
+    setError(null);
+    try {
+      await api.setTaste(record.dedup_key, nextTaste, nextCourse, nextNote.trim() || null);
+    } catch (cause) {
+      const detail = cause instanceof Error && cause.message ? ` (${cause.message})` : "";
+      setError(`Couldn't save your rating${detail}`);
+    }
+  }
 
   const options = [...new Set([...platforms.map((p) => p.name), ...record.platforms])].filter(
     Boolean,
@@ -64,7 +97,7 @@ export function GameSheet({
 
   return (
     <>
-      <button className="sheet-veil" onClick={onClose} aria-label="Close details" />
+      <button className="sheet-veil" onClick={close} aria-label="Close details" />
       <div className="sheet" role="dialog" aria-label={`${record.title} details`}>
         <div className="grab" />
         <h3>{record.title}</h3>
@@ -76,6 +109,68 @@ export function GameSheet({
             <span className="value">{review.sentiment_summary}</span>
           </div>
         )}
+
+        {/* The user's own take. Each chip carries its meaning as a caption, so
+            the metaphor teaches itself — no legend to hunt for. It saves on tap;
+            teaching the agent is the whole point. */}
+        <div className="rating">
+          <div className="rating-head">
+            <span>How was it?</span>
+            <span className="rating-hint">
+              {verdictOf(taste)?.hint ?? "your take, reviews aside"}
+            </span>
+          </div>
+          <div className="chips">
+            {VERDICTS.map((option) => (
+              <button
+                key={option.value}
+                className="chip"
+                aria-pressed={taste === option.value}
+                title={option.hint}
+                onClick={() =>
+                  void saveTaste(taste === option.value ? null : option.value, course, note)
+                }
+              >
+                <span className="chip-emoji">{option.emoji}</span>
+                {option.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="rating-head">
+            <span>What’s it for?</span>
+            <span className="rating-hint">
+              {courseOf(course)?.hint ?? "when do you reach for it?"}
+            </span>
+          </div>
+          <div className="chips">
+            {COURSES.map((option) => (
+              <button
+                key={option.value}
+                className="chip"
+                aria-pressed={course === option.value}
+                title={option.hint}
+                onClick={() =>
+                  void saveTaste(taste, course === option.value ? null : option.value, note)
+                }
+              >
+                <span className="chip-emoji">{option.emoji}</span>
+                {option.label}
+              </button>
+            ))}
+          </div>
+
+          <input
+            className="rating-note"
+            value={note}
+            placeholder="A word on why (optional) — e.g. combat sings in short bursts"
+            onChange={(event) => setNote(event.target.value)}
+            onBlur={() => {
+              if ((note.trim() || null) !== (record.taste_note ?? null))
+                void saveTaste(taste, course, note);
+            }}
+          />
+        </div>
 
         <div className="sheet-row">
           <span>Platform</span>
@@ -142,7 +237,7 @@ export function GameSheet({
           >
             {busy === "Remove" ? "Removing…" : "🗑 Remove"}
           </button>
-          <button disabled={busy !== null} onClick={onClose}>
+          <button disabled={busy !== null} onClick={close}>
             Close
           </button>
         </div>
