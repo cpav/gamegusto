@@ -309,7 +309,7 @@ def test_platform_crud_roundtrip() -> None:
     assert client.delete(f"/api/platforms/{platform_id}").status_code == 404
 
 
-# --- picks & feedback ---
+# --- recent picks ---
 
 
 def _seed_pick(ctx: AppContext, title: str) -> None:
@@ -324,37 +324,82 @@ def _seed_pick(ctx: AppContext, title: str) -> None:
     )
 
 
-def test_picks_dedupe_verdicts_and_owned_flag() -> None:
+def test_picks_dedupe_and_flag_owned() -> None:
     client, ctx, _ = make_app()
     _seed_pick(ctx, "Death's Door")
     _seed_pick(ctx, "Death's Door")  # recommended twice; shown once
     _seed_pick(ctx, "Hades")
     client.post("/api/library", json={"title": "Hades"})
-    client.post("/api/picks/feedback", json={"title": "Death's Door", "verdict": "loved"})
 
     picks = client.get("/api/picks").json()["picks"]
     assert [p["game_title"] for p in picks] == ["Hades", "Death's Door"]
     by_title = {p["game_title"]: p for p in picks}
-    assert by_title["Death's Door"]["verdict"] == "loved"
     assert by_title["Hades"]["owned"] is True
     assert by_title["Death's Door"]["owned"] is False
+    # Picks are history — there is no verdict to rate on a suggestion anymore.
+    assert "verdict" not in by_title["Hades"]
 
 
-def test_clear_picks_keeps_feedback() -> None:
+def test_clear_picks() -> None:
     client, ctx, _ = make_app()
     _seed_pick(ctx, "Tunic")
-    client.post("/api/picks/feedback", json={"title": "Tunic", "verdict": "not_for_me"})
     assert client.delete("/api/picks").status_code == 204
     assert client.get("/api/picks").json()["picks"] == []
-    # Verdicts are taste, not recency — they survive a history clear.
-    assert ctx.memory.get_feedback(USER)["tunic"]["verdict"] == "not_for_me"
 
 
-def test_feedback_clears_with_null_verdict() -> None:
-    client, ctx, _ = make_app()
-    client.post("/api/picks/feedback", json={"title": "Tunic", "verdict": "loved"})
-    client.post("/api/picks/feedback", json={"title": "Tunic", "verdict": None})
-    assert ctx.memory.get_feedback(USER) == {}
+# --- taste rating (on owned games) ---
+
+
+def test_set_taste_persists_and_rides_into_the_library() -> None:
+    client, _, _ = make_app()
+    client.post("/api/library", json={"title": "Hades", "platform": "Switch"})
+    rated = client.put(
+        "/api/library/taste",
+        json={
+            "dedup_key": "hades|switch",
+            "taste": "chefs_kiss",
+            "course": "starter",
+            "note": "  incredible in short bursts  ",
+        },
+    )
+    assert rated.status_code == 200
+    record = rated.json()["record"]
+    assert record["taste"] == "chefs_kiss"
+    assert record["course"] == "starter"
+    assert record["taste_note"] == "incredible in short bursts"  # trimmed
+    # The library is exactly what the agent reads to learn taste.
+    assert client.get("/api/library").json()["records"][0]["taste"] == "chefs_kiss"
+
+
+def test_taste_fields_clear_independently() -> None:
+    client, _, _ = make_app()
+    client.post("/api/library", json={"title": "Hades", "platform": "Switch"})
+    key = "hades|switch"
+    client.put(
+        "/api/library/taste",
+        json={"dedup_key": key, "taste": "bland", "course": "main", "note": "meh"},
+    )
+    # A later save clears the verdict and note but keeps the course.
+    client.put(
+        "/api/library/taste",
+        json={"dedup_key": key, "taste": None, "course": "main", "note": None},
+    )
+    record = client.get("/api/library").json()["records"][0]
+    assert record["taste"] is None
+    assert record["course"] == "main"
+    assert record["taste_note"] is None
+
+
+def test_set_taste_rejects_an_unknown_verdict() -> None:
+    client, _, _ = make_app()
+    client.post("/api/library", json={"title": "Hades", "platform": "Switch"})
+    bad = client.put("/api/library/taste", json={"dedup_key": "hades|switch", "taste": "amazing"})
+    assert bad.status_code == 422
+
+
+def test_set_taste_unknown_game_is_404() -> None:
+    client, _, _ = make_app()
+    assert client.put("/api/library/taste", json={"dedup_key": "nope|"}).status_code == 404
 
 
 # --- conversation & chat ---

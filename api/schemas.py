@@ -7,11 +7,11 @@ are computed properties the client needs for row actions, not stored fields.
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any
 
 from pydantic import BaseModel, StringConstraints, field_validator
 
-from models.game_record import GameRecord
+from models.game_record import Course, GameRecord, TasteVerdict
 from models.platform import OwnedPlatform
 from models.recommendation import Recommendation
 from services.igdb_service import GameSuggestion
@@ -55,17 +55,31 @@ class SetPlatformRequest(RecordRequest):
     platform: TrimmedStr
 
 
+class SetTasteRequest(RecordRequest):
+    """Rate a library game: the user's own verdict, course, and a short note.
+
+    Every field is independently clearable (``null``), so a tap that only sets
+    the course leaves the verdict alone. This is first-hand taste — the strongest
+    signal the agent has — attached to a game the user actually played.
+    """
+
+    taste: TasteVerdict | None = None
+    course: Course | None = None
+    note: str | None = None
+
+    @field_validator("note")
+    @classmethod
+    def _blank_note_is_absent(cls, value: str | None) -> str | None:
+        """A whitespace-only note is 'no note', not a note made of spaces."""
+        if value is None:
+            return None
+        return value.strip() or None
+
+
 class PlatformRequest(BaseModel):
     """Add or rename an owned platform."""
 
     name: TrimmedStr
-
-
-class FeedbackRequest(BaseModel):
-    """Record a verdict on a recommended title; ``verdict: null`` clears it."""
-
-    title: TrimmedStr
-    verdict: Literal["loved", "not_for_me"] | None = None
 
 
 class ChatRequest(BaseModel):
@@ -88,6 +102,9 @@ def record_to_dict(record: GameRecord) -> dict[str, Any]:
         "platform_availability": list(record.platform_availability),
         "external_ids": dict(record.external_ids),
         "cover_url": record.cover_url,
+        "taste": record.taste,
+        "course": record.course,
+        "taste_note": record.taste_note,
         "dedup_key": record.dedup_key,
         "is_enriched": record.is_enriched(),
     }
@@ -107,12 +124,14 @@ def suggestion_to_dict(suggestion: GameSuggestion) -> dict[str, Any]:
     }
 
 
-def pick_to_dict(rec: Recommendation, verdict: str | None, owned: bool) -> dict[str, Any]:
-    """Serialize a recent pick with its feedback verdict and library status."""
+def pick_to_dict(rec: Recommendation, owned: bool) -> dict[str, Any]:
+    """Serialize a recent pick and whether it's now in the library.
+
+    Recent picks are history — what the agent suggested lately — not something to
+    rate. Taste is rated on owned games instead (see ``SetTasteRequest``)."""
     return {
         "game_title": rec.game_title,
         "reasoning": rec.reasoning,
         "estimated_playtime": rec.estimated_playtime,
-        "verdict": verdict,
         "owned": owned,
     }

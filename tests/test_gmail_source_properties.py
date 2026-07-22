@@ -49,7 +49,7 @@ TITLE_ALPHABET = string.ascii_letters + string.digits + " .!?-"
 # presence anywhere on a record means raw email content leaked through.
 SENTINEL = "\uffffJUNK\uffff"
 
-# The canonical GameRecord contract field set (data contract v1.0.0).
+# The canonical GameRecord contract field set (data contract v3.2.0).
 CONTRACT_FIELDS = {
     "title",
     "platforms",
@@ -61,6 +61,9 @@ CONTRACT_FIELDS = {
     "platform_availability",
     "external_ids",
     "cover_url",
+    "taste",
+    "course",
+    "taste_note",
 }
 
 

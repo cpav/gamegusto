@@ -646,18 +646,8 @@ textarea {
   background: transparent;
   font-size: 14px;
 }
-.rec-actions button:hover {
+.rec-actions button:hover:not(:disabled) {
   border-color: var(--gg-charge);
-}
-.rec-actions button[aria-pressed="true"] {
-  background: color-mix(in srgb, var(--gg-success) 20%, transparent);
-  border-color: var(--gg-success);
-  box-shadow: 0 0 calc(9px * var(--gg-glow)) color-mix(in srgb, var(--gg-success) 40%, transparent);
-}
-.rec-actions button.down[aria-pressed="true"] {
-  background: color-mix(in srgb, var(--gg-thrill) 20%, transparent);
-  border-color: var(--gg-thrill);
-  box-shadow: 0 0 calc(9px * var(--gg-glow)) color-mix(in srgb, var(--gg-thrill) 40%, transparent);
 }
 
 /* ---- library ---- */
@@ -814,17 +804,7 @@ textarea {
 .pick .verdict {
   font-family: var(--gg-font-data);
   font-size: 9px;
-  color: var(--gg-sub);
-}
-.pick button {
-  border: none;
-  background: none;
-  font-size: 13px;
-  padding: 0 1px;
-  opacity: 0.6;
-}
-.pick button[aria-pressed="true"] {
-  opacity: 1;
+  color: var(--gg-success);
 }
 
 .grid {
@@ -892,6 +872,26 @@ textarea {
   font-size: 15px;
   color: #fff;
   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+/* The user's rating, at a glance: verdict + course emoji, top-right of the art. */
+.taste-badge {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  display: flex;
+  gap: 1px;
+  padding: 2px 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--gg-bg) 78%, transparent);
+  backdrop-filter: blur(2px);
+  font-size: 12px;
+  line-height: 1;
+}
+.grid.list .taste-badge {
+  top: 3px;
+  right: 3px;
+  padding: 1px 3px;
+  font-size: 10px;
 }
 .grid.list .cover-art {
   width: 52px;
@@ -1042,6 +1042,69 @@ textarea {
 }
 .sheet-actions button:disabled {
   opacity: 0.5;
+}
+
+/* ---- taste rating (the cooking chips in the game sheet) ---- */
+
+.rating {
+  border-top: 1px solid var(--gg-line);
+  padding-top: 12px;
+  margin-top: 4px;
+}
+.rating-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 10px 2px 7px;
+  font-size: 13px;
+}
+.rating-head:first-child {
+  margin-top: 0;
+}
+.rating-hint {
+  font-family: var(--gg-font-data);
+  font-size: 9.5px;
+  color: var(--gg-sub);
+  text-align: right;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--gg-line);
+  background: var(--gg-surface);
+  font-size: 12px;
+  color: var(--gg-ink);
+}
+.chip-emoji {
+  font-size: 14px;
+  line-height: 1;
+}
+.chip[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--gg-thrill) 60%, transparent);
+  background: color-mix(in srgb, var(--gg-thrill) 16%, var(--gg-surface));
+  color: var(--gg-ink);
+}
+.rating-note {
+  width: 100%;
+  margin-top: 12px;
+  background: var(--gg-surface);
+  border: 1px solid var(--gg-line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  color: var(--gg-ink);
+}
+.rating-note::placeholder {
+  color: var(--gg-sub);
 }
 
 .suggestions {

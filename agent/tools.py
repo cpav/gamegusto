@@ -204,22 +204,9 @@ class ToolRegistry:
     def _get_recent_recommendations(self, tool_input: dict[str, Any]) -> dict[str, Any]:
         n = _opt_int(tool_input.get("n")) or 5
         recs = self._memory.get_recent_recommendations(self._user_id, n)
-        feedback = self._memory.get_feedback(self._user_id)
-        recommendations = [
-            {
-                "title": r.game_title,
-                "feedback": (feedback.get(r.game_title.strip().casefold()) or {}).get("verdict"),
-            }
-            for r in recs
-        ]
-        # Feedback on older picks (outside the recency window) is still a taste signal.
-        listed = {r.game_title.strip().casefold() for r in recs}
-        older = [
-            {"title": item["title"], "feedback": item["verdict"]}
-            for key, item in feedback.items()
-            if key not in listed
-        ]
-        return {"recommendations": recommendations, "older_feedback": older}
+        # Just what was suggested lately, to avoid repeating it. Taste no longer
+        # lives here — it's the user's own rating on owned games (get_library).
+        return {"recommendations": [{"title": r.game_title} for r in recs]}
 
     def _save_recommendation(self, tool_input: dict[str, Any]) -> dict[str, Any]:
         title = str(tool_input.get("game_title", "")).strip()
@@ -262,6 +249,23 @@ def _record_on_platform(record: GameRecord, platform: str) -> bool:
     return any(platforms_match(platform, owned) for owned in record.platforms)
 
 
+# The user's rating vocabulary, spelled out for the model. The stored values are
+# terse enums (chefs_kiss); the model reasons better over the meaning, and this
+# is the ONE place that translation lives for the agent.
+_TASTE_MEANING = {
+    "chefs_kiss": "loved it (regardless of reviews)",
+    "hidden_gem": "underrated gem, deserved more attention",
+    "guilty_pleasure": "guilty pleasure — not acclaimed but they enjoyed it",
+    "bland": "left them cold despite good reviews",
+    "sent_back": "disliked / bounced off",
+}
+_COURSE_MEANING = {
+    "starter": "quick bite, short sessions",
+    "main": "the big main event, long sit-down",
+    "dessert": "cozy wind-down",
+}
+
+
 def _record_to_dict(record: GameRecord) -> dict[str, Any]:
     """Serialize a record for tool output (the shape the model reasons over).
 
@@ -270,6 +274,10 @@ def _record_to_dict(record: GameRecord) -> dict[str, Any]:
     re-sent on every subsequent model round, so every field here is paid for many
     times over — the model needs the signal, not the JSON ceremony. (Persistence
     uses the full contract shape; this is only the tool-output view.)
+
+    The user's own rating rides along here: it is first-hand taste, and this is
+    the tool the agent calls "to learn their taste", so a chef's-kiss on Hades
+    reaches the next recommendation through exactly this field.
     """
     data: dict[str, Any] = {"title": record.title}
     if record.platforms:
@@ -282,6 +290,12 @@ def _record_to_dict(record: GameRecord) -> dict[str, Any]:
         data["platform_availability"] = list(record.platform_availability)
     if record.community_review is not None:
         data["review_score"] = record.community_review.score
+    if record.taste:
+        data["user_verdict"] = _TASTE_MEANING.get(record.taste, record.taste)
+    if record.course:
+        data["user_course"] = _COURSE_MEANING.get(record.course, record.course)
+    if record.taste_note:
+        data["user_note"] = record.taste_note
     return data
 
 
@@ -330,7 +344,12 @@ _TOOL_SPECS: list[dict[str, Any]] = [
     ),
     _spec(
         "get_library",
-        "List the user's owned games, optionally filtered. Use this to find candidates.",
+        "List the user's owned games, optionally filtered. Each game may carry the "
+        "user's own rating: user_verdict (how it landed for them — a chef's kiss, a "
+        "hidden gem, a guilty pleasure, bland, or sent back), user_course (starter/"
+        "main/dessert — how long a sit it is), and a free-text user_note. This is "
+        "first-hand taste: lean toward what loved games share, avoid what they "
+        "disliked, and match the course to the time the user has tonight.",
         {
             "platform": {"type": "string", "description": "Filter to a platform (family-aware)."},
             "genre": {"type": "string", "description": "Case-insensitive genre substring filter."},
@@ -402,9 +421,9 @@ _TOOL_SPECS: list[dict[str, Any]] = [
     ),
     _spec(
         "get_recent_recommendations",
-        "List titles recommended in recent sessions (to avoid repeats), each with the "
-        "user's feedback if given ('loved' or 'not_for_me' — a strong taste signal), "
-        "plus feedback on older picks.",
+        "List titles recommended in recent sessions, so you can avoid repeating them "
+        "unless the user asks to revisit one. (Taste lives on owned games — see "
+        "get_library's user_verdict/user_course/user_note.)",
         {"n": {"type": "integer", "description": "How many recent sessions to look back."}},
         [],
     ),

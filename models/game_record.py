@@ -12,9 +12,21 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Literal
 
-CONTRACT_VERSION = "3.1.0"
+CONTRACT_VERSION = "3.2.0"
 
 Source = Literal["gmail", "manual", "enrichment"]
+
+#: The user's own verdict on a game they've played — a cooking metaphor that
+#: captures how it landed for THEM, independent of the critics: loved it despite
+#: the reviews, an underrated gem, a guilty pleasure, bland (good on paper, left
+#: them cold), or bounced off entirely. This is the strongest taste signal there
+#: is, because it's first-hand. (contract v3.2)
+TasteVerdict = Literal["chefs_kiss", "hidden_gem", "guilty_pleasure", "bland", "sent_back"]
+
+#: What kind of experience a game is / when the user reaches for it — a quick
+#: bite, the big main event, or a cozy wind-down. Orthogonal to the verdict, and
+#: what lets "I've got 30 minutes tonight" pull from the right shelf. (contract v3.2)
+Course = Literal["starter", "main", "dessert"]
 
 
 @dataclass
@@ -70,6 +82,18 @@ class GameRecord:
     """Cover/key art URL for the v2 card grid (contract v3.1). Presentation-only:
     it never affects dedup, matching, or recommendation reasoning, and a record
     without one renders a styled placeholder instead."""
+    taste: TasteVerdict | None = None
+    """The user's own verdict on this game (contract v3.2). Set by hand from the
+    library, never by enrichment — it is first-hand taste, not a critic score.
+    The agent leans toward what loved games share and away from rejected ones."""
+    course: Course | None = None
+    """What kind of experience this is / when the user reaches for it (v3.2):
+    a quick starter, a main event, or a dessert wind-down. Pairs with the time
+    the user has tonight to decide what actually fits."""
+    taste_note: str | None = None
+    """The user's own short comment on the game (v3.2) — 'combat sings in short
+    bursts', 'gorgeous but hollow'. Handed to the agent verbatim; the richest,
+    most specific taste signal of all."""
 
     @property
     def dedup_key(self) -> str:

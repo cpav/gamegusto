@@ -189,10 +189,7 @@ def test_recommendation_persistence_and_recency() -> None:
     assert saved == {"ok": True}
 
     recent = reg.dispatch("get_recent_recommendations", {"n": 5})
-    assert recent == {
-        "recommendations": [{"title": "Hades", "feedback": None}],
-        "older_feedback": [],
-    }
+    assert recent == {"recommendations": [{"title": "Hades"}]}
 
 
 def test_unknown_tool_is_reported_not_raised() -> None:
@@ -224,15 +221,36 @@ def test_specs_cover_all_handlers() -> None:
     assert spec_names == handler_names
 
 
-def test_recent_recommendations_carry_feedback() -> None:
-    """The agent reads the user's 👍/👎 verdicts alongside recent picks, plus
-    feedback left on older (out-of-window) recommendations."""
+def test_library_carries_the_users_taste_rating() -> None:
+    """Taste is first-hand and lives on the owned game, so it reaches the agent
+    through get_library (the tool it calls to learn taste) — spelled out in words
+    the model reasons over, not the terse stored enum."""
     reg, memory = _registry()
-    reg.dispatch("save_recommendation", {"game_title": "Hades", "reasoning": "fits"})
-    memory.set_feedback(USER_ID, "Hades", "loved")
-    memory.set_feedback(USER_ID, "Older Pick", "not_for_me")
+    memory.upsert_record(
+        USER_ID,
+        GameRecord(
+            title="Hades",
+            platforms=["Switch"],
+            genre="Roguelike",
+            platform_availability=["Nintendo Switch"],
+            taste="chefs_kiss",
+            course="starter",
+            taste_note="combat sings in short bursts",
+        ),
+    )
 
-    out = reg.dispatch("get_recent_recommendations", {"n": 5})
+    game = reg.dispatch("get_library", {})["games"][0]
 
-    assert out["recommendations"] == [{"title": "Hades", "feedback": "loved"}]
-    assert out["older_feedback"] == [{"title": "Older Pick", "feedback": "not_for_me"}]
+    assert "loved it" in game["user_verdict"]
+    assert "quick bite" in game["user_course"]
+    assert game["user_note"] == "combat sings in short bursts"
+
+
+def test_library_omits_taste_when_unrated() -> None:
+    """An unrated game carries no taste keys — the compact tool view stays lean."""
+    reg, memory = _registry()
+    memory.upsert_record(USER_ID, GameRecord(title="Celeste", platforms=["PC"]))
+
+    game = reg.dispatch("get_library", {})["games"][0]
+
+    assert "user_verdict" not in game and "user_course" not in game and "user_note" not in game

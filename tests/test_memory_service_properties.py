@@ -114,6 +114,9 @@ _CONTRACT_FIELDS = frozenset(
         "platform_availability",
         "external_ids",
         "cover_url",
+        "taste",
+        "course",
+        "taste_note",
     }
 )
 
@@ -292,26 +295,41 @@ def test_conversation_skips_malformed_entries() -> None:
     assert service.get_conversation(USER_ID) == [{"role": "user", "content": "hello"}]
 
 
-def test_feedback_set_get_and_clear() -> None:
-    """Feedback keys are casefolded titles; setting None clears a verdict."""
+def test_taste_survives_a_store_read_roundtrip() -> None:
+    """The v3.2 taste fields persist like any other contract field; the agent
+    reads them back off the owned game to learn first-hand taste."""
     service = MemoryService(FakeMemoryClient())
-    assert service.get_feedback(USER_ID) == {}
+    record = GameRecord(
+        title="Hades",
+        taste="chefs_kiss",
+        course="starter",
+        taste_note="combat sings in short bursts",
+    )
+    assert service.store_records(USER_ID, [record]) is True
 
-    assert service.set_feedback(USER_ID, "Hades", "loved") is True
-    assert service.set_feedback(USER_ID, "  Celeste ", "not_for_me") is True
-    feedback = service.get_feedback(USER_ID)
-    assert feedback["hades"] == {"title": "Hades", "verdict": "loved"}
-    assert feedback["celeste"] == {"title": "Celeste", "verdict": "not_for_me"}
-
-    # Tapping the same verdict again clears it (the UI toggle).
-    assert service.set_feedback(USER_ID, "HADES", None) is True
-    assert "hades" not in service.get_feedback(USER_ID)
-    assert "celeste" in service.get_feedback(USER_ID)
+    (restored,) = service.get_records(USER_ID)
+    assert restored.taste == "chefs_kiss"
+    assert restored.course == "starter"
+    assert restored.taste_note == "combat sings in short bursts"
 
 
-def test_clear_recent_recommendations_frees_picks_but_keeps_feedback() -> None:
-    """Clearing the picks history empties the recency list (so titles become
-    suggestible again) while 👍/👎 verdicts survive — taste is not recency."""
+def test_pre_v32_records_read_back_unrated() -> None:
+    """Records written before v3.2 carry no taste keys and must still load."""
+    client = FakeMemoryClient()
+    service = MemoryService(client)
+    client.put_value(
+        USER_ID,
+        MemoryService.RECORDS_KEY,
+        {"records": [{"title": "Hades", "platforms": ["Switch"], "cover_url": "x"}]},
+    )
+
+    (restored,) = service.get_records(USER_ID)
+    assert restored.taste is None and restored.course is None and restored.taste_note is None
+
+
+def test_clear_recent_recommendations_frees_picks() -> None:
+    """Clearing the picks history empties the recency list, so titles become
+    suggestible again."""
     service = MemoryService(FakeMemoryClient())
     session = SessionData(
         user_id=USER_ID,
@@ -321,13 +339,11 @@ def test_clear_recent_recommendations_frees_picks_but_keeps_feedback() -> None:
         alternatives=[],
     )
     service.store_session(USER_ID, session)
-    service.set_feedback(USER_ID, "Hades", "loved")
     assert [r.game_title for r in service.get_recent_recommendations(USER_ID)] == ["Hades"]
 
     assert service.clear_recent_recommendations(USER_ID) is True
 
     assert service.get_recent_recommendations(USER_ID) == []
-    assert service.get_feedback(USER_ID)["hades"]["verdict"] == "loved"
 
 
 def test_legacy_minutes_records_convert_to_hours_on_read() -> None:

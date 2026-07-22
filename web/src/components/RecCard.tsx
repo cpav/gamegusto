@@ -1,16 +1,19 @@
-import { api, type Pick, type Verdict } from "../api";
+import { type Pick } from "../api";
 import { Markdown } from "../markdown";
 
 /**
  * An agent reply, rendered as the approved recommendation card.
  *
  * The design calls for a lit card with a kicker, a title/score row, the
- * reasoning, a highlighted price, inline feedback, and an alternatives line.
- * The model writes prose, so the structure comes from two sources: the saved
- * pick (title + playtime + owned, via `save_recommendation`) supplies the
+ * reasoning, a highlighted price, an add-to-library action, and an alternatives
+ * line. The model writes prose, so the structure comes from two sources: the
+ * saved pick (title + playtime + owned, via `save_recommendation`) supplies the
  * header and the action target, and the prose is split so the price and the
  * alternatives get their own treatment. When a turn isn't a recommendation
  * there is no pick — the same card renders as a plain reply, no header.
+ *
+ * A suggestion carries no thumbs: you don't rate a game you haven't played. Add
+ * it to your library, and rate it there once you have (see the taste system).
  */
 
 /** Currency amounts the agent actually quotes (DKK first — the user's region). */
@@ -45,12 +48,10 @@ function PriceBox({ paragraph }: { paragraph: string }) {
 export function RecCard({
   text,
   pick,
-  onFeedback,
   onAdd,
 }: {
   text: string;
   pick?: Pick;
-  onFeedback?: (verdict: Verdict) => void;
   onAdd?: () => void;
 }) {
   let paragraphs = text.split(/\n\s*\n/).filter((block) => block.trim());
@@ -109,34 +110,14 @@ export function RecCard({
       {pick && (
         <div className="rec-actions">
           <button
-            aria-pressed={pick.verdict === "loved"}
-            onClick={() => onFeedback?.(pick.verdict === "loved" ? null : "loved")}
-            aria-label="Loved it"
-          >
-            👍
-          </button>
-          <button
-            className="down"
-            aria-pressed={pick.verdict === "not_for_me"}
-            onClick={() => onFeedback?.(pick.verdict === "not_for_me" ? null : "not_for_me")}
-            aria-label="Not for me"
-          >
-            👎
-          </button>
-          <button
             onClick={onAdd}
             disabled={pick.owned}
             aria-label={pick.owned ? "Already in your library" : "Add to library"}
           >
-            {pick.owned ? "✓" : "➕"}
+            {pick.owned ? "✓ In your library" : "➕ Add to library"}
           </button>
         </div>
       )}
     </article>
   );
-}
-
-/** Feedback + add-to-library, shared by the card and the library's picks row. */
-export async function applyFeedback(title: string, verdict: Verdict): Promise<void> {
-  await api.setFeedback(title, verdict).catch(() => undefined);
 }

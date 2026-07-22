@@ -29,10 +29,10 @@ from api.auth import TOKEN_HEADER, AuthError, build_verifier
 from api.schemas import (
     AddGameRequest,
     ChatRequest,
-    FeedbackRequest,
     PlatformRequest,
     RecordRequest,
     SetPlatformRequest,
+    SetTasteRequest,
     pick_to_dict,
     platform_to_dict,
     record_to_dict,
@@ -186,6 +186,24 @@ def create_app(ctx: AppContext) -> FastAPI:
         ctx.memory.store_records(user, records)
         return {"record": record_to_dict(record)}
 
+    @app.put("/api/library/taste")
+    def set_game_taste(body: SetTasteRequest, user: str = Depends(current_user)) -> dict[str, Any]:
+        """Record the user's own rating of a game they own.
+
+        Verdict, course and note are each set independently to exactly what the
+        body carries (``null`` clears one) — the client always sends the full
+        intended state, so a tap that changes only the verdict leaves the rest.
+        This is first-hand taste, and it rides along whenever the agent reads the
+        library, which is how it reaches the next recommendation.
+        """
+        records = ctx.memory.get_records(user)
+        record = _find_record(records, body.dedup_key)
+        record.taste = body.taste
+        record.course = body.course
+        record.taste_note = body.note
+        ctx.memory.store_records(user, records)
+        return {"record": record_to_dict(record)}
+
     @app.post("/api/library/enrich")
     def enrich_game(body: RecordRequest, user: str = Depends(current_user)) -> dict[str, Any]:
         records = ctx.memory.get_records(user)
@@ -313,14 +331,13 @@ def create_app(ctx: AppContext) -> FastAPI:
             raise HTTPException(status_code=404, detail="platform not found")
         return Response(status_code=204)
 
-    # --- recent picks & feedback ---
+    # --- recent picks ---
 
     @app.get("/api/picks")
     def get_picks(
         user: str = Depends(current_user),
         limit: Annotated[int, Query(ge=1, le=50)] = 10,
     ) -> dict[str, Any]:
-        feedback = ctx.memory.get_feedback(user)
         owned = {r.title.strip().casefold() for r in ctx.memory.get_records(user)}
         picks: list[dict[str, Any]] = []
         seen: set[str] = set()
@@ -330,14 +347,8 @@ def create_app(ctx: AppContext) -> FastAPI:
             if key in seen:
                 continue
             seen.add(key)
-            verdict = (feedback.get(key) or {}).get("verdict")
-            picks.append(pick_to_dict(rec, verdict, key in owned))
+            picks.append(pick_to_dict(rec, key in owned))
         return {"picks": picks}
-
-    @app.post("/api/picks/feedback")
-    def set_feedback(body: FeedbackRequest, user: str = Depends(current_user)) -> dict[str, Any]:
-        ctx.memory.set_feedback(user, body.title, body.verdict)
-        return {"title": body.title, "verdict": body.verdict}
 
     @app.delete("/api/picks", status_code=204)
     def clear_picks(user: str = Depends(current_user)) -> Response:
