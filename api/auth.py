@@ -37,9 +37,6 @@ from jwt import PyJWKClient
 #: Header carrying the Cognito ID token. Not Authorization — see module docstring.
 TOKEN_HEADER = "X-Id-Token"
 
-#: Storage identity. Deliberately independent of the authenticated subject.
-DEFAULT_STORAGE_USER = "default"
-
 
 class AuthError(Exception):
     """Raised when a token is missing, malformed, expired or not ours."""

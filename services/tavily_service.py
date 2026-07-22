@@ -1,21 +1,21 @@
-"""Tavily search service: web search and cover-art image search.
+"""Tavily search service: web search for the agent and enrichment.
 
-Boundary to the Tavily Search API. It powers two things:
-
-* :meth:`web_search` — raw web snippets used by the agent's ``web_search`` tool
-  and by the LLM-assisted :class:`~agent.enricher.Enricher` to populate game
-  metadata (genre, playtime, platform availability, community review).
-* :meth:`find_image` — a fallback cover-art image when IGDB has no match.
+Boundary to the Tavily Search API, powering :meth:`web_search` — raw web
+snippets used by the agent's ``web_search`` tool and by the LLM-assisted
+:class:`~agent.enricher.Enricher` to populate game metadata (genre, playtime,
+platform availability, community review), with a ``deep`` mode that reads full
+page content for store deals pages.
 
 The service is free-tier rate limited (Req 5.4). Every failure degrades
 gracefully — searches return ``[]`` — so a Tavily outage never raises to callers
 (Req 5.5, 10.3). Interpreting the search results into structured fields is the
 enricher's job, not this service's.
 
-Manual-entry title autocomplete used to live here too; it moved to IGDB
+Two things that used to live here have moved to IGDB
 (:class:`~services.igdb_service.IgdbService`), the games industry's own
-catalogue, which returns real titles with platforms and box art rather than
-web-page headings.
+catalogue: manual-entry title autocomplete, and cover art. IGDB returns real
+titles with platforms and the actual box art, rather than web-page headings and
+whatever a general image search turned up for "cover art".
 """
 
 from __future__ import annotations
@@ -47,7 +47,7 @@ _DEEP_CONTENT_CHARS = 3000
 
 
 class TavilyService:
-    """Searches the web and finds fallback cover art via the Tavily API."""
+    """Searches the web via the Tavily API for the agent and enrichment."""
 
     FREE_TIER_RPM = 60
 
@@ -104,31 +104,6 @@ class TavilyService:
                 }
             )
         return snippets
-
-    def find_image(self, query: str) -> str | None:
-        """Return the best image URL for ``query``, or ``None``.
-
-        Backs the library's cover art. Uses Tavily's ``include_images`` rather
-        than a dedicated art API so no additional credential is required; the
-        result is presentation-only, so a wrong or missing image never affects
-        matching or reasoning. Degrades to ``None`` on rate-limit or failure.
-        """
-        if not query.strip() or not self._available or not self._check_rate_limit():
-            return None
-        try:
-            data = self._client.search(query, include_images=True, max_results=3)
-        except Exception as exc:  # noqa: BLE001 - degrade on any Tavily failure (Req 10.3)
-            self._degrade(exc)
-            return None
-        images = data.get("images")
-        if not isinstance(images, list):
-            return None
-        for image in images:
-            # Tavily returns either bare URL strings or {"url", "description"}.
-            url = image.get("url") if isinstance(image, dict) else image
-            if isinstance(url, str) and url.startswith(("http://", "https://")):
-                return url
-        return None
 
     @property
     def is_available(self) -> bool:
