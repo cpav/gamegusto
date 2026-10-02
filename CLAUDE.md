@@ -97,6 +97,8 @@ These are load-bearing. Each was found the hard way.
 - [`docs/adding-users.md`](docs/adding-users.md) — multi-user, honestly costed.
 - [`docs/data-contract.md`](docs/data-contract.md) — the `GameRecord` contract.
 - [`design/README.md`](design/README.md) — palette, logo, type.
+- [`docs/presentation/`](docs/presentation/) — standalone product-menu and
+  architecture pages for presenting GameGusto.
 - [`docs/v1-spec/`](docs/v1-spec/) — the v1 requirements/design. **Still
   load-bearing:** ~108 code comments cite `Req X.Y` from `requirements.md`,
   which is why it survived the move out of `.kiro/`. Its UI chapters describe
