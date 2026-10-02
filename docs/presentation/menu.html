@@ -1,0 +1,915 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GameGusto — this evening's menu</title>
+
+<style>
+  /* Brand faces inlined: the Artifact CSP blocks font CDNs, and a silent
+     fallback would lose the identity entirely. */
+  @font-face {
+    font-family: "Press Start 2P";
+    src: url("data:font/woff2;base64,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") format("woff2");
+    font-display: block;
+  }
+  @font-face {
+    font-family: "Share Tech Mono";
+    src: url("data:font/woff2;base64,d09GMgABAAAAABzwAA0AAAAATSgAABybAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGx4cgWQGYACEVBEICv1g3kILgzgAATYCJAOGJAQgBYRaB4N1G+w6MwPBxgHoAW2DoygXoz+LomRuqsV/ncCNIVQfqhcHHAWr6qJrJiN2W9VJFEVxbC1VcVCyOUzd5DOcGP3dXgqDx/oQ4HZ4tM/gYXPXOkJjn+QSRPu9zu37AUKJOpJYxhKoCE3gRFxSWyFbzTK2hDc8v82eHVQ5wGgQbKIEPil8akaDTRm5KHVOV2EsomXVd67CbZc9d9H+fzrz3xuwNvdJzoaoytbBqqHRjKwxhBXsgbStdXz6ALWAFX7APkDcfuB53PV+ElBgmSXalrRlnGZ0aufXrw3Zs/f1xJFFtIknDZXOkAmFEBq1gDg2xrVAqMlsjYDf51/OJN3uS3fnMnAnqG0PwB7gCB//p7NsNYYg9IdYdGFqmhSd/Eej2ZmxLJsjx17wodZ7ieEIbMveJ/u8x74AURVeDCG8HqiouAPqw31JRRkegnun/8GRRDQ22sarrXkcyJqoYRZhBNkYLiu+BG/KszAzZyMXcaM6awj2kF46PsZWHRuFvl9YhEHJjAWrj1ICVMPD85pbUOhBIF+A/D8wQ6W6+Vx/xnLWNoK4XeluAbE8i2H30w7oxffsQMH/nxqsBlIOD2XXWysBHdeqedWdH9L48x2kA3nBgiyhUNZl8806edPG2VV0fgpvSMEtGX2IjwkLWPhVbVATA/BI5vHird98PjGYVvID4j4KwCr0mjYxkgJETVlVGVzTqoXtDW4MowrwgOHWbsvhAPCEd4N9WFT6Gh7AYBwKVLBWJ7wmr5xvTAEmkPkKB9RJl6vf/16ZSRc341W8HpzJFfd4yFM+84N8kDIcRsP0yvFcGp0sQ56t7uKhM7jgzo5P+Y//V6xfKa8cpcD/hn/zv//5eAH4eLZ0FQ7+6OHt0bfHgReAEcCCaSDdA5CuD0qP/x8L62yxwTnX3TNmp11G3LDGXhtNWG3cZRddssldPkKEChcJAQkFjYCIhIxijmSp0qTLkIktW45c+bYbtcMjk54rICJWREZFTUPLyMTMYq5Staxs6jVq4uDk4tZhq9u28ThpvTPOO2vKHfc986Fu+12xz7QXHrpp2AqP9frASk8s1+OAQQOGbBbAl58g/gIFCxMrSrQYeBhYOBHixKOiSUR3TQIWBqYseVI04CnEIcDFJyShJAdRMNDRg0mVqFSmXLUKF1Sxa9aiVZs67ZLU2GO3I446DBpyZhTeQHoiXdJySWcnejEGYjU04ohojEOtOBROrFSkVBbqrOMAC0U7E5WnfioFeerrmm0ZW66IBOQfXh6TRLhpYXYOuVAoFLOlHHHUbVvQ2FIX5DEvIrqHxbVRymSJjRnTREoIts7U7QUhc7xtgJkTNkq7nZo0YaYeDXNlkSzO18qwANYSkTxZwNha+P6CMF9mJdqYadkoE35CicdpNr9Kp5gpWKSoSZ4sYBxkdVfV3cyh2tnMiVUdPhg0E54w0k0xVCn5Y2YseclRMpe9nbYn0jqtf+ZQY1yNbnQ2Y7ROUko9z2nWqtLp5OQYR1cGdZ/ZIJB5I1Pkypu/lHkrGZnjW6eaCfOWt5y2m7VM00InzfHPcS2cyFs88v3pEVXCLTJRsV0UeRWZTpKWSRsXkrLYXClrZKkpqTMVlth4Snk03fN/EeO6VtJm64zY4DCQHrwvi30OoTu4+AGC5FgzmLmPwFncEctuD74X+DIGDP1OnUGT31SaT3CfYGgAtdFlo15Z/P+Ohne44Mx3OWheVIGlN3r0FwkmhOZ1ZIRcDjzrnuUNR2Cl4UF90q/vcZUMSVNDj/AmGwH1pEiFMCxD1BW8cusbfD4yfJ/IoqYCpx+R1sDje8odhqfhSA0W3chJEHNEdlBZnFLrPnteEFpUYCpREQVqX1/5AVQEBZsRyJZsBotCVPUhSrQY6GC7Zea64PAVVhJaVKjjKKYwhYWVYLVgGz2T1/SZG6XooBxwmXYjSiNIHbh66sY9W28/qPq3LQygDY0jPqUmQg6GdOUZJzGuokI1uCIKTujKJ048+umyGxJI2/A9deptX0qft32ieijXExX1RKZcykLnARGBeirXesHb8YEjUDjd2H2HcmAk1aJnjVHPl6qeur3wz7v1xdcl1jePKJ/kgtnQZFSZzoBEsKAm2CGhTVgxXQOLw2nVSEJoWdCwWVIIlaXSbqQ3kC6qAn2MR+m88wWxlDwANy66xGuwUFr5dl9TWco7Bpxj68DIJwsY6afLRNV08EmGlxbum7tithTkO8zqHBnF2BXlC+KCzqLgmM6RCXz5UNfztSl31tD1vgB656g62+hNZXjBFgANJKa+jodL+IqDTkNORATOFgDyksl3NGGErTpMZyUSjxkAF4at2cC1cPtf3t8clNhHo8oQA/49Zil37gAsK8VlIVVzo586skHucWI96Au0EykBU1AVMQBS/U/5CHgqKQhgKqB8BwjL5+Nf3BsnqLU/IDrIF/g/n/fVCoBKrIi+6xQ84CXHHy2mRheR6UgEdA89KfpgdxC4YIlJ6MiAE9QGYq7mSlXDKPUo3AXaEf4nHJOC9c8Ig4Ei01ZBXNqPvtA2C62JWKPAdI2K33G5Q4Vszag1kHLBvdynlO0NGujaax/meMuohJN4oqKCbg8V9QybQiUERj/dIVx/m9J76q6pt32pfN72geyhXKdU1NPZR2+qQL7l1MK4+Z1fAw7Z4+S5hCJSTITwACDVT1gd1aruzW/9Q6NIlr92b0KUgWkOM3hHV3hAT5pu0CUQFKY5LHyuOL6hgCuovTCR1AGmwmphT3CHIvcIi3QJdiTgNMQys6CzCCEKe2XPDYTV6AU+LOsJKKwLigRrWpasiDHPxEaHEvEb9kjk8QJquqf2DrZIdU/V0zbCGGv/06TqYNGcylKOz0RBP+wB7i9naMe/KDAZ3Q6BP/ygP+kf2mr3gaBu8x09khwN2jSGgKvTNQLEppGR+PCeXwTrOMj37DmqizE77kencLCpm0SXtqEsPVwEM/aiVkxrDZJL6oy2Q6oVjS64lr/UiYgISjhiXbJyRO6/Zgg9yAQYWH1YzvdoZrkivhdpHB0LVmd/s/zaeZ/sxj/BUjtBUinw+qM3Jb6yiI1bFDe1pXi1zea6AvDEnvzME1uIpWG9FGzolY6wLaptrn6J9c75WygwRer8oFq93aXqzvngQ+7Fhdzl67FXqhf5B3UgKElHAizhYu5Q0D1gUR692y8qYwC/IoP/2ZTA/I5v1Oj6LGzlAsBrL8bM4U+CQpn50B5bv4bpqxgzpAtTh2igAf5XqQDdhGLBee27SPKTh/gXy/eA+mcmsxBwufgzO+gD3BWXIH/8fz5br/uc/FQEae0DtISQrE/A0gK/EK/prxwHUfP8JrktnEvMC/KHKBZTELborXKKiiT/kx/F5fDhOXaU3CEEe1VdJXYZBNbha5G99h3VTolGWdEBjNThdCYA0R6sk2sQSroM8IN9Sn13nX/vmYv3l+7w11TcXvir9tyWbq7Cm6hSS84ixR2rUeNsOwAejKP428YneipHABUR/MncChy+0nZRDhpOBybYOCdBu42cJBPwJ1/vV7ZhGvTCHfSa9cbIGcd7D8GvzcNql6/y7kN8tNjaLsh6+uA7zljgvaSKKkArPNNTLST7cO9hVc0Jb9QPMiyqNGmziTyZkuTSZqTfrFOPfZxOjhZej6FN4YZUPFVJhccVx6ERz3+QSJ2qgf2xHaM/qR6oG0FqaQ+PHDpZ2RBBcooj6FVh0Z1b+AchMuSac3+SGtXZduvLB/WK1gnqXT2JHrRT15ncCl5B458UZ3mwonS4UBHlUUEq5UZE6aCMiVp+hNDkvECjtbo3QvIFuCn7mFV+WvWN9XOMuT3uhKKUtyng4FH6UfPeKdeuKTPtaIRc26fpA+hrskVOndXZuoFDMn0gD15WNDtLWpyVl8pt8h9M2Jp0DayJDlbDmom+4gOIeCyzOnWLnMQNF9N2Zu3k9kN2rT3M7dtuphCSghP8E4KTCDlCsn/0+yhS1PtofzKdlOov9HUJ8knpCY0I/NtbExocSFgidYeERPjZ2WHBQePrpLS2Qf5KDx9NPKo/MsWUHUJ+vko2iP57UPY4/GjKFWN7L7hZpCqae9vjMRcX6XOVdbw5RkvFUQrd8cZB2kBRBPm3U3r+66Yz6M3gboketsEleuOIYiNthjRCmqFtVIyAtGUUUlRIdKZKHCDVQ+16bUakLczMo9JgHrjT492b9ly1zJXqFhoOtFMW0OfTGfR14FH92cW5UG5Km45P3JD7r+stnpyS/f7FW9nbf36XqTwA/ThQq60fbtIfhmi13aV5MEwYHEZg8l9F13DEommpTu7KP7EIW/ONHpXQ/BOYMnv7FYoNN1710gjttx8Au/kCo8eYMZ3B+xCAT6RJFlmIzPKTAOhFo1yV/X9TIVkt6UEeDdORVWu/ILJ1uapLuvpFdZO+RG+sV7hoM6RX26A/osEeL2+jx5h2IbX8ctYHS2sm8sCdKftHCrYHsL7VVQ64FZ7l6lpN7TKPyg22aj0j4w6n1jM65gCBn0HpGF4n4iX406EjCUanENZv2GS1AudgJgHQs+Y3fGpWqHBWNX77eh4NW+SwhodeEurJrivHRYztB3cMU6IgOSWJNpFQmKOyF2l8gy2HPrL8b8En55NtW4f/FbNHA4GP3blXAamNax8O7+tod8OFsqO9WYsHZYNb2N1HZYVKYdT8+DHzEMHVEliht0UaPRdgg1zrNGyl0J1IJz2OvgTcfNVCGjl248K65xrn5upyRfOtUumAQuGdOaacMUqc0ePp5v5WOMy4IUb5fIoxhUJ3+DrocXQXOK1f5r3YiJ+TiHLYoKMrN0YVm4S7piB1kolFKq1OAD61TyrWKSbt4ENBjhk6O9pII83QUtWz0YzRALsDNmi1JZf+FCdoyjKPhlUDAy22JOFwJhKQ2TJ7YbOnTB3V86sNY1MdIATHwXVSpuQEe7GMo5cR7WLKVD9YVXaoflxb3vy94/vSbZoDDVUd/uAj8fH2ikVxY/a5p9rFABNjzTF9mbLG38SdqzJFYf6Ww6ZITABY+9OhZrpZISqQx25Z3csgaWlboFXGYkj/c0QLTpJdLv8b2dKHjcIysB1YM9h0t2upwbq08q5s5hVhRetSkz2eefnydSPvyMXt3lx/lduza+APd61LDV1Lw7S9ioxqXLx/PC5xv1t/7vVK19E5uaKtv8TNCp9Qy64XO7D0cKGQIw1VCpUyQR75Y2o9VJ6aWSWcTw+QcJVK953KJGG1zBx/S89bMYFzRikFnYnSq7iU+JRhiThkgxhch4oh43UP/PpxKtWklcMn/wh8l8R30bSk1yQtLQfcbWB6ZXIBtJzOWg4tANR4eu7qF/lyGZet8TPdkJ5oUjSQ+zbs0aCE72Lj+wVeikLw1qGQdzwszq8jzbcVm42iOSKzsXihXgsZqsyYr9cHFONOCkh7yVuoGOoW8rdN4KjKR2qQyQzpRVKVYmEwRNLSJqF1lU3YKGwe9TJZcgbsQ2WDq+5ebI+g2GDZiJDvJf4aHNueeX1B19Xo0TzlJDs5rHwbtK2sC5oDwWUwBFuYm9M2QgPgUZ1GYHgAvaLmI8moPOqhIS+SkI1x6Z1+dA7S6kWaZJVBIxCFLgn8PV2yjKYl8d/PpQQcmHr9ODVNq4L0ethGjCMKyD97t8EeUDBlKbesiIa+3rcW+mYfUO9lvWOei35OKbc98U/s8hd1qheiv/+Zef+xVReJ81U9ZYLHOHLYt2vag8xgbk4bh1aAk0+fwR64e+xY46HrU2n1q2dBaHpW2H8PXBf5b8wSaC9om0Wtp/pLbgWw/QvH1VaNLTGC6E+0BbbiVkkc7Htx+nVq3oPds+ivMq27KinvYp3we7BqMrqtA2G3JL+Ff05ZYgBRlZ36pZbGIgoTBp3+afx0v4ztofMaPyeQo55tfJ4hI+DqOl0rxdR+WFiTimjV0CS5Et2Ea3BmJclWQRMf55DSP66RJZL03d//3yhl1xUMrVWNi1X9v9KlgtmY40k+KpFMe1Evkqh84ncw3vkkeIm4Ymj4ipKUSS2TlYztZ6PY/I/J8wkownzyx1d9CS0En7hWitwebp26glxi6354wi3fnqLO2Xt3tfvhOvj1ZylYfVMNpFG0jtajAV3KBnTOOxPwxd8eb4mD8jIZtAkXnG7VOMh/+OKaoRAI7CpUFMrWQZO400hWajJNIioQEIRQnnwptBLzDElF7ULECcU8XipQtsFiXnwvT06firgEFYGqjc3+P2czRywS2aH29FQJUoJh8vjZwTxhFs9b3r84NmUbIg/OAIDFZ2eWQ+WdcOdqaDUbqUXVQv1AlR4H1EFs8k8xbVM1KLAXg+sQereV7QHo1oE30tL3EGXrELg98/4Iq3pu9vRAuLMl7sOOw+bR2R4Q8dfur1LzLJwzzGfw8xnTK6AxzVaAybItXqO/VJftqdhTuuqHCb8amwfcK3PAz2J3zpb0bm/abtyceFX7Iy0DSgKrrToefrNLLt9jnY9HwAnv/E21l6P5xvxMnmX+SvMW1AktnT7YrFxOdoS7RU5HLcbXFpbxv+aeCg2KZaUW5Z2IUhfFbIwlx9NSepjQ3xAY7X/BDxa84A5wXwiC+XBDwn1n8VG426gJ1G1cFP4sLAT5QbEQmJr1BY9bMYDcoH96eOrLk/AEuGSwGJSxSjqJzqY3w6pYVZMe+930PTWW+j0p4lz4uYN3OT3EMPBOHjfM1C7MLHc0Q2IIBOb/W9dBl5BmaJ2KlhTvKUtivJl8tebBjwq5CWyXq+WW+dAgnUG3UtopjVAlaQOlmE6hz4fcSa7gHnrvmh7QxqYNDXe0tc86P4c/h2TQGNghv/UiaBjNu61FlbHQpXuJSiOkaQKXjHH1Htlgi97Yp1hGmyE1Vxm0kL4liPG8C2tJAmrTM2C2v4PElUcsZnBDrR9voa06vZF3x3xqrkYHqWJVNqXhqkVjuaM/PbxKLSZLjsWROijFdC86tV3fTsmgsHYrbTaObccxQXl1/4fMpeibD7kmSR7ps1E+b/M4yfQMpnbX8+lFQpr0SBxvjDeOXCRITYtPpPIImVmcRIqw/JRkQxlvvwygXOLViVJ3ZCS0rVbOShcX5lKxI+mjRB6xTe+K+bbQOwzCHA4LtxuXj76HJhWg0HcxaYR2QhonnXumcA6+tzCJn/qFUM275X1oUxVdZKEVH5HzfuIBv8OhfjRqZqGBp5YLcjiohDHC6rqh7byfZaDXd4+ogleKP43LRs9ginhc9LeYJMJ6goFnXNAmXs8dAjU64wrLCnFWQ9dKElY9nBO6wULu0AgbrVpNrO8G3zTrkcKNesC11qQMYFqyZf2WBZoNVI/SjcHPWYXLVWB59VtDHywEsqe+h78vMa75TOnAXOOyDbBPakabBJLczqH9GiHaQicn/9Pc1gBurocCNs50np0jroC7xn5Z1Y1mkDJpfQrX3vVk1zaG/5Y2+ryj5J5+Xt0fWFlpKbfEjGUvHYMIeFMcBLqma+8bncBUJ3Xumy2oDPoDAufXfh3/hRCZz5cw0Srke0YEixnBeI9UoZkSfj5S+EX81wktoJxedm+YrL5RrixoIXIh9OggoKfAjT6CwL6mvFGJ6c9UVWylKq/I/bA/TZLN+XKzgUPlz/yrFJqBwD0u9UpH3OIMcPtPAWd6HCEwTf8xjQZo/dNxk4oqFIwBNB8Dl6h+wFZLuYU9Jjk7BgnwMWHk6y1e02Ql506NgO/9m4Mfev2VtU+2z0CaoXUr7PckplAik1Qyznhtu7Vd0c3Euk8NpvyEctVJpVBe5GfV1Kqfod+YulnTAqQfplVlXJQUDQh/mSx+jUg0IBUGZVSlXiq6cYHALWCJswSCAYkk/lMtTfYAGsLQK+hWjNBmSHri56TYt9Q94Ie6MG64pUExmpHAEZuRJuYUH3Rt42BbVPO2rlQ0djswXzY/5KasWiYJkbB28LFrITTue94ua0VXZGfk3L3W+dCJJ8gFWsul+NCIMB0zNDhASDil2cXHh0T4f8xDhgYHyQk3NICbXtMm+ekh1Av9dLbGAPeuHAR6btE7Bpar85eV9Byv7zlcBu4xS1jLWANlfcl6UBgNTb6H913OrRWXXe7BOnLM1YHzAfITLi8vMK+3cBO4MoAYmsQGYicxHMz4ambu5nhLOV8iIm4AfNE2vgHaMKGZWA+tH18FRhY7ReKL1wnb0w26OkkT6zOiATFzfKNm49i0aWzq9PR3Bcr5PGizWi6Bd+mlIm1RQQSTcjjlJw6R+Yi3kv2Kh8yXShHXomKO4U10duK5ZHH8YaHwHPdcx50JxOcRyf+kjKG/RYEdarmu38ibU6dEaA1yuAFqp1PoCZQNpFlI3bwzqamdsorOoJfElYLP20wqkT4MVsuNZkkNtY7EImlpNed17S/FHo0HeMMwrNyphJ/2KPZZNOGdtDP5HWUd5V3y+LPF46H+9Jvp/VkQU4NYFn07agChZsoz/JxefjuRM7/RZmBxyot3FyrHM7ZmophLmCgGgg3sSwdS3/6DD5ZBAnkvtBT9JTIBtQ5JGFzlJzr98meC10hNoYTu6nhIZCpqMy47ku67R5uJOWCtjcX6Zyf/0rhjokuGfHHidPy09S/BTrD5TlFBNj67TpInyJMU5OBzdrr4QWSJwOAxEUgpcvAFTOwwjeqcQ7q5VhToeDGzAn++GV73S4pe+e49N9t5UbO8AoKfbb3F8FvIEvUfLZz+TPwPYJgKUNAWPI354Lbjpe09oHgOD/hceP1IcmNi/Qem4NuYT/EM8Ko33wPA6+/vwvxpRuRdYQRU8AaQAOPHrDSpKT7tr/a3mxdlIX0NUG/hVBHgaFYsrpZVgzKaGODM+Yo+Wi6sVEu9EliW2zKPGsJnSpETzEhhrFeYGDI7hb6eMtUpjXpFIwZVkEgOYzXdrVpJLKmSXo12Ko3PSh2eOfjl3FKDbw6oHl3wFrMqUadeF6MOlWwMWUFliIOw2noTJBhe5zVwOxOUvkuN6LfIqnxLY4jONS52RVLuT3KWbJSwx2Vghwt3eN8EYG/NrFO4eiWy1dAsGceZlUKpwZD40o1OoMOB+WZyCLdAkb3OcJhnhxHHLeQFeGNQIDqfO5IZvADZUbdxqYr9dooy3AvR6+Hewk0P92HQafclh/vBKhvuL0kWC0cTOOb2g+3ypPfkUs2pnp3bb53GxZrAbOVkVT2dahIKOjaVnGrp1apmo9SqRatUxWpZtWmaMIMVzlwg2WSZ0mQMg6nYTt7EzkatSbTzrOa6UzjYqVX90fOQa9XJE508AU4w7FM1stpQSbQh1PoWXb0W1gvDIEtQ6olZz40hBblVkO/wLvbMSAQ9RFbgC3rGyf2xysASkmi1aB2Tp5ow0lQja/aiY1dPGiUS62MdgnAvRXFL4AKEizFdg0zSS+hTWqVSc3vt8ReIFv9g/j7KqzEAyVZ7Y5z6KVLdcUuVQ6odthINXY1430hQ67a77kmUJFmKD3xo2n0zW991GB54yOqxVQauOZl+kIVlc+v5iadsnsmVJz8Z3yl8K0a2RRu0aLaVuE/5Rb4lZb85JR1kFrLre86tXYc2SmPcs9epWJcevbpt0+cYnR/pwQwGGZn0m2+Befa5+1fie+eVuuyKcRM2iBFr01Msbv+9eB7vffPdJ599UYfrmmUIIhzgawd/UeJs5ycYUTSBMhU4eEKEOuG4yHjbZ7+LLrnhpFNOO+N6fHilksUuCLDEepXOIqMg2eknP6sUbk2scl+bI8iA5YYsNWwRvhXeemGE0CtvvKxtJ/UZGVcRBDN8f8YBilIMxmoHAA==") format("woff2");
+    font-display: swap;
+  }
+
+  /* ── The Blend: GameGusto's approved token set, unchanged. Roles are
+     load-bearing — thrill for the one true action, charge for anything
+     interactive, warmth for the heat lamp, prices and the wordmark. ── */
+  :root {
+    --bg: #0e101c;
+    --bg2: #181b2e;
+    --surface: #1b1f36;
+    --line: rgba(198, 207, 228, 0.16);
+    --ink: #f0efe9;
+    --sub: #9aa3b8;
+    --thrill: #ff2e97;
+    --charge: #2de2e6;
+    --warmth: #ffc86a;
+    --glow: 1.4;
+    --scanline: 0.05;
+
+    --brand: "Press Start 2P", monospace;
+    --data: "Share Tech Mono", monospace;
+    --ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    /* The menu voice. A plate is described in serif; setting it against an
+       8-bit arcade face is the blend the palette is named for. */
+    --menu: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+
+    --measure: 63ch;
+    --gutter: clamp(20px, 5vw, 40px);
+  }
+
+  :root[data-theme="light"] {
+    --bg: #f2ecdd;
+    --bg2: #fbf6ea;
+    --surface: #fdf9ef;
+    --line: rgba(45, 52, 80, 0.22);
+    --ink: #232b4a;
+    --sub: #5f6480;
+    /* #ff2e97 fails contrast on cream; raspberry is the text-safe value. */
+    --thrill: #d6187f;
+    --charge: #0b76d8;
+    --warmth: #a9770e;
+    --glow: 0.5;
+    --scanline: 0;
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f2ecdd;
+      --bg2: #fbf6ea;
+      --surface: #fdf9ef;
+      --line: rgba(45, 52, 80, 0.22);
+      --ink: #232b4a;
+      --sub: #5f6480;
+      --thrill: #d6187f;
+      --charge: #0b76d8;
+      --warmth: #a9770e;
+      --glow: 0.5;
+      --scanline: 0;
+    }
+  }
+  /* The viewer's toggle wins over the OS preference, in both directions. */
+  :root[data-theme="dark"] {
+    --bg: #0e101c;
+    --bg2: #181b2e;
+    --surface: #1b1f36;
+    --line: rgba(198, 207, 228, 0.16);
+    --ink: #f0efe9;
+    --sub: #9aa3b8;
+    --thrill: #ff2e97;
+    --charge: #2de2e6;
+    --warmth: #ffc86a;
+    --glow: 1.4;
+    --scanline: 0.05;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background:
+      radial-gradient(120% 60% at 50% -10%, var(--bg2) 0%, var(--bg) 62%);
+    background-attachment: fixed;
+    color: var(--ink);
+    font-family: var(--ui);
+    font-size: 17px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* The CRT whisper, dark only — the token is 0 in light. */
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    pointer-events: none;
+    opacity: var(--scanline);
+    background: repeating-linear-gradient(
+      0deg, rgba(0,0,0,.55) 0, rgba(0,0,0,.55) 1px, transparent 1px, transparent 3px);
+  }
+
+  /* The menu card: a single dish is read down a column, so is a menu. */
+  .wrap {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 0 var(--gutter) 96px;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--charge);
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
+
+  /* ── the pass: each section is a course, lit by an amber lamp ── */
+  .course {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding-top: 68px;
+  }
+  .lamp {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-family: var(--brand);
+    font-size: 8px;
+    letter-spacing: .2em;
+    text-transform: uppercase;
+    color: var(--warmth);
+  }
+  .lamp::before, .lamp::after {
+    content: "";
+    height: 1px;
+    background: linear-gradient(90deg,
+      transparent, color-mix(in srgb, var(--warmth) 65%, transparent), transparent);
+    box-shadow: 0 0 calc(9px * var(--glow))
+      color-mix(in srgb, var(--warmth) 40%, transparent);
+  }
+  .lamp::before { width: 20px; flex: none; background: linear-gradient(90deg,
+      color-mix(in srgb, var(--warmth) 65%, transparent), transparent); }
+  .lamp::after { flex: 1; }
+
+  h1, h2, h3 { font-family: var(--menu); font-weight: 600; text-wrap: balance; margin: 0; }
+  h1 { font-size: clamp(38px, 7vw, 66px); line-height: 1.02; letter-spacing: -.02em; }
+  h2 { font-size: clamp(26px, 4vw, 36px); line-height: 1.12; letter-spacing: -.01em; }
+  h3 { font-size: 20px; line-height: 1.25; }
+  p { margin: 0; max-width: var(--measure); }
+  .lede { font-size: clamp(18px, 2.2vw, 21px); color: var(--sub); }
+
+  /* ── masthead ── */
+  .masthead {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 30px 0 0;
+  }
+  .masthead svg { width: 26px; height: 26px; }
+  .wordmark {
+    font-family: var(--brand);
+    font-size: 11px;
+    letter-spacing: .16em;
+    color: var(--warmth);
+    text-shadow: 0 0 calc(11px * var(--glow))
+      color-mix(in srgb, var(--warmth) 55%, transparent);
+  }
+  .theme-toggle {
+    margin-left: auto;
+    background: none;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    color: var(--sub);
+    font-family: var(--data);
+    font-size: 11px;
+    padding: 6px 13px;
+    cursor: pointer;
+  }
+  .theme-toggle:hover { color: var(--ink); border-color: var(--charge); }
+
+  /* ── menu header ── */
+  .bill {
+    padding-top: clamp(40px, 7vw, 72px);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    align-items: center;
+    text-align: center;
+  }
+  .bill .eyebrow {
+    font-family: var(--brand);
+    font-size: 8.5px;
+    letter-spacing: .26em;
+    text-transform: uppercase;
+    color: var(--warmth);
+  }
+  .bill h1 { max-width: 15ch; }
+  .bill h1 em {
+    font-style: italic;
+    color: var(--warmth);
+    text-shadow: 0 0 calc(26px * var(--glow))
+      color-mix(in srgb, var(--warmth) 32%, transparent);
+  }
+  .bill .lede { max-width: 52ch; }
+  .prix {
+    font-family: var(--data);
+    font-size: 12px;
+    letter-spacing: .08em;
+    color: var(--sub);
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .prix b { color: var(--warmth); font-weight: 400; }
+  .prix .dot { opacity: .5; }
+
+  /* a centred ornament ruling off the header */
+  .rule {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    width: min(100%, 340px);
+    margin: 6px auto 0;
+    color: color-mix(in srgb, var(--warmth) 70%, transparent);
+  }
+  .rule::before, .rule::after {
+    content: ""; flex: 1; height: 1px;
+    background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--warmth) 55%, transparent));
+  }
+  .rule::after { transform: scaleX(-1); }
+  .rule span { font-size: 12px; }
+
+  /* ── the demo: order a plate ── */
+  .pass {
+    margin-top: 6px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: linear-gradient(180deg,
+      color-mix(in srgb, var(--warmth) 7%, transparent), transparent 42%),
+      var(--bg2);
+    padding: clamp(18px, 3vw, 26px);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    position: relative;
+    overflow: hidden;
+    text-align: left;
+    align-self: stretch;
+  }
+  /* the heat lamp above the pass */
+  .pass::before {
+    content: "";
+    position: absolute;
+    top: -1px; left: 12%; right: 12%;
+    height: 2px;
+    border-radius: 2px;
+    background: linear-gradient(90deg, transparent, var(--warmth), transparent);
+    box-shadow: 0 0 calc(18px * var(--glow)) color-mix(in srgb, var(--warmth) 60%, transparent);
+  }
+  .order-row { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
+  .order-row .ask {
+    font-family: var(--data);
+    font-size: 12.5px;
+    color: var(--sub);
+    margin-right: 4px;
+  }
+  .chip {
+    font-family: var(--ui);
+    font-size: 14px;
+    padding: 8px 15px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--charge) 42%, transparent);
+    background: color-mix(in srgb, var(--charge) 10%, transparent);
+    color: var(--charge);
+    cursor: pointer;
+    transition: background .18s ease, transform .18s ease;
+  }
+  .chip:hover { background: color-mix(in srgb, var(--charge) 20%, transparent); }
+  .chip[aria-pressed="true"] {
+    background: color-mix(in srgb, var(--charge) 26%, transparent);
+    transform: translateY(-1px);
+  }
+
+  .clock {
+    font-family: var(--data);
+    font-size: 12px;
+    color: var(--sub);
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    font-variant-numeric: tabular-nums;
+  }
+  .clock b { color: var(--warmth); font-size: 15px; font-weight: 400; }
+
+  /* the plate — the app's own recommendation card, same anatomy */
+  .plate {
+    border: 1px solid color-mix(in srgb, var(--charge) 40%, transparent);
+    border-radius: 14px;
+    background: var(--surface);
+    padding: 16px 17px 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    box-shadow: 0 0 calc(20px * var(--glow))
+      color-mix(in srgb, var(--charge) 14%, transparent);
+  }
+  .plate[hidden] { display: none; }
+  .kicker {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: var(--brand);
+    font-size: 7.5px;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: var(--thrill);
+  }
+  .kicker::before {
+    content: "";
+    width: 0; height: 0;
+    border-left: 5px solid var(--thrill);
+    border-top: 3.5px solid transparent;
+    border-bottom: 3.5px solid transparent;
+  }
+  .plate h3 { font-family: var(--ui); font-weight: 700; font-size: 21px; }
+  .plate .meta { font-family: var(--data); font-size: 12px; color: var(--sub); }
+  .plate .why { font-size: 15.5px; line-height: 1.5; }
+  .price {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 13px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--warmth) 11%, transparent);
+    border: 1px dashed color-mix(in srgb, var(--warmth) 50%, transparent);
+  }
+  .price b {
+    font-family: var(--data);
+    font-size: 16px;
+    color: var(--warmth);
+    white-space: nowrap;
+  }
+  .price span { font-family: var(--data); font-size: 11.5px; color: var(--sub); line-height: 1.45; }
+  .alts { font-family: var(--data); font-size: 12px; color: var(--sub); }
+  .alts i { color: var(--charge); font-style: normal; }
+  .sample-note { font-family: var(--data); font-size: 11px; color: var(--sub); opacity: .8; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .plate.arriving { animation: plate-up .42s cubic-bezier(.2,.7,.3,1) both; }
+    @keyframes plate-up {
+      from { opacity: 0; transform: translateY(9px); }
+      to { opacity: 1; transform: none; }
+    }
+  }
+
+  /* ══ à la carte: the menu proper ══ */
+  .group { display: flex; flex-direction: column; gap: 6px; }
+  .group + .group { margin-top: 30px; }
+  .group-head {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    padding-bottom: 6px;
+  }
+  .group-head .numeral {
+    font-family: var(--menu);
+    font-style: italic;
+    font-size: 21px;
+    color: var(--warmth);
+    min-width: 1.4em;
+  }
+  .group-head .fr { font-family: var(--menu); font-size: 22px; }
+  .group-head .en {
+    font-family: var(--data);
+    font-size: 11px;
+    letter-spacing: .06em;
+    color: var(--sub);
+    text-transform: lowercase;
+  }
+  .dish { padding: 13px 0; border-top: 1px solid var(--line); }
+  .group .dish:first-of-type { border-top: none; }
+  .dish-top { display: flex; align-items: baseline; gap: 10px; }
+  .dish .name {
+    font-family: var(--menu);
+    font-size: 19px;
+    color: var(--ink);
+    flex: 0 1 auto;
+  }
+  .dish .name .new {
+    font-family: var(--brand);
+    font-size: 6.5px;
+    letter-spacing: .12em;
+    vertical-align: middle;
+    margin-left: 8px;
+    padding: 3px 6px 2px;
+    border-radius: 999px;
+    color: var(--thrill);
+    border: 1px solid color-mix(in srgb, var(--thrill) 45%, transparent);
+    text-transform: uppercase;
+  }
+  .dish .lead {
+    flex: 1;
+    align-self: center;
+    border-bottom: 1px dotted color-mix(in srgb, var(--sub) 55%, transparent);
+    min-width: 18px;
+    transform: translateY(-3px);
+  }
+  .dish .tab {
+    flex: none;
+    font-family: var(--data);
+    font-size: 13px;
+    color: var(--warmth);
+    white-space: nowrap;
+  }
+  .dish .desc {
+    margin-top: 6px;
+    font-size: 15.5px;
+    line-height: 1.5;
+    color: var(--sub);
+    max-width: 60ch;
+  }
+
+  /* the tasting flight — the actual rating chips, plated */
+  .tasting {
+    margin-top: 10px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--bg2);
+    padding: 16px 17px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .taste-line { display: flex; flex-direction: column; gap: 8px; }
+  .taste-q {
+    font-family: var(--menu);
+    font-style: italic;
+    font-size: 16px;
+    color: var(--ink);
+  }
+  .tchips { display: flex; flex-wrap: wrap; gap: 7px; }
+  .tchip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 11px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    font-size: 13px;
+    color: var(--ink);
+  }
+  .tchip.on {
+    border-color: color-mix(in srgb, var(--thrill) 60%, transparent);
+    background: color-mix(in srgb, var(--thrill) 15%, var(--surface));
+  }
+  .tchip .em { font-size: 15px; line-height: 1; }
+  .taste-note {
+    font-family: var(--data);
+    font-size: 12.5px;
+    color: var(--sub);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px 11px;
+    background: var(--surface);
+  }
+  .taste-note .cursor { color: var(--charge); }
+
+  /* ── l'addition (the arithmetic) ── */
+  .ledger {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 14px;
+  }
+  .path {
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 20px;
+    background: var(--bg2);
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+  .path.lit {
+    border-color: color-mix(in srgb, var(--warmth) 45%, transparent);
+    box-shadow: 0 0 calc(22px * var(--glow))
+      color-mix(in srgb, var(--warmth) 13%, transparent);
+  }
+  .path .amount {
+    font-family: var(--data);
+    font-size: 34px;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    color: var(--sub);
+  }
+  .path.lit .amount { color: var(--warmth); }
+  .path .label {
+    font-family: var(--data);
+    font-size: 11.5px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--sub);
+  }
+  .path ul { margin: 4px 0 0; padding-left: 17px; display: flex; flex-direction: column; gap: 5px; }
+  .path li { font-size: 14.5px; color: var(--sub); }
+
+  /* ── closing ── */
+  .close {
+    margin-top: 78px;
+    border-top: 1px solid var(--line);
+    padding-top: 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    align-items: center;
+    text-align: center;
+  }
+  .cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 30px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--thrill) 58%, transparent);
+    background: color-mix(in srgb, var(--thrill) 20%, var(--bg2));
+    color: var(--ink);
+    font-size: 16px;
+    text-decoration: none;
+    box-shadow: 0 0 calc(24px * var(--glow))
+      color-mix(in srgb, var(--thrill) 26%, transparent);
+    transition: background .18s ease;
+  }
+  .cta:hover { background: color-mix(in srgb, var(--thrill) 32%, var(--bg2)); }
+  .fineprint { font-family: var(--data); font-size: 11.5px; color: var(--sub); }
+
+  @media (max-width: 540px) {
+    .group-head { flex-wrap: wrap; gap: 6px 10px; }
+    .dish .desc { font-size: 15px; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <!-- The Panel mark: one logo, no contextual variants. -->
+    <svg viewBox="0 0 64 64" role="img" aria-label="GameGusto">
+      <g fill="none" stroke="currentColor" stroke-width="4.5"
+         stroke-linecap="round" stroke-linejoin="round">
+        <rect x="8" y="44" width="48" height="10" rx="5" />
+        <path d="M22 44V28" />
+      </g>
+      <circle cx="22" cy="19" r="8.5" fill="#ff2e97" />
+      <circle cx="25.5" cy="16" r="2" fill="#fff" opacity=".85" />
+      <circle cx="40" cy="39" r="5" fill="#2de2e6" />
+      <circle cx="50" cy="39" r="5" fill="#2de2e6" />
+    </svg>
+    <span class="wordmark">GAMEGUSTO</span>
+    <button class="theme-toggle" id="themeToggle" type="button">theme</button>
+  </header>
+
+  <!-- ═══ the menu header ═══ -->
+  <section class="bill">
+    <span class="eyebrow">Ce soir · a table for one</span>
+    <h1>Your next game, <em>cooked&nbsp;to&nbsp;order</em>.</h1>
+    <p class="lede">
+      A prix-fixe kitchen for people who own too many games and still can't
+      decide. Tell it the mood and the time you've got; it serves one plate —
+      not a menu to scroll.
+    </p>
+    <div class="prix">
+      <span><b>Prix fixe</b>&nbsp; one plate a night</span>
+      <span class="dot">◆</span>
+      <span>the cover: <b>€0</b></span>
+      <span class="dot">◆</span>
+      <span>seatings from <b>~90 sec</b></span>
+    </div>
+    <div class="rule"><span>◆</span></div>
+  </section>
+
+  <!-- ═══ le plat du jour — the live moment ═══ -->
+  <section class="course">
+    <div class="lamp">Le plat du jour</div>
+    <h2>Order by mood. It plates the pick.</h2>
+    <div class="pass">
+      <div class="order-row">
+        <span class="ask">what are you in the mood for?</span>
+        <button class="chip" type="button" data-dish="short" aria-pressed="false">Short on time</button>
+        <button class="chip" type="button" data-dish="cosy" aria-pressed="false">Something cosy</button>
+        <button class="chip" type="button" data-dish="bite" aria-pressed="false">I want a challenge</button>
+      </div>
+
+      <div class="clock" id="clock" aria-live="polite">
+        <span id="clockLabel">the kitchen is waiting</span>
+        <b id="clockValue"></b>
+      </div>
+
+      <article class="plate" id="plate" hidden>
+        <div class="kicker">Tonight's pick</div>
+        <h3 id="dishTitle"></h3>
+        <div class="meta" id="dishMeta"></div>
+        <p class="why" id="dishWhy"></p>
+        <div class="price">
+          <b id="dishPrice"></b>
+          <span id="dishPriceNote"></span>
+        </div>
+        <div class="alts" id="dishAlts"></div>
+      </article>
+
+      <p class="sample-note">A sample plating. The real thing reads your own library and tonight's real prices.</p>
+    </div>
+  </section>
+
+  <!-- ═══ à la carte — the menu proper ═══ -->
+  <section class="course">
+    <div class="lamp">À la carte</div>
+    <h2>Everything the kitchen keeps on hand.</h2>
+    <p class="lede">
+      A whole app priced like a tasting menu — nothing here costs more than a
+      tap, and most of it happens while you're deciding what to say.
+    </p>
+
+    <!-- I · the pantry -->
+    <div class="group">
+      <div class="group-head">
+        <span class="numeral">I</span>
+        <span class="fr">Garde-manger</span>
+        <span class="en">— stocking the pantry</span>
+      </div>
+      <div class="dish">
+        <div class="dish-top">
+          <span class="name">Add a game <span class="new">new</span></span>
+          <span class="lead"></span>
+          <span class="tab">one tap</span>
+        </div>
+        <p class="desc">
+          Type a title and the kitchen finds the real dish straight from the
+          games catalogue — box art and the platforms it shipped on — then you
+          pick the one you own. No typos, no guessing which "Battlefront."
+        </p>
+      </div>
+      <div class="dish">
+        <div class="dish-top">
+          <span class="name">The pantry, filled in</span>
+          <span class="lead"></span>
+          <span class="tab">on the house</span>
+        </div>
+        <p class="desc">
+          Genre, length, review score and cover art arrive on their own, so a
+          library added in a hurry still reads like a proper shelf.
+        </p>
+      </div>
+    </div>
+
+    <!-- II · the tasting -->
+    <div class="group">
+      <div class="group-head">
+        <span class="numeral">II</span>
+        <span class="fr">À votre goût</span>
+        <span class="en">— tell it how it tasted</span>
+      </div>
+      <div class="dish">
+        <div class="dish-top">
+          <span class="name">Rate your plate <span class="new">new</span></span>
+          <span class="lead"></span>
+          <span class="tab">your two cents</span>
+        </div>
+        <p class="desc">
+          Rate a game your way — the critics aside — and it listens: leaning
+          toward what you loved, dropping what you sent back, and matching the
+          course to the time you've got tonight.
+        </p>
+      </div>
+
+      <div class="tasting">
+        <div class="taste-line">
+          <span class="taste-q">How was it?</span>
+          <div class="tchips">
+            <span class="tchip on"><span class="em">😋</span> Chef's kiss</span>
+            <span class="tchip"><span class="em">💎</span> Hidden gem</span>
+            <span class="tchip"><span class="em">🍟</span> Guilty pleasure</span>
+            <span class="tchip"><span class="em">😐</span> Bland</span>
+            <span class="tchip"><span class="em">🤢</span> Sent it back</span>
+          </div>
+        </div>
+        <div class="taste-line">
+          <span class="taste-q">What's it for?</span>
+          <div class="tchips">
+            <span class="tchip on"><span class="em">🥗</span> Starter</span>
+            <span class="tchip"><span class="em">🍖</span> Main</span>
+            <span class="tchip"><span class="em">🍰</span> Dessert</span>
+          </div>
+        </div>
+        <div class="taste-note">a word on why — “combat sings in twenty-minute bursts”<span class="cursor">▍</span></div>
+      </div>
+    </div>
+
+    <!-- III · the market -->
+    <div class="group">
+      <div class="group-head">
+        <span class="numeral">III</span>
+        <span class="fr">Prix du marché</span>
+        <span class="en">— tonight's prices</span>
+      </div>
+      <div class="dish">
+        <div class="dish-top">
+          <span class="name">Checked at market, tonight <span class="new">new</span></span>
+          <span class="lead"></span>
+          <span class="tab">no cover charge</span>
+        </div>
+        <p class="desc">
+          Before it serves, it reads your own regional store — your currency,
+          the real sale, the date it ends — and tells you to confirm before you
+          buy. Never a converted price pretending to be local.
+        </p>
+      </div>
+    </div>
+
+    <!-- IV · the chef remembers -->
+    <div class="group">
+      <div class="group-head">
+        <span class="numeral">IV</span>
+        <span class="fr">Le chef se souvient</span>
+        <span class="en">— and the table's always set</span>
+      </div>
+      <div class="dish">
+        <div class="dish-top">
+          <span class="name">Your usual, remembered</span>
+          <span class="lead"></span>
+          <span class="tab">compliments of the chef</span>
+        </div>
+        <p class="desc">
+          A few weeks of ratings and it stops offering the genre you politely
+          declined, and starts leading with the one you keep finishing.
+        </p>
+      </div>
+      <div class="dish">
+        <div class="dish-top">
+          <span class="name">A standing table</span>
+          <span class="lead"></span>
+          <span class="tab">always reserved</span>
+        </div>
+        <p class="desc">
+          Installs to your phone, tablet or Mac like an app — no store, no
+          download. It opens where you left off and stays out of the way the
+          rest of the week.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ l'addition — the arithmetic ═══ -->
+  <section class="course">
+    <div class="lamp">L'addition</div>
+    <h2>The expensive part of a games night isn't the game.</h2>
+    <p class="lede">
+      It's the deciding. Two ways through the same evening — same library, same
+      ninety minutes:
+    </p>
+
+    <div class="ledger">
+      <div class="path">
+        <div class="label">Browsing the store</div>
+        <div class="amount">~40 min</div>
+        <ul>
+          <li>Four storefronts, three wishlists</li>
+          <li>Sales you can't tell are actually sales</li>
+          <li>Reviews for a game you already own</li>
+          <li>Something long, started at 22:40</li>
+        </ul>
+      </div>
+      <div class="path lit">
+        <div class="label">Asking GameGusto</div>
+        <div class="amount">~1 min</div>
+        <ul>
+          <li>It already knows your library</li>
+          <li>It checks your regional store, in your currency</li>
+          <li>It fits the time you actually have</li>
+          <li>You play for eighty-nine minutes</li>
+        </ul>
+      </div>
+    </div>
+    <p>
+      Over a month of evenings, that's the difference between playing and
+      shopping. The games were always there — the hours went to finding them.
+    </p>
+  </section>
+
+  <!-- ═══ réservez ═══ -->
+  <div class="close">
+    <div class="rule"><span>◆</span></div>
+    <h2>The kitchen's open. Pull up a chair.</h2>
+    <a class="cta" href="https://d2yudrd885csdh.cloudfront.net">Take a seat →</a>
+    <p class="fineprint">
+      Private by design — one invited account, your library, nobody else's.
+    </p>
+  </div>
+</div>
+
+<script>
+  (function () {
+    // Sample plates. Illustrative of the shape of an answer, not live data —
+    // the page says so under the pass.
+    var MENU = {
+      short: {
+        title: "Death's Door",
+        meta: "action-adventure · ~9 h · Switch · not in your library",
+        why: "Tight, readable combat with real bite — it scratches the same itch as the Hollow Knight you finished, but in thirty-minute sessions that respect a school night.",
+        price: "79 kr.",
+        note: "on the Danish eShop right now (−60%, ends 28 Jul) — worth confirming on the store before you buy.",
+        alts: ["Tunic", "Cult of the Lamb", "Blasphemous"]
+      },
+      cosy: {
+        title: "A Short Hike",
+        meta: "exploration · ~2 h · Switch, PC · not in your library",
+        why: "No fail state, no timer, no menus to learn. You climb a mountain, talk to some birds, and it's over before you're tired — the rare game that fits an evening rather than eating it.",
+        price: "55 kr.",
+        note: "on the Danish eShop, full price and rarely discounted — cheap enough not to wait for a sale.",
+        alts: ["Chicory", "Wytchwood", "Spiritfarer"]
+      },
+      bite: {
+        title: "Celeste",
+        meta: "platformer · ~12 h · Switch, PC · not in your library",
+        why: "Brutal in the way you asked for and kind about it — instant restarts, no lives, and an assist mode you can ignore. The difficulty is the point, not a wall.",
+        price: "44 kr.",
+        note: "on the Danish eShop (−80%, ends 31 Jul) — the cheapest it goes.",
+        alts: ["Hollow Knight: Silksong", "Dead Cells", "Katana ZERO"]
+      }
+    };
+
+    var chips = Array.prototype.slice.call(document.querySelectorAll(".chip"));
+    var plate = document.getElementById("plate");
+    var clockLabel = document.getElementById("clockLabel");
+    var clockValue = document.getElementById("clockValue");
+    var timer = null;
+
+    function serve(key, chip) {
+      var dish = MENU[key];
+      if (!dish) return;
+
+      chips.forEach(function (c) { c.setAttribute("aria-pressed", String(c === chip)); });
+
+      // Run a real clock while the plate is prepared, so the claim on this
+      // page is one the reader watches rather than one they're told.
+      clearInterval(timer);
+      var started = Date.now();
+      clockLabel.textContent = "cooking…";
+      clockValue.textContent = "0.0s";
+      plate.hidden = true;
+
+      timer = setInterval(function () {
+        clockValue.textContent = ((Date.now() - started) / 1000).toFixed(1) + "s";
+      }, 87);
+
+      setTimeout(function () {
+        clearInterval(timer);
+        var elapsed = ((Date.now() - started) / 1000).toFixed(1);
+
+        document.getElementById("dishTitle").textContent = dish.title;
+        document.getElementById("dishMeta").textContent = dish.meta;
+        document.getElementById("dishWhy").textContent = dish.why;
+        document.getElementById("dishPrice").textContent = dish.price;
+        document.getElementById("dishPriceNote").textContent = dish.note;
+
+        var alts = document.getElementById("dishAlts");
+        alts.textContent = "Also worth a look: ";
+        dish.alts.forEach(function (name, i) {
+          var em = document.createElement("i");
+          em.textContent = name;
+          alts.appendChild(em);
+          if (i < dish.alts.length - 1) alts.appendChild(document.createTextNode(", "));
+        });
+
+        clockLabel.textContent = "served in";
+        clockValue.textContent = elapsed + "s";
+
+        plate.hidden = false;
+        plate.classList.remove("arriving");
+        void plate.offsetWidth;
+        plate.classList.add("arriving");
+      }, 1400);
+    }
+
+    chips.forEach(function (chip) {
+      chip.addEventListener("click", function () { serve(chip.dataset.dish, chip); });
+    });
+
+    // Theme: follow the OS until the viewer says otherwise.
+    var toggle = document.getElementById("themeToggle");
+    toggle.addEventListener("click", function () {
+      var current = document.documentElement.getAttribute("data-theme");
+      if (!current) {
+        current = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      }
+      document.documentElement.setAttribute("data-theme", current === "dark" ? "light" : "dark");
+    });
+  })();
+</script>

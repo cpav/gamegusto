@@ -1,0 +1,973 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GameGusto Architecture</title>
+
+<style>
+  @font-face {
+    font-family: "Press Start 2P";
+    src: url("data:font/woff2;base64,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") format("woff2");
+    font-display: block;
+  }
+  @font-face {
+    font-family: "Share Tech Mono";
+    src: url("data:font/woff2;base64,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") format("woff2");
+    font-display: swap;
+  }
+
+  /* Layout: one reading column for prose, full-width drafting-grid figures for
+     the mechanisms; "The Blend" tokens, dark first, light mirrored. */
+  :root {
+    --bg: #0e101c;
+    --bg2: #181b2e;
+    --surface: #1b1f36;
+    --line: rgba(198, 207, 228, 0.16);
+    --line-strong: rgba(198, 207, 228, 0.34);
+    --grid: rgba(45, 226, 230, 0.05);
+    --ink: #f0efe9;
+    --sub: #9aa3b8;
+    --thrill: #ff2e97;
+    --charge: #2de2e6;
+    --warmth: #ffc86a;
+    --glow: 1.3;
+
+    --menu: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    --ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --data: "Share Tech Mono", ui-monospace, Menlo, monospace;
+    --brand: "Press Start 2P", ui-monospace, monospace;
+
+    --measure: 66ch;
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #f2ecdd;
+      --bg2: #fbf6ea;
+      --surface: #fdf9ef;
+      --line: rgba(45, 52, 80, 0.2);
+      --line-strong: rgba(45, 52, 80, 0.4);
+      --grid: rgba(11, 118, 216, 0.06);
+      --ink: #232b4a;
+      --sub: #5a6079;
+      --thrill: #d6187f;
+      --charge: #0b76d8;
+      --warmth: #a9770e;
+      --glow: 0.4;
+      color-scheme: light;
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #f2ecdd;
+    --bg2: #fbf6ea;
+    --surface: #fdf9ef;
+    --line: rgba(45, 52, 80, 0.2);
+    --line-strong: rgba(45, 52, 80, 0.4);
+    --grid: rgba(11, 118, 216, 0.06);
+    --ink: #232b4a;
+    --sub: #5a6079;
+    --thrill: #d6187f;
+    --charge: #0b76d8;
+    --warmth: #a9770e;
+    --glow: 0.4;
+    color-scheme: light;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: radial-gradient(120% 50% at 50% -8%, var(--bg2) 0%, var(--bg) 60%) fixed, var(--bg);
+    color: var(--ink);
+    font-family: var(--ui);
+    font-size: 16.5px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--charge); text-underline-offset: 3px; }
+  :focus-visible { outline: 2px solid var(--charge); outline-offset: 3px; border-radius: 4px; }
+  code, .mono { font-family: var(--data); font-size: .92em; }
+
+  .wrap {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding-inline: clamp(16px, 4vw, 40px);
+    padding-block: 0 88px;
+  }
+  .prose { max-width: var(--measure); }
+  p { margin: 0; }
+
+  h1, h2, h3 { font-family: var(--menu); font-weight: 600; margin: 0; text-wrap: balance; }
+  h1 { font-size: clamp(36px, 6vw, 60px); line-height: 1.04; letter-spacing: -.02em; }
+  h2 { font-size: clamp(26px, 3.6vw, 36px); line-height: 1.12; letter-spacing: -.01em; }
+  h3 { font-size: 19px; line-height: 1.3; }
+  .lede { font-size: clamp(17px, 2vw, 19.5px); color: var(--sub); }
+
+  .eyebrow {
+    display: flex; align-items: center; gap: 12px;
+    font-family: var(--brand); font-size: 8px; letter-spacing: .2em;
+    text-transform: uppercase; color: var(--warmth);
+  }
+  .eyebrow::after {
+    content: ""; flex: 1; height: 1px; max-width: 160px;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--warmth) 60%, transparent), transparent);
+  }
+
+  /* ── masthead + section index ── */
+  .masthead { display: flex; align-items: center; gap: 11px; padding-top: 28px; flex-wrap: wrap; }
+  .masthead svg { width: 26px; height: 26px; color: var(--ink); }
+  .wordmark {
+    font-family: var(--brand); font-size: 11px; letter-spacing: .16em; color: var(--warmth);
+    text-shadow: 0 0 calc(10px * var(--glow)) color-mix(in srgb, var(--warmth) 50%, transparent);
+  }
+  .masthead .crumb { font-family: var(--data); font-size: 12px; color: var(--sub); }
+  .masthead .menu-link { margin-left: auto; font-family: var(--data); font-size: 12px; }
+
+  .toc {
+    position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+    margin-top: 22px; padding-block: 10px;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(6px);
+    border-bottom: 1px solid var(--line);
+  }
+  .toc ol {
+    list-style: none; margin: 0; padding: 0;
+    display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none;
+  }
+  .toc ol::-webkit-scrollbar { display: none; }
+  .toc a {
+    display: block; white-space: nowrap; text-decoration: none;
+    font-family: var(--data); font-size: 12.5px; color: var(--sub);
+    padding: 5px 11px; border-radius: 999px; border: 1px solid transparent;
+  }
+  .toc a:hover { color: var(--ink); border-color: var(--line-strong); }
+
+  /* ── hero ── */
+  .hero { padding-top: clamp(40px, 7vw, 76px); display: grid; gap: 18px; }
+  .hero h1 em { font-style: italic; color: var(--warmth); }
+  .spec {
+    display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 6px;
+    font-family: var(--data); font-size: 13px; color: var(--sub);
+    font-variant-numeric: tabular-nums;
+  }
+  .spec b { color: var(--ink); font-weight: 400; }
+
+  /* ── sections ── */
+  .sec { padding-top: 76px; display: grid; gap: 18px; scroll-margin-top: 64px; }
+  .sec > * { min-width: 0; }
+
+  /* figures sit on drafting paper */
+  .fig {
+    margin: 6px 0 0;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background-color: var(--bg2);
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 24px 24px;
+    padding: clamp(10px, 2vw, 18px);
+  }
+  .fig .scroll { overflow-x: auto; }
+  .fig svg { display: block; width: 100%; height: auto; min-width: 860px; }
+  .fig figcaption {
+    margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line);
+    font-size: 14.5px; color: var(--sub); max-width: 80ch;
+  }
+  .fig figcaption b { color: var(--thrill); font-weight: 600; }
+
+  /* SVG vocabulary, all through tokens so both themes read */
+  .bx { fill: var(--surface); stroke: var(--line-strong); stroke-width: 1; }
+  .bx-in { fill: var(--bg2); stroke: var(--line-strong); stroke-width: 1; }
+  .hot.bx-in { stroke: var(--thrill); stroke-width: 1.6; }
+  .grp { fill: none; stroke: var(--sub); stroke-width: 1; stroke-dasharray: 6 5; opacity: .7; }
+  .frame { fill: none; stroke: var(--warmth); stroke-width: 1; stroke-dasharray: 3 4; opacity: .8; }
+  .life { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 4 5; }
+  .link { stroke: var(--line-strong); stroke-width: 1; }
+  .ar { stroke: var(--sub); stroke-width: 1.4; fill: none; }
+  .ar.hot { stroke: var(--thrill); stroke-width: 2; }
+  .mk { fill: var(--sub); }
+  .mk-hot { fill: var(--thrill); }
+  .t { font: 600 14px var(--ui); fill: var(--ink); }
+  .t2 { font: 600 13px var(--ui); fill: var(--ink); }
+  .ts { font: 12px var(--data); fill: var(--sub); }
+  .tl { font: 12px var(--data); fill: var(--sub); }
+  .tl.hot { fill: var(--thrill); }
+  .gl { font: 12px var(--data); letter-spacing: .08em; fill: var(--warmth); }
+
+  /* ── notes under a figure: label + sentence ── */
+  .notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px 26px; }
+  .note h3 { font-family: var(--ui); font-size: 15px; font-weight: 650; margin-bottom: 4px; }
+  .note p { font-size: 14.5px; color: var(--sub); }
+
+  /* ── services ledger ── */
+  .ledger { border-top: 1px solid var(--line); }
+  .row {
+    display: grid; grid-template-columns: minmax(150px, 210px) minmax(0, 1fr);
+    gap: 6px 28px; padding: 16px 0; border-bottom: 1px solid var(--line);
+  }
+  .row > * { min-width: 0; }
+  .row .name { font-family: var(--menu); font-size: 20px; line-height: 1.25; }
+  .row .name small { display: block; font-family: var(--data); font-size: 12px; color: var(--sub); margin-top: 3px; }
+  .row .job { font-size: 15.5px; }
+  .row .cfg { margin-top: 7px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    font-family: var(--data); font-size: 12px; color: var(--sub);
+    border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px;
+    background: var(--surface); overflow-wrap: anywhere;
+  }
+  .chip.flag { color: var(--thrill); border-color: color-mix(in srgb, var(--thrill) 45%, transparent); }
+  .group-label {
+    font-family: var(--data); font-size: 12px; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--warmth); padding-top: 22px; padding-bottom: 6px;
+  }
+
+  /* ── two-column split for backend/frontend detail ── */
+  .split { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px 34px; }
+  .split > * { min-width: 0; }
+  .kv { margin: 0; display: grid; gap: 0; border-top: 1px solid var(--line); }
+  .kv div { display: grid; grid-template-columns: 128px minmax(0, 1fr); gap: 14px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+  .kv dt { font-family: var(--data); font-size: 12.5px; color: var(--sub); padding-top: 2px; }
+  .kv dd { margin: 0; font-size: 15px; min-width: 0; }
+  .routes { font-family: var(--data); font-size: 13px; display: grid; gap: 3px; }
+  .routes span { color: var(--sub); display: inline-block; min-width: 58px; }
+  .tools { display: flex; flex-wrap: wrap; gap: 6px; }
+
+  /* ── tables (data) ── */
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 14.5px; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-family: var(--data); font-size: 12px; font-weight: 400; color: var(--sub); letter-spacing: .06em; text-transform: uppercase; background: var(--bg2); }
+  tr:last-child td { border-bottom: none; }
+  td code { color: var(--ink); }
+  td.by { font-family: var(--data); font-size: 12.5px; color: var(--sub); white-space: nowrap; }
+  td.by.user { color: var(--thrill); }
+
+  /* ── code layers: bars to one scale ── */
+  .layers { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 0 14px; }
+  .rail { position: relative; grid-row: 1 / span 5; }
+  .rail::before { content: ""; position: absolute; left: 12px; top: 12px; bottom: 16px; width: 1.5px; background: var(--line-strong); }
+  .rail::after {
+    content: ""; position: absolute; left: 7px; bottom: 8px;
+    border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 9px solid var(--line-strong);
+  }
+  .bar-row { display: grid; grid-template-columns: minmax(110px, 150px) minmax(0, 1fr) 64px; gap: 14px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--line); }
+  .bar-row.sep { margin-top: 18px; border-top: 1px solid var(--line); }
+  .bar-row .who { font-family: var(--data); font-size: 13.5px; }
+  .bar-row .who small { display: block; font-family: var(--ui); font-size: 12.5px; color: var(--sub); }
+  .bar { height: 10px; border-radius: 3px; background: var(--line); position: relative; overflow: hidden; }
+  .bar i { position: absolute; inset: 0 auto 0 0; border-radius: 3px; background: color-mix(in srgb, var(--charge) 70%, var(--surface)); }
+  .bar.test i { background: color-mix(in srgb, var(--warmth) 75%, var(--surface)); }
+  .bar-row .n { font-family: var(--data); font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; color: var(--sub); }
+  .spacer { grid-column: 1; }
+
+  /* ── lessons ── */
+  .lessons { display: grid; grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)); gap: 14px; }
+  .lesson { border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; background: var(--surface); display: grid; gap: 8px; align-content: start; }
+  .lesson h3 { font-size: 18px; }
+  .lesson dl { margin: 0; display: grid; gap: 6px; }
+  .lesson dl div { display: grid; grid-template-columns: 62px minmax(0, 1fr); gap: 10px; }
+  .lesson dt { font-family: var(--data); font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--sub); padding-top: 3px; }
+  .lesson dd { margin: 0; font-size: 14.5px; }
+  .lesson dd.fix { color: var(--ink); }
+  .lesson dt.fix { color: var(--charge); }
+
+  /* ── deploy steps: a real sequence, so numbered ── */
+  .steps { list-style: none; margin: 0; padding: 0; counter-reset: s; border-top: 1px solid var(--line); }
+  .steps li { counter-increment: s; display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+  .steps li::before { content: counter(s); font-family: var(--menu); font-style: italic; font-size: 24px; line-height: 1.1; color: var(--warmth); }
+  .steps code { color: var(--charge); }
+  .steps p { color: var(--sub); font-size: 15px; margin-top: 3px; }
+  .steps strong { font-weight: 600; color: var(--ink); }
+
+  /* ── quality figures ── */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .stat { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; background: var(--surface); }
+  .stat b { display: block; font-family: var(--data); font-size: 28px; font-weight: 400; line-height: 1.1; font-variant-numeric: tabular-nums; color: var(--warmth); }
+  .stat span { font-size: 13.5px; color: var(--sub); }
+  ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; color: var(--sub); max-width: var(--measure); }
+  ul.plain b { color: var(--ink); font-weight: 600; }
+
+  .foot {
+    margin-top: 80px; padding-top: 28px; border-top: 1px solid var(--line);
+    display: flex; flex-wrap: wrap; gap: 14px 28px; align-items: baseline;
+    font-family: var(--data); font-size: 13px; color: var(--sub);
+  }
+
+  @media (max-width: 560px) {
+    .row { grid-template-columns: 1fr; }
+    .kv div { grid-template-columns: 1fr; gap: 2px; }
+    .bar-row { grid-template-columns: minmax(0, 1fr) 56px; }
+    .bar-row .bar { grid-column: 1 / -1; grid-row: 2; }
+    .lesson dl div { grid-template-columns: 1fr; gap: 0; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <svg viewBox="0 0 64 64" role="img" aria-label="GameGusto">
+      <g fill="none" stroke="currentColor" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="8" y="44" width="48" height="10" rx="5" />
+        <path d="M22 44V28" />
+      </g>
+      <circle cx="22" cy="19" r="8.5" fill="#ff2e97" />
+      <circle cx="25.5" cy="16" r="2" fill="#fff" opacity=".85" />
+      <circle cx="40" cy="39" r="5" fill="#2de2e6" />
+      <circle cx="50" cy="39" r="5" fill="#2de2e6" />
+    </svg>
+    <span class="wordmark">GAMEGUSTO</span>
+    <span class="crumb">/ architecture</span>
+    <a class="menu-link" href="https://claude.ai/code/artifact/532c41b4-f0d2-40e3-b6d2-f6ebf1a96621">Front of house: the menu →</a>
+  </header>
+
+  <nav class="toc" aria-label="Sections">
+    <ol>
+      <li><a href="#flow">Request path</a></li>
+      <li><a href="#services">AWS services</a></li>
+      <li><a href="#backend">Backend</a></li>
+      <li><a href="#frontend">Frontend</a></li>
+      <li><a href="#data">Data</a></li>
+      <li><a href="#code">Code</a></li>
+      <li><a href="#security">Security</a></li>
+      <li><a href="#lessons">Lessons</a></li>
+      <li><a href="#ship">Deploy</a></li>
+      <li><a href="#quality">Quality</a></li>
+    </ol>
+  </nav>
+
+  <section class="hero">
+    <div class="eyebrow">Back of house</div>
+    <h1>The kitchen behind <em>the menu</em>.</h1>
+    <p class="lede prose">
+      How a mood typed on a phone becomes a recommendation that streams back
+      word by word. GameGusto is a Claude agent on Amazon Bedrock with a small
+      serverless stack around it, all in one AWS region, all defined in
+      Terraform, and scaled to zero when nobody is ordering.
+    </p>
+    <div class="spec" aria-label="System at a glance">
+      <span><b>eu-north-1</b> region</span>
+      <span><b>9</b> AWS services</span>
+      <span><b>27</b> stack resources</span>
+      <span><b>18</b> API routes</span>
+      <span><b>11</b> agent tools</span>
+      <span><b>260</b> tests</span>
+      <span><b>81</b> games in the live library</span>
+    </div>
+  </section>
+
+  <!-- ═════════ request path ═════════ -->
+  <section class="sec" id="flow">
+    <div class="eyebrow">The floor plan</div>
+    <h2>One request, end to end</h2>
+    <p class="lede prose">
+      CloudFront is the only public door. It serves the app from a private S3
+      bucket and forwards <code>/api/*</code> to a Lambda function. Inside the
+      function, the agent calls Bedrock, the database and two outside APIs.
+    </p>
+
+    <figure class="fig">
+      <div class="scroll">
+        <svg viewBox="0 0 1120 530" role="img"
+             aria-label="Request path: the browser talks only to CloudFront. CloudFront serves static files from a private S3 bucket and forwards API calls, signed, to a Lambda Function URL in streaming mode. The Lambda calls Bedrock, DynamoDB, SSM and CloudWatch inside AWS, and Brave Search and IGDB outside it. Cognito handles sign-in; the Lambda verifies tokens against Cognito's public keys.">
+          <defs>
+            <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0 L10 5 L0 10 z" class="mk" />
+            </marker>
+            <marker id="ahh" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0 L10 5 L0 10 z" class="mk-hot" />
+            </marker>
+          </defs>
+
+          <!-- AWS boundary -->
+          <rect class="grp" x="192" y="20" width="764" height="492" rx="16" />
+          <text class="gl" x="940" y="44" text-anchor="end">AWS · EU-NORTH-1</text>
+          <text class="gl" x="1042" y="390" text-anchor="middle">OUTSIDE AWS</text>
+
+          <!-- browser -->
+          <rect class="bx" x="16" y="200" width="150" height="104" rx="10" />
+          <text class="t" x="91" y="238" text-anchor="middle">Browser</text>
+          <text class="ts" x="91" y="258" text-anchor="middle">installed PWA</text>
+          <text class="ts" x="91" y="276" text-anchor="middle">service worker</text>
+
+          <!-- cloudfront -->
+          <rect class="bx" x="222" y="40" width="184" height="250" rx="10" />
+          <text class="t" x="314" y="64" text-anchor="middle">CloudFront</text>
+          <text class="ts" x="314" y="80" text-anchor="middle">PriceClass_100</text>
+          <rect class="bx-in" x="236" y="88" width="156" height="40" rx="6" />
+          <text class="t2" x="314" y="105" text-anchor="middle">/*  static</text>
+          <text class="ts" x="314" y="121" text-anchor="middle">spa-routing fn</text>
+          <text class="ts" x="314" y="174" text-anchor="middle">Origin Access</text>
+          <text class="ts" x="314" y="190" text-anchor="middle">Control signs</text>
+          <text class="ts" x="314" y="206" text-anchor="middle">both origins</text>
+          <rect class="bx-in hot" x="236" y="232" width="156" height="40" rx="6" />
+          <text class="t2" x="314" y="249" text-anchor="middle">/api/*</text>
+          <text class="ts" x="314" y="265" text-anchor="middle">compression off</text>
+
+          <!-- cognito -->
+          <rect class="bx" x="222" y="330" width="184" height="70" rx="10" />
+          <text class="t" x="314" y="359" text-anchor="middle">Cognito</text>
+          <text class="ts" x="314" y="378" text-anchor="middle">hosted UI · PKCE</text>
+
+          <!-- s3 -->
+          <rect class="bx" x="450" y="70" width="200" height="76" rx="10" />
+          <text class="t" x="550" y="104" text-anchor="middle">S3 site bucket</text>
+          <text class="ts" x="550" y="124" text-anchor="middle">private · OAC only</text>
+
+          <!-- lambda -->
+          <rect class="bx" x="450" y="180" width="200" height="310" rx="10" />
+          <text class="t" x="550" y="204" text-anchor="middle">Lambda</text>
+          <text class="ts" x="550" y="220" text-anchor="middle">python3.13 · 512 MB</text>
+          <rect class="bx-in hot" x="466" y="228" width="168" height="48" rx="6" />
+          <text class="t2" x="550" y="248" text-anchor="middle">Function URL</text>
+          <text class="ts" x="550" y="265" text-anchor="middle">RESPONSE_STREAM</text>
+          <line class="link" x1="550" y1="276" x2="550" y2="288" />
+          <rect class="bx-in" x="466" y="288" width="168" height="48" rx="6" />
+          <text class="t2" x="550" y="308" text-anchor="middle">Web Adapter</text>
+          <text class="ts" x="550" y="325" text-anchor="middle">Lambda layer</text>
+          <line class="link" x1="550" y1="336" x2="550" y2="348" />
+          <rect class="bx-in" x="466" y="348" width="168" height="48" rx="6" />
+          <text class="t2" x="550" y="368" text-anchor="middle">FastAPI · uvicorn</text>
+          <text class="ts" x="550" y="385" text-anchor="middle">18 routes</text>
+          <line class="link" x1="550" y1="396" x2="550" y2="408" />
+          <rect class="bx-in" x="466" y="408" width="168" height="48" rx="6" />
+          <text class="t2" x="550" y="428" text-anchor="middle">AgentRuntime</text>
+          <text class="ts" x="550" y="445" text-anchor="middle">11 tools</text>
+
+          <!-- aws services column -->
+          <rect class="bx" x="790" y="184" width="146" height="48" rx="8" />
+          <text class="t2" x="863" y="204" text-anchor="middle">Bedrock</text>
+          <text class="ts" x="863" y="222" text-anchor="middle">Sonnet 4.6 · eu</text>
+          <rect class="bx" x="790" y="244" width="146" height="48" rx="8" />
+          <text class="t2" x="863" y="264" text-anchor="middle">DynamoDB</text>
+          <text class="ts" x="863" y="282" text-anchor="middle">table gamegusto</text>
+          <rect class="bx" x="790" y="304" width="146" height="48" rx="8" />
+          <text class="t2" x="863" y="324" text-anchor="middle">SSM</text>
+          <text class="ts" x="863" y="342" text-anchor="middle">SecureString</text>
+          <rect class="bx" x="790" y="364" width="146" height="48" rx="8" />
+          <text class="t2" x="863" y="384" text-anchor="middle">CloudWatch</text>
+          <text class="ts" x="863" y="402" text-anchor="middle">Logs</text>
+
+          <!-- external -->
+          <rect class="bx" x="980" y="404" width="124" height="48" rx="8" />
+          <text class="t2" x="1042" y="424" text-anchor="middle">Brave Search</text>
+          <text class="ts" x="1042" y="442" text-anchor="middle">web index</text>
+          <rect class="bx" x="980" y="456" width="124" height="48" rx="8" />
+          <text class="t2" x="1042" y="476" text-anchor="middle">IGDB</text>
+          <text class="ts" x="1042" y="494" text-anchor="middle">Twitch OAuth</text>
+
+          <!-- edges -->
+          <line class="ar" x1="166" y1="252" x2="220" y2="252" marker-start="url(#ah)" marker-end="url(#ah)" />
+          <text class="tl" x="193" y="244" text-anchor="middle">HTTPS</text>
+
+          <line class="ar" x1="406" y1="108" x2="448" y2="108" marker-end="url(#ah)" />
+          <text class="tl" x="427" y="100" text-anchor="middle">OAC</text>
+
+          <line class="ar hot" x1="406" y1="252" x2="464" y2="252" marker-start="url(#ahh)" marker-end="url(#ahh)" />
+          <text class="tl hot" x="428" y="244" text-anchor="middle">SigV4</text>
+
+          <polyline class="ar" points="91,304 91,365 220,365" marker-end="url(#ah)" />
+          <text class="tl" x="152" y="357" text-anchor="middle">sign in</text>
+
+          <line class="ar" x1="450" y1="380" x2="408" y2="380" marker-end="url(#ah)" />
+          <text class="tl" x="429" y="372" text-anchor="middle">JWKS</text>
+
+          <line class="ar" x1="650" y1="208" x2="788" y2="208" marker-end="url(#ah)" />
+          <text class="tl" x="719" y="200" text-anchor="middle">ConverseStream</text>
+          <line class="ar" x1="650" y1="268" x2="788" y2="268" marker-end="url(#ah)" />
+          <text class="tl" x="719" y="260" text-anchor="middle">GetItem · PutItem</text>
+          <line class="ar" x1="650" y1="328" x2="788" y2="328" marker-end="url(#ah)" />
+          <text class="tl" x="719" y="320" text-anchor="middle">cold-start keys</text>
+          <line class="ar" x1="650" y1="388" x2="788" y2="388" marker-end="url(#ah)" />
+          <text class="tl" x="719" y="380" text-anchor="middle">stdout logs</text>
+          <line class="ar" x1="650" y1="428" x2="978" y2="428" marker-end="url(#ah)" />
+          <text class="tl" x="719" y="420" text-anchor="middle">web_search</text>
+          <line class="ar" x1="650" y1="478" x2="978" y2="478" marker-end="url(#ah)" />
+          <text class="tl" x="719" y="470" text-anchor="middle">catalog + covers</text>
+        </svg>
+      </div>
+      <figcaption>
+        The browser only ever talks to CloudFront. <b>Pink marks the streaming hop:</b>
+        API calls go to a Lambda Function URL in <code>RESPONSE_STREAM</code> mode, and
+        the reply flows back through the same path uncompressed, so each token reaches
+        the phone as soon as the model writes it. Sign-in happens at Cognito; every API
+        call then carries the ID token, which the function checks against Cognito's
+        public keys (JWKS).
+      </figcaption>
+    </figure>
+
+    <div class="notes">
+      <div class="note">
+        <h3>Why a Function URL and an adapter</h3>
+        <p>API Gateway and the usual Mangum bridge both buffer the whole response. The Lambda Web Adapter runs a normal uvicorn server and streams its output.</p>
+      </div>
+      <div class="note">
+        <h3>Why nothing is public</h3>
+        <p>The S3 bucket blocks public access and the Function URL requires IAM auth. CloudFront signs every origin request with Origin Access Control.</p>
+      </div>
+      <div class="note">
+        <h3>Why one region</h3>
+        <p>One user in Denmark. eu-north-1 keeps the data in the EU; CloudFront's PriceClass_100 edges cover Europe and North America.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════ services ═════════ -->
+  <section class="sec" id="services">
+    <div class="eyebrow">The equipment</div>
+    <h2>Nine AWS services, each with one job</h2>
+
+    <div class="ledger">
+      <div class="row">
+        <div class="name">CloudFront<small>edge · CDN</small></div>
+        <div>
+          <p class="job">The single entry point. Serves the app, routes <code>/api/*</code> to Lambda, and rewrites client-side routes to <code>index.html</code>.</p>
+          <div class="cfg"><span class="chip">2 origins, both via OAC</span><span class="chip">CloudFront Function: spa-routing</span><span class="chip">/api/*: no cache, no compression</span><span class="chip">60 s origin read timeout</span></div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="name">S3<small>3 buckets</small></div>
+        <div>
+          <p class="job">The built web app, the Lambda deployment zips, and the Terraform state. None of them public.</p>
+          <div class="cfg"><span class="chip">site: hashed assets cached 1 year</span><span class="chip">artifacts: zips keyed by content hash</span><span class="chip">state: versioned, encrypted</span></div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="name">Lambda<small>compute</small></div>
+        <div>
+          <p class="job">Runs the whole API and the agent: FastAPI under uvicorn, fronted by the Lambda Web Adapter layer.</p>
+          <div class="cfg"><span class="chip">python3.13 · x86_64</span><span class="chip">512 MB · 300 s timeout</span><span class="chip">Function URL · RESPONSE_STREAM</span><span class="chip">auth: AWS_IAM</span></div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="name">Bedrock<small>the model</small></div>
+        <div>
+          <p class="job">Claude Sonnet 4.6 through the EU cross-region inference profile. The chat loop uses ConverseStream with tool use; enrichment uses Converse with extended thinking.</p>
+          <div class="cfg"><span class="chip">eu.anthropic.claude-sonnet-4-6</span><span class="chip">prompt caching on system + tools</span><span class="chip">thinking budget 3,000 tokens (enrichment only)</span><span class="chip flag">Sonnet 5 / 5.5 listed, Marketplace agreement not yet accepted</span></div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="name">DynamoDB<small>the pantry</small></div>
+        <div>
+          <p class="job">One table holds the library, platforms, conversation and recommendation history. It is the only data in the system that cannot be rebuilt.</p>
+          <div class="cfg"><span class="chip">table: gamegusto</span><span class="chip">on-demand</span><span class="chip">pk / sk single-table</span><span class="chip">created outside Terraform</span></div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="name">Cognito<small>sign-in</small></div>
+        <div>
+          <p class="job">Hosted sign-in page and ID tokens. Accounts are invited by the owner; nobody can sign themselves up.</p>
+          <div class="cfg"><span class="chip">authorization code + PKCE</span><span class="chip">public client, no secret</span><span class="chip">admin-created users only</span><span class="chip">12+ character passwords</span></div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="name">SSM Parameter Store<small>secrets</small></div>
+        <div>
+          <p class="job">Holds the Brave key and the IGDB credentials. The Lambda entrypoint reads them at cold start and exports them as environment variables.</p>
+          <div class="cfg"><span class="chip">/gamegusto/brave_api_key</span><span class="chip">/gamegusto/igdb_credentials</span><span class="chip">SecureString</span></div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="name">IAM<small>permissions</small></div>
+        <div>
+          <p class="job">A deploy role that can build the stack but not escape it, and a runtime role that can only do what the function needs. See <a href="#security">Security</a>.</p>
+          <div class="cfg"><span class="chip">permissions boundary</span><span class="chip">4 explicit denies</span><span class="chip">policy checked by verify_policy.py</span></div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="name">CloudWatch Logs<small>observability</small></div>
+        <div>
+          <p class="job">Everything the function prints. Errors are logged in full here and shown to the user only as a sanitized message.</p>
+          <div class="cfg"><span class="chip">log group: gamegusto-api</span></div>
+        </div>
+      </div>
+
+      <div class="group-label">Outside AWS</div>
+      <div class="row">
+        <div class="name">Brave Search API<small>web search</small></div>
+        <div>
+          <p class="job">The agent's <code>web_search</code> tool and the enricher's research step: reviews, lengths, availability and today's prices on the user's own store.</p>
+          <div class="cfg"><span class="chip">free tier: 2,000 queries/month</span><span class="chip">client-side cap: 60/min</span><span class="chip">site: filters for one store</span></div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="name">IGDB<small>games catalogue</small></div>
+        <div>
+          <p class="job">Title search for adding games (with platforms and box art) and the cover for every library record.</p>
+          <div class="cfg"><span class="chip">Twitch OAuth client credentials</span><span class="chip">token reused until expiry</span><span class="chip">add-ons and editions filtered at source</span></div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="name">Gmail API<small>local only</small></div>
+        <div>
+          <p class="job">Imports owned games from purchase emails on the owner's laptop. It never runs in AWS, so the Lambda bundle leaves the Google client libraries out.</p>
+          <div class="cfg"><span class="chip">read-only OAuth scope</span><span class="chip">imported lazily</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════ backend ═════════ -->
+  <section class="sec" id="backend">
+    <div class="eyebrow">On the line</div>
+    <h2>One chat turn, token by token</h2>
+    <p class="lede prose">
+      The backend is a FastAPI app wrapped around a tool-using agent. The model
+      decides which tools to call; the code decides how many rounds it gets and
+      streams everything it does back to the phone as it happens.
+    </p>
+
+    <figure class="fig">
+      <div class="scroll">
+        <svg viewBox="0 0 1000 480" role="img"
+             aria-label="Sequence of one chat turn: the browser posts to /api/chat; FastAPI claims the user's turn slot and calls the agent runtime; the runtime loops up to eight rounds, sending ConverseStream requests to Bedrock, receiving tool calls, running them against DynamoDB, Brave and IGDB, and returning the results; Bedrock then streams the answer text; the runtime forwards events to the browser over server-sent events; FastAPI saves the transcript to DynamoDB and sends a final done event.">
+          <defs>
+            <marker id="sq" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0 L10 5 L0 10 z" class="mk" />
+            </marker>
+            <marker id="sqh" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0 L10 5 L0 10 z" class="mk-hot" />
+            </marker>
+          </defs>
+
+          <!-- lane heads -->
+          <rect class="bx" x="15" y="14" width="150" height="46" rx="8" />
+          <text class="t2" x="90" y="34" text-anchor="middle">Browser</text>
+          <text class="ts" x="90" y="51" text-anchor="middle">ChatView</text>
+          <rect class="bx" x="215" y="14" width="150" height="46" rx="8" />
+          <text class="t2" x="290" y="34" text-anchor="middle">FastAPI</text>
+          <text class="ts" x="290" y="51" text-anchor="middle">POST /api/chat</text>
+          <rect class="bx" x="425" y="14" width="150" height="46" rx="8" />
+          <text class="t2" x="500" y="34" text-anchor="middle">AgentRuntime</text>
+          <text class="ts" x="500" y="51" text-anchor="middle">tool loop</text>
+          <rect class="bx" x="635" y="14" width="150" height="46" rx="8" />
+          <text class="t2" x="710" y="34" text-anchor="middle">Bedrock</text>
+          <text class="ts" x="710" y="51" text-anchor="middle">Sonnet 4.6</text>
+          <rect class="bx" x="815" y="14" width="170" height="46" rx="8" />
+          <text class="t2" x="900" y="34" text-anchor="middle">Tools</text>
+          <text class="ts" x="900" y="51" text-anchor="middle">DynamoDB, Brave, IGDB</text>
+
+          <!-- lifelines -->
+          <line class="life" x1="90" y1="60" x2="90" y2="470" />
+          <line class="life" x1="290" y1="60" x2="290" y2="470" />
+          <line class="life" x1="500" y1="60" x2="500" y2="470" />
+          <line class="life" x1="710" y1="60" x2="710" y2="470" />
+          <line class="life" x1="900" y1="60" x2="900" y2="470" />
+
+          <!-- loop frame -->
+          <rect class="frame" x="440" y="180" width="548" height="142" rx="6" />
+          <text class="gl" x="432" y="196" text-anchor="end">≤ 8 ROUNDS</text>
+
+          <!-- messages -->
+          <line class="ar" x1="90" y1="92" x2="288" y2="92" marker-end="url(#sq)" />
+          <text class="tl" x="190" y="85" text-anchor="middle">POST /api/chat</text>
+
+          <text class="ts" x="302" y="126">TurnGuard claims the slot</text>
+
+          <line class="ar" x1="290" y1="156" x2="498" y2="156" marker-end="url(#sq)" />
+          <text class="tl" x="395" y="149" text-anchor="middle">stream(message)</text>
+
+          <line class="ar" x1="500" y1="208" x2="708" y2="208" marker-end="url(#sq)" />
+          <text class="tl" x="605" y="201" text-anchor="middle">ConverseStream</text>
+
+          <line class="ar" x1="710" y1="240" x2="502" y2="240" marker-end="url(#sq)" />
+          <text class="tl" x="605" y="233" text-anchor="middle">toolUse</text>
+
+          <line class="ar" x1="500" y1="274" x2="898" y2="274" marker-end="url(#sq)" />
+          <text class="tl" x="805" y="267" text-anchor="middle">get_library, web_search</text>
+
+          <line class="ar" x1="900" y1="306" x2="502" y2="306" marker-end="url(#sq)" />
+          <text class="tl" x="805" y="299" text-anchor="middle">toolResult</text>
+
+          <line class="ar" x1="710" y1="352" x2="502" y2="352" marker-end="url(#sq)" />
+          <text class="tl" x="605" y="345" text-anchor="middle">answer text</text>
+
+          <line class="ar hot" x1="500" y1="390" x2="92" y2="390" marker-end="url(#sqh)" />
+          <text class="tl hot" x="395" y="383" text-anchor="middle">SSE: tool · delta · text</text>
+
+          <line class="ar" x1="290" y1="426" x2="898" y2="426" marker-end="url(#sq)" />
+          <text class="tl" x="805" y="419" text-anchor="middle">save transcript</text>
+
+          <line class="ar hot" x1="290" y1="458" x2="92" y2="458" marker-end="url(#sqh)" />
+          <text class="tl hot" x="190" y="451" text-anchor="middle">SSE: done</text>
+        </svg>
+      </div>
+      <figcaption>
+        FastAPI admits one turn per user at a time (a second one gets <code>409</code>).
+        The agent then loops through Bedrock and its tools for up to 8 rounds, and one
+        round can call several tools at once. <b>Pink is the server-sent event stream</b>:
+        tool names, working notes and answer text reach the phone while the turn is
+        still running. In a real turn on this account, the agent made 3 library reads,
+        10 web searches and 1 save before answering.
+      </figcaption>
+    </figure>
+
+    <div class="split">
+      <div>
+        <h3 style="margin-bottom:10px">The API</h3>
+        <div class="routes">
+          <div><span>GET</span>/api/health</div>
+          <div><span>GET POST</span>/api/library</div>
+          <div><span>PUT</span>/api/library/platform · /taste</div>
+          <div><span>POST</span>/api/library/enrich · /enrich-all · /remove</div>
+          <div><span>GET</span>/api/catalog/search</div>
+          <div><span>GET POST</span>/api/platforms</div>
+          <div><span>PUT DEL</span>/api/platforms/{id}</div>
+          <div><span>GET DEL</span>/api/picks · /api/conversation</div>
+          <div><span>POST</span>/api/chat <span style="min-width:0;color:var(--thrill)">(SSE)</span></div>
+        </div>
+        <p style="color:var(--sub);font-size:14.5px;margin-top:12px">
+          Record actions put the record's key in the request body. Keys contain
+          platform names such as "Xbox Series X/S", and a slash in a URL path breaks
+          routing behind CloudFront.
+        </p>
+      </div>
+      <div>
+        <h3 style="margin-bottom:10px">The agent</h3>
+        <dl class="kv">
+          <div><dt>tools</dt><dd><div class="tools">
+            <span class="chip">get_owned_platforms</span><span class="chip">add_platform</span><span class="chip">remove_platform</span>
+            <span class="chip">get_library</span><span class="chip">add_manual_game</span><span class="chip">set_game_fields</span>
+            <span class="chip">enrich_game</span><span class="chip">import_gmail</span><span class="chip">web_search</span>
+            <span class="chip">get_recent_recommendations</span><span class="chip">save_recommendation</span>
+          </div></dd></div>
+          <div><dt>round cap</dt><dd>8 tool rounds, then 2 wrap-up rounds that must produce an answer</dd></div>
+          <div><dt>memory</dt><dd>Last 8 turns kept; bulky tool output from earlier turns is replaced with a note</dd></div>
+          <div><dt>taste</dt><dd>Reads the player's own ratings (verdict, course, note) through <code>get_library</code></dd></div>
+          <div><dt>enrichment</dt><dd>Brave search plus a Sonnet classification, in batches of 5 to stay inside CloudFront's 60 s</dd></div>
+          <div><dt>failures</dt><dd>Outside services degrade to empty results; users see sanitized messages only</dd></div>
+        </dl>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════ frontend ═════════ -->
+  <section class="sec" id="frontend">
+    <div class="eyebrow">The pass</div>
+    <h2>A PWA with two runtime dependencies</h2>
+    <p class="lede prose">
+      React 18 and TypeScript, built with Vite, installed from the browser like an
+      app. The only runtime packages are <code>react</code> and <code>react-dom</code>.
+    </p>
+
+    <div class="split">
+      <dl class="kv">
+        <div><dt>screens</dt><dd>ChatView, LibraryView, GameSheet (details and taste rating), AddGameSheet (IGDB search and platform picker), RecCard</dd></div>
+        <div><dt>streaming</dt><dd>A <code>fetch</code> POST read as a stream and parsed into events. <code>EventSource</code> only supports GET, so it can't be used.</dd></div>
+        <div><dt>sign-in</dt><dd>Cognito authorization code with PKCE. Tokens are kept in <code>localStorage</code> so an installed app survives a restart.</dd></div>
+        <div><dt>headers</dt><dd>The ID token travels in <code>X-Id-Token</code>; every request with a body carries its SHA-256 in <code>x-amz-content-sha256</code>.</dd></div>
+        <div><dt>bundle</dt><dd>174 KB JavaScript, 27 KB CSS, uncompressed, from the current build</dd></div>
+        <div><dt>design</dt><dd>"The Blend" token set in dark and light themes; brand fonts self-hosted</dd></div>
+      </dl>
+      <div>
+        <h3 style="margin-bottom:10px">Three service-worker rules</h3>
+        <ul class="plain">
+          <li><b>Never touch <code>/api/*</code>.</b> Intercepting it would break the stream and cache responses that must stay live.</li>
+          <li><b>Navigations go to the network first.</b> A stale <code>index.html</code> would pin the app to an old build after a deploy.</li>
+          <li><b>Cache the shell and its bundles together.</b> Caching bundles lazily can leave an offline page pointing at scripts it never stored.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════ data ═════════ -->
+  <section class="sec" id="data">
+    <div class="eyebrow">The pantry</div>
+    <h2>One table, one partition, four kinds of item</h2>
+    <p class="lede prose">
+      DynamoDB holds everything the app remembers. The partition key is the
+      storage identity; the sort key says what kind of item it is.
+    </p>
+
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>pk</th><th>sk</th><th>holds</th><th>written when</th></tr></thead>
+        <tbody>
+          <tr><td><code>USER#default</code></td><td><code>DOC#records</code></td><td>The whole library in one item (81 games today)</td><td class="by">add · enrich · rate</td></tr>
+          <tr><td><code>USER#default</code></td><td><code>DOC#platforms</code></td><td>Platforms the user owns</td><td class="by">platform edits</td></tr>
+          <tr><td><code>USER#default</code></td><td><code>DOC#conversation</code></td><td>The chat transcript, capped at 40 messages</td><td class="by">end of each turn</td></tr>
+          <tr><td><code>USER#default</code></td><td><code>EVENT#sessions#&lt;time&gt;#&lt;id&gt;</code></td><td>One item per recommendation, append-only</td><td class="by">save_recommendation</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="margin-top:14px">The game record (contract v3.2)</h3>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>field</th><th>meaning</th><th>set by</th></tr></thead>
+        <tbody>
+          <tr><td><code>title</code>, <code>platforms</code></td><td>What the user owns and where; together they form the dedup key</td><td class="by">gmail · manual</td></tr>
+          <tr><td><code>source</code>, <code>purchase_date</code></td><td>Where the record came from</td><td class="by">gmail · manual</td></tr>
+          <tr><td><code>genre</code>, <code>estimated_playtime_hours</code></td><td>Classified by Sonnet from Brave search results</td><td class="by">enrichment</td></tr>
+          <tr><td><code>community_review</code></td><td>Score out of 10, a one-line summary, and how many sources it averages</td><td class="by">enrichment</td></tr>
+          <tr><td><code>platform_availability</code></td><td>Every platform the game shipped on</td><td class="by">enrichment</td></tr>
+          <tr><td><code>cover_url</code></td><td>Box art from IGDB</td><td class="by">enrichment</td></tr>
+          <tr><td><code>taste</code>, <code>course</code>, <code>taste_note</code></td><td>The player's own verdict (chef's kiss to sent back), when they play it (starter, main, dessert), and a note. 72 of 81 games rated so far.</td><td class="by user">the player</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="notes" style="margin-top:6px">
+      <div class="note">
+        <h3>Sign-in is not partitioning</h3>
+        <p>Cognito proves who is asking, but storage always uses <code>USER#default</code>, so every account shares one library. Splitting it is a data migration, written up in <code>docs/adding-users.md</code>.</p>
+      </div>
+      <div class="note">
+        <h3>The table lives outside Terraform</h3>
+        <p>It holds the only data that can't be rebuilt. The deploy role can only describe it, so no plan or apply can ever replace it.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════ code ═════════ -->
+  <section class="sec" id="code">
+    <div class="eyebrow">The brigade</div>
+    <h2>Five layers, and imports only point down</h2>
+    <p class="lede prose">
+      Each layer may use the ones below it and never the ones above. The web app
+      talks to the API over HTTP only. Bars show lines of code, all on one scale.
+    </p>
+
+    <figure class="fig" style="background-image:none">
+      <div class="layers" role="img" aria-label="Lines of code per layer: web 3,793; api 720; agent 1,245; services 1,918; models 182; wiring 433; infrastructure 1,499; tests 5,189.">
+        <div class="rail" aria-hidden="true"></div>
+        <div class="bar-row"><div class="who">web/src<small>React PWA</small></div><div class="bar"><i style="width:73.1%"></i></div><div class="n">3,793</div></div>
+        <div class="bar-row"><div class="who">api<small>routes, auth, schemas</small></div><div class="bar"><i style="width:13.9%"></i></div><div class="n">720</div></div>
+        <div class="bar-row"><div class="who">agent<small>runtime, tools, enricher</small></div><div class="bar"><i style="width:24.0%"></i></div><div class="n">1,245</div></div>
+        <div class="bar-row"><div class="who">services<small>Bedrock, DynamoDB, Brave, IGDB</small></div><div class="bar"><i style="width:37.0%"></i></div><div class="n">1,918</div></div>
+        <div class="bar-row"><div class="who">models<small>dataclasses</small></div><div class="bar"><i style="width:3.5%"></i></div><div class="n">182</div></div>
+        <div class="spacer"></div>
+        <div class="bar-row sep"><div class="who">wiring<small>bootstrap, config, cli</small></div><div class="bar"><i style="width:8.3%"></i></div><div class="n">433</div></div>
+        <div class="spacer"></div>
+        <div class="bar-row"><div class="who">infra<small>Terraform, 2 roots</small></div><div class="bar"><i style="width:28.9%"></i></div><div class="n">1,499</div></div>
+        <div class="spacer"></div>
+        <div class="bar-row"><div class="who">tests<small>pytest + Hypothesis</small></div><div class="bar test"><i style="width:100%"></i></div><div class="n">5,189</div></div>
+      </div>
+      <figcaption>
+        Python application code totals 4,498 lines; the tests are 5,189. The arrow on
+        the left is the dependency direction: <code>api → agent → services → models</code>.
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- ═════════ security ═════════ -->
+  <section class="sec" id="security">
+    <div class="eyebrow">Who holds the keys</div>
+    <h2>Two Terraform roots, two levels of trust</h2>
+    <p class="lede prose">
+      Infrastructure is split so that the everyday deploy credentials cannot
+      give themselves more power or touch the data.
+    </p>
+
+    <div class="split">
+      <dl class="kv">
+        <div><dt>bootstrap</dt><dd>Applied rarely, by the owner with admin rights, using local state. Creates the deploy role, its permissions boundary, the Terraform user and the encrypted, versioned state bucket.</dd></div>
+        <div><dt>stack</dt><dd>Applied on every deploy, as <code>gamegusto-deploy</code>, with state in S3. Owns the 27 resources in the diagram above.</dd></div>
+        <div><dt>runtime role</dt><dd>The Lambda can invoke Anthropic models on Bedrock, read and write items in the one table, read parameters under <code>/gamegusto/</code>, and write logs. Nothing else.</dd></div>
+        <div><dt>secrets</dt><dd>Kept in SSM SecureStrings and read at cold start. They are never Terraform variables and never printed.</dd></div>
+      </dl>
+      <div>
+        <h3 style="margin-bottom:10px">What the deploy role is denied</h3>
+        <ul class="plain">
+          <li><b>Changing its own controls:</b> its policy, its role and the boundary.</li>
+          <li><b>The live table,</b> beyond describing it.</li>
+          <li><b>Creating roles without the boundary,</b> so it cannot mint a stronger role.</li>
+          <li><b>Passing roles to anything but Lambda.</b></li>
+        </ul>
+        <p style="color:var(--sub);font-size:14.5px;margin-top:12px">
+          <code>infra/bootstrap/verify_policy.py</code> evaluates the policy against
+          20 expected allow/deny decisions after every change.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════════ lessons ═════════ -->
+  <section class="sec" id="lessons">
+    <div class="eyebrow">Hard lessons</div>
+    <h2>Six constraints, each found in production</h2>
+
+    <div class="lessons">
+      <article class="lesson">
+        <h3>The stream arrived all at once</h3>
+        <dl>
+          <div><dt>cause</dt><dd>API Gateway and Mangum buffer the full response; so does CloudFront compression.</dd></div>
+          <div><dt class="fix">fix</dt><dd class="fix">Function URL in RESPONSE_STREAM mode behind the Web Adapter, compression off on <code>/api/*</code>.</dd></div>
+        </dl>
+      </article>
+      <article class="lesson">
+        <h3>Every API call failed its signature</h3>
+        <dl>
+          <div><dt>cause</dt><dd>Origin Access Control puts its own SigV4 signature in <code>Authorization</code>.</dd></div>
+          <div><dt class="fix">fix</dt><dd class="fix">The token travels as <code>X-Id-Token</code>; requests with a body send their payload hash.</dd></div>
+        </dl>
+      </article>
+      <article class="lesson">
+        <h3>CloudFront got 403 from Lambda</h3>
+        <dl>
+          <div><dt>cause</dt><dd>Invoking a Function URL through OAC needs two permissions, not one.</dd></div>
+          <div><dt class="fix">fix</dt><dd class="fix">Grant CloudFront both <code>InvokeFunctionUrl</code> and <code>InvokeFunction</code>.</dd></div>
+        </dl>
+      </article>
+      <article class="lesson">
+        <h3>Every Xbox game returned 404</h3>
+        <dl>
+          <div><dt>cause</dt><dd>CloudFront decodes <code>%2F</code>, so "X/S" in a path split the route.</dd></div>
+          <div><dt class="fix">fix</dt><dd class="fix">Record keys move into the request body for every record action.</dd></div>
+        </dl>
+      </article>
+      <article class="lesson">
+        <h3>API errors came back as HTML 200s</h3>
+        <dl>
+          <div><dt>cause</dt><dd>A distribution-wide custom error page also rewrote API failures.</dd></div>
+          <div><dt class="fix">fix</dt><dd class="fix">A CloudFront Function does SPA routing on the S3 behaviour only.</dd></div>
+        </dl>
+      </article>
+      <article class="lesson">
+        <h3>No cover ever came from IGDB</h3>
+        <dl>
+          <div><dt>cause</dt><dd>The filter <code>category = 0</code> matched nothing, so every lookup fell back silently.</dd></div>
+          <div><dt class="fix">fix</dt><dd class="fix">Filter on <code>parent_game</code> and <code>version_parent</code>, then rank by name.</dd></div>
+        </dl>
+      </article>
+    </div>
+  </section>
+
+  <!-- ═════════ deploy ═════════ -->
+  <section class="sec" id="ship">
+    <div class="eyebrow">Opening the kitchen</div>
+    <h2><code style="font-size:.85em">make deploy</code>, in five steps</h2>
+
+    <ol class="steps">
+      <li><div><strong>Build the Lambda zip</strong> <code>make api-build</code><p>uv installs manylinux x86_64 wheels for Python 3.13 next to the app code. The Gmail libraries stay out.</p></div></li>
+      <li><div><strong>Apply the stack</strong> <code>terraform apply</code><p>Runs as gamegusto-deploy. The zip goes to the artifacts bucket under its content hash and the function points at it. New containers read their keys from SSM on cold start.</p></div></li>
+      <li><div><strong>Build the web app</strong> <code>make web-build</code><p>Vite builds the PWA with the Cognito domain and client ID taken from the Terraform outputs.</p></div></li>
+      <li><div><strong>Upload it</strong> <code>aws s3 sync</code><p>Hashed assets get a one-year immutable cache. <code>index.html</code>, the manifest and <code>sw.js</code> are uploaded with no-cache.</p></div></li>
+      <li><div><strong>Invalidate the entry points</strong> <code>cloudfront create-invalidation</code><p>Only the three no-cache files. Installed apps pick up the new service worker the next time they open.</p></div></li>
+    </ol>
+  </section>
+
+  <!-- ═════════ quality ═════════ -->
+  <section class="sec" id="quality">
+    <div class="eyebrow">Health inspection</div>
+    <h2>More test code than application code</h2>
+
+    <div class="stats">
+      <div class="stat"><b>260</b><span>tests in the default run</span></div>
+      <div class="stat"><b>93%</b><span>line coverage, 85% floor</span></div>
+      <div class="stat"><b>0</b><span>mypy errors</span></div>
+      <div class="stat"><b>5</b><span>files of Hypothesis property tests</span></div>
+    </div>
+    <ul class="plain">
+      <li><b><code>make check</code> must pass before every PR:</b> ruff format, ruff lint, mypy and pytest with the coverage floor.</li>
+      <li><b>Property tests encode the spec's correctness properties,</b> such as the search rate limit holding for any sequence of calls.</li>
+      <li><b>Fakes reproduce real failure modes.</b> A fake that always succeeds cannot test the error path the user actually sees.</li>
+      <li><b>A pre-commit hook runs ruff and mypy</b> on every commit; <code>main</code> only changes through reviewed pull requests.</li>
+    </ul>
+  </section>
+
+  <footer class="foot">
+    <span>GameGusto · back of house · checked against the code and live AWS on 2 October 2026</span>
+    <a href="https://claude.ai/code/artifact/532c41b4-f0d2-40e3-b6d2-f6ebf1a96621">Front of house: the menu →</a>
+    <a href="https://d2yudrd885csdh.cloudfront.net">Open GameGusto →</a>
+  </footer>
+</div>
