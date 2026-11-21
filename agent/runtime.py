@@ -167,17 +167,35 @@ _MIN_PRESENTED_ANSWER_CHARS = 200
 
 
 def _presents_answer(result: Any) -> bool:
-    """True when a tool-calling turn's text is the answer, not working notes.
+    """True when a tool-calling turn's text may be the answer, not working notes.
 
     The prompt tells the model to present the recommendation and then call
     ``save_recommendation`` — it often does both in ONE turn. Substantial text in a
-    turn whose only tool calls are saves is therefore the recommendation being
+    turn whose only tool calls are saves may therefore be the recommendation being
     presented; classifying it as transient "thinking" (as for research turns) would
     discard the actual answer and keep only the model's short closing follow-up.
+    It may equally be the model's findings before it writes the answer, so the
+    caller holds it until :func:`_settle` can tell which.
     """
     if not result.tool_uses or any(u.name != "save_recommendation" for u in result.tool_uses):
         return False
     return len(result.text.strip()) >= _MIN_PRESENTED_ANSWER_CHARS
+
+
+def _settle(held: str | None, following: str) -> Iterator[AgentEvent]:
+    """Classify a held save-turn text once the text that follows it is known.
+
+    A save turn's substantial text is either the recommendation (presented and
+    saved in one turn, then closed with a line) or working notes (findings
+    gathered, saved, and the answer written next). Kept as both, the notes led
+    every reply: with store prices in hand the model writes long findings before
+    saving. Only what follows tells them apart: substantial text means the held
+    text was notes; a short closing line, or none, means it was the answer.
+    """
+    if held is None:
+        return
+    notes = len(following) >= _MIN_PRESENTED_ANSWER_CHARS
+    yield AgentEvent(kind="thinking" if notes else "text", text=held)
 
 
 def system_prompt_for_region(region: str | None, today: date | None = None) -> str:
@@ -331,6 +349,8 @@ class AgentRuntime:
         working notes and is yielded as ``kind="thinking"`` (shown transiently, not
         persisted); text from the FINAL turn is the answer, yielded as ``kind="text"``.
         The prompt steers the model to write its full answer only in that final turn.
+        The one ambiguous case, substantial text in a turn that only saves, is held
+        and classified once the following text shows what it was (see ``_settle``).
         With ``deltas=True`` each round's text additionally streams token-by-token
         as ``kind="delta"`` events ahead of that round's closing event (callers that
         don't opt in keep the exact event sequence they always had). Raises
@@ -422,13 +442,21 @@ class AgentRuntime:
     def _turn(self, deltas: bool = False) -> Iterator[AgentEvent]:
         """Run one turn's tool loop over the already-appended user message."""
         system = self.system_prompt()  # resolved once per turn (keeps the date fresh)
+        held: str | None = None  # a save turn's text, until _settle knows what it was
         for _ in range(_MAX_TOOL_ITERATIONS):
             result = yield from self._converse_round(system, deltas)
             self._add_usage(result)
             final = result.stop_reason != "tool_use" or not result.tool_uses
-            if result.text.strip():
-                keep = final or _presents_answer(result)
-                yield AgentEvent(kind="text" if keep else "thinking", text=result.text.strip())
+            text = result.text.strip()
+            if final:
+                yield from _settle(held, text)
+                if text:
+                    yield AgentEvent(kind="text", text=text)
+            elif _presents_answer(result):
+                yield from _settle(held, text)  # a later save turn: the earlier one was notes
+                held = text
+            elif text:
+                yield AgentEvent(kind="thinking", text=text)
             if result.assistant_content:
                 self._messages.append({"role": "assistant", "content": result.assistant_content})
 
@@ -450,18 +478,23 @@ class AgentRuntime:
             result = yield from self._converse_round(system, deltas)
             self._add_usage(result)
             final = result.stop_reason != "tool_use" or not result.tool_uses
+            text = result.text.strip()
             if result.assistant_content:
                 self._messages.append({"role": "assistant", "content": result.assistant_content})
             if final:
-                yield AgentEvent(kind="text", text=result.text.strip() or _ITERATION_LIMIT_MESSAGE)
+                yield from _settle(held, text)
+                if text or held is None:
+                    yield AgentEvent(kind="text", text=text or _ITERATION_LIMIT_MESSAGE)
                 return
-            if result.text.strip():
-                # Substantial text alongside a pure save is the answer being presented;
-                # anything else is closing narration — shown transiently, not kept.
-                keep = _presents_answer(result)
-                yield AgentEvent(kind="text" if keep else "thinking", text=result.text.strip())
+            if _presents_answer(result):
+                yield from _settle(held, text)
+                held = text
+            elif text:
+                # Closing narration ("let me save this") — shown transiently, not kept.
+                yield AgentEvent(kind="thinking", text=text)
             yield from self._apply_tools(result)
-        yield AgentEvent(kind="text", text=_ITERATION_LIMIT_MESSAGE)
+        # Out of rounds: a held save-turn text is the best answer there is.
+        yield AgentEvent(kind="text", text=held or _ITERATION_LIMIT_MESSAGE)
 
     def _apply_tools(self, result: Any) -> Iterator[AgentEvent]:
         """Dispatch every tool the model asked for, yielding a tool event per call and

@@ -180,6 +180,69 @@ def test_save_turn_text_is_the_answer() -> None:
     assert reply.message == (presented + "\n\nA demo is also available if you want to try first!")
 
 
+def test_save_turn_notes_are_dropped_when_a_full_answer_follows() -> None:
+    """The model gathers its findings, saves, and only then writes the answer. Kept
+    as an answer too, those notes led every reply (seen live with store prices:
+    "Key findings: … Now let me save and present." above the recommendation)."""
+    notes = (
+        "Key findings:\n- Avowed 199,50 DKK — perfect big title (50% off)\n"
+        "- Rare Replay 61,25 DKK ✅ already confirmed\n- Battletoads 23,85 DKK ✅\n"
+        "Budget plan: Avowed + Rare Replay + Battletoads = 284,60 DKK ✅\n"
+        "Now let me save and present."
+    )
+    answer = (
+        "🎮 Your big pick: Avowed, 199,50 DKK (50% off) on the Microsoft Store.\n\n"
+        "Obsidian's 2025 fantasy RPG has the companions, choices and lore you loved in "
+        "Cyberpunk and Dishonored, in structured zones rather than a sprawling map. "
+        "Round the basket out with Rare Replay and Battletoads for 284,60 DKK in total."
+    )
+    save = ToolUse("s1", "save_recommendation", {"game_title": "Avowed", "reasoning": "fits"})
+    streamed, _ = _runtime(_ScriptedBedrock([_tool_call(save, notes), _final(answer)]))
+    sent, _ = _runtime(_ScriptedBedrock([_tool_call(save, notes), _final(answer)]))
+
+    events = list(streamed.stream("big RPG under 500 kr"))
+
+    assert [(e.kind, e.text) for e in events if e.kind != "tool"] == [
+        ("thinking", notes),
+        ("text", answer),
+    ]
+    assert sent.send("big RPG under 500 kr").message == answer
+
+
+def test_a_later_save_turn_supersedes_an_earlier_one() -> None:
+    """Two substantial save turns: the first was findings, whatever settles the second."""
+    first = "Findings so far: " + "Avowed looks strongest at 199,50 DKK. " * 6
+    presented = "🎮 Play Avowed — " + "a modern Obsidian RPG with real choices. " * 6
+    save = ToolUse("s1", "save_recommendation", {"game_title": "Avowed", "reasoning": "fits"})
+    bedrock = _ScriptedBedrock(
+        [_tool_call(save, first), _tool_call(save, presented), _final("Enjoy!")]
+    )
+    runtime, _ = _runtime(bedrock)
+
+    assert runtime.send("pick one").message == presented.strip() + "\n\nEnjoy!"
+
+
+def test_save_turn_answer_is_kept_when_the_final_turn_is_silent() -> None:
+    presented = "🎯 Play Hades — " + "a superb roguelike that fits short evenings. " * 6
+    save = ToolUse("s1", "save_recommendation", {"game_title": "Hades", "reasoning": "fits"})
+    bedrock = _ScriptedBedrock([_tool_call(save, presented), _final("")])
+    runtime, _ = _runtime(bedrock)
+
+    assert runtime.send("recommend a roguelike").message == presented.strip()
+
+
+def test_a_held_answer_beats_the_limit_message_when_rounds_run_out() -> None:
+    """If the model presents and saves, then keeps calling tools until the cap, the
+    presented recommendation is the reply, not "I'm having trouble…"."""
+    presented = "🎯 Play Hades — " + "a superb roguelike that fits short evenings. " * 6
+    save = ToolUse("s1", "save_recommendation", {"game_title": "Hades", "reasoning": "fits"})
+    ping = _tool_call(ToolUse("t", "get_owned_platforms", {}))
+    bedrock = _ScriptedBedrock([_tool_call(save, presented), ping], loop_last=True)
+    runtime, _ = _runtime(bedrock)
+
+    assert runtime.send("recommend a roguelike").message == presented.strip()
+
+
 def test_falls_back_to_thinking_when_final_turn_is_silent() -> None:
     """If the final turn produces no text, the working notes are used so the reply is
     never empty (safety net for a model that answered mid-loop)."""
