@@ -343,6 +343,9 @@ def test_picks_dedupe_and_flag_owned() -> None:
     assert by_title["Death's Door"]["owned"] is False
     # Picks are history — there is no verdict to rate on a suggestion anymore.
     assert "verdict" not in by_title["Hades"]
+    # Nor a playtime: the stored number was the user's time budget in minutes,
+    # which the card printed as the game's length ("~2400 h").
+    assert "estimated_playtime" not in by_title["Hades"]
 
 
 def test_clear_picks() -> None:
@@ -445,12 +448,50 @@ def test_chat_streams_events_and_persists_transcript() -> None:
     done = events[7][1]
     assert done["usage"] == {"inputTokens": 250, "outputTokens": 80}
     assert done["memory_available"] is True
+    assert done["pick"] is None  # nothing was saved, so no pick to name
 
     messages = client.get("/api/conversation").json()["messages"]
     assert [m["role"] for m in messages] == ["user", "assistant"]
     assert messages[0]["content"] == "cozy tonight"
     assert "Death's Door" in messages[1]["content"]
     assert messages[1]["notes"] == ["let me check your platforms"]
+    assert "pick" not in messages[1]
+
+
+def _save_round(title: str) -> ConverseResult:
+    use = ToolUse(
+        tool_use_id="s1",
+        name="save_recommendation",
+        input={"game_title": title, "reasoning": "fits tonight"},
+    )
+    return ConverseResult(
+        stop_reason="tool_use",
+        text="saving it",
+        tool_uses=[use],
+        assistant_content=[{"text": "saving it"}, {"toolUse": {"id": "s1"}}],
+        usage={"inputTokens": 100, "outputTokens": 20},
+    )
+
+
+def test_a_reply_that_saved_a_pick_names_it() -> None:
+    """The app shows "Tonight's pick" from this, never from titles in the text."""
+    client, _, _ = make_app(script=[_save_round("Death's Door"), _answer_round()])
+    events = parse_sse(client.post("/api/chat", json={"message": "cozy tonight"}).text)
+
+    assert events[-1][1]["pick"] == "Death's Door"
+    assert client.get("/api/conversation").json()["messages"][1]["pick"] == "Death's Door"
+
+
+def test_a_reply_that_only_mentions_an_earlier_pick_names_none() -> None:
+    """Seen live: "filter out Avowed (already recommended)" got Avowed's header."""
+    client, ctx, _ = make_app(
+        script=[_answer_round("Filtering out Avowed, already recommended. Here are others.")]
+    )
+    _seed_pick(ctx, "Avowed")
+    events = parse_sse(client.post("/api/chat", json={"message": "more options"}).text)
+
+    assert events[-1][1]["pick"] is None
+    assert "pick" not in client.get("/api/conversation").json()["messages"][1]
 
 
 def test_chat_error_is_streamed_and_not_persisted() -> None:

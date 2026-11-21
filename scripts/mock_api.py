@@ -76,13 +76,11 @@ STATE: dict[str, Any] = {
         {
             "game_title": "Death's Door",
             "reasoning": "Tight combat in short sessions.",
-            "estimated_playtime": 9,
             "owned": False,
         },
         {
             "game_title": "Sea of Stars",
             "reasoning": "Turn-based, gorgeous.",
-            "estimated_playtime": 30,
             "owned": False,
         },
     ],
@@ -107,6 +105,8 @@ CANNED_REPLY = (
 )
 
 TOOL_SEQUENCE = ["get_owned_platforms", "get_library", "web_search", "save_recommendation"]
+#: The pick the canned turn saves; the real API names it on the reply.
+CANNED_PICK = "Death's Door"
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -328,6 +328,7 @@ class Handler(BaseHTTPRequestHandler):
                     "role": "assistant",
                     "content": CANNED_REPLY,
                     "notes": ["Checking what you own and what's on sale…"],
+                    "pick": CANNED_PICK,
                 },
             )
         )
@@ -340,6 +341,7 @@ class Handler(BaseHTTPRequestHandler):
                     "cacheReadInputTokens": 28000,
                 },
                 "memory_available": True,
+                "pick": CANNED_PICK,
             },
         )
 

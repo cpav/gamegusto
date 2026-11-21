@@ -369,6 +369,11 @@ def create_app(ctx: AppContext) -> FastAPI:
 
     # --- chat (SSE) ---
 
+    def _saved_pick(user: str) -> str | None:
+        """Title of the pick just saved: the newest recommendation on record."""
+        recent = ctx.memory.get_recent_recommendations(user, 1)
+        return recent[0].game_title if recent else None
+
     def _chat_events(user: str, message: str, token: object) -> Iterator[str]:
         """Stream one turn as SSE, then persist the transcript.
 
@@ -381,6 +386,7 @@ def create_app(ctx: AppContext) -> FastAPI:
             ctx.runtime.seed_transcript(history)  # no-op mid-conversation
             answer: list[str] = []
             notes: list[str] = []
+            saved_pick = False
             try:
                 for event in ctx.runtime.stream(message, deltas=True):
                     if event.kind == "delta":
@@ -388,6 +394,7 @@ def create_app(ctx: AppContext) -> FastAPI:
                         # round's closing thinking/text event is authoritative.
                         yield _sse("delta", {"text": event.text})
                     elif event.kind == "tool":
+                        saved_pick = saved_pick or event.tool == "save_recommendation"
                         yield _sse("tool", {"tool": event.tool})
                     elif event.kind == "thinking":
                         notes.append(event.text)
@@ -402,6 +409,12 @@ def create_app(ctx: AppContext) -> FastAPI:
             entry: dict[str, Any] = {"role": "assistant", "content": reply}
             if notes:
                 entry["notes"] = notes
+            # The pick this reply saved, named on the reply itself. The app used
+            # to guess it from titles in the opening paragraph, which crowned a
+            # game the reply mentioned only to rule out.
+            pick = _saved_pick(user) if saved_pick else None
+            if pick:
+                entry["pick"] = pick
             history.append({"role": "user", "content": message})
             history.append(entry)
             ctx.memory.store_conversation(user, history)
@@ -410,6 +423,7 @@ def create_app(ctx: AppContext) -> FastAPI:
                 {
                     "usage": ctx.runtime.last_turn_usage,
                     "memory_available": ctx.memory.is_available,
+                    "pick": pick,
                 },
             )
         finally:

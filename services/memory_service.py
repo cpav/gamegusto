@@ -206,7 +206,8 @@ class MemoryService:
         """Return the persisted chat transcript, or ``[]`` when absent/unreachable.
 
         Each message is ``{"role", "content"}`` plus an optional ``"notes"`` list
-        (the transient working notes kept for the "how I picked this" expander).
+        (the transient working notes kept for the "how I picked this" expander)
+        and, on a reply that saved a recommendation, the ``"pick"`` title.
         """
         try:
             document = self._client.get_value(user_id, self.CONVERSATION_KEY)
