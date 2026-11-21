@@ -594,11 +594,36 @@ del {
   justify-content: space-between;
   gap: 8px;
 }
-.rec-card h3 {
+.rec-card .title-row h3 {
   margin: 0;
   font-size: 16.5px;
   font-weight: 700;
   text-wrap: balance;
+}
+/* The agent's own headings. A section reads like a course on a menu: small,
+   gold, ruled off. A game within it is a bold line with room above it. */
+.rec-card .why h3 {
+  margin: 1.3em 0 0.6em;
+  padding-top: 0.75em;
+  border-top: 1px solid var(--gg-line);
+  font-family: var(--gg-font-data);
+  font-size: 12px;
+  font-weight: normal;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--gg-warmth);
+}
+.rec-card .why h4 {
+  margin: 1.1em 0 0.3em;
+  font-size: 14.5px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+.rec-card .why > h3:first-child,
+.rec-card .why > h4:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
 }
 .rec-card .score {
   font-family: var(--gg-font-data);
