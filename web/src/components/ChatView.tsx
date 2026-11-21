@@ -91,18 +91,16 @@ export function ChatView({
   }
 
   /**
-   * The saved pick a reply is about, matched by title appearing in the text.
+   * The saved pick a reply is about: the one the server recorded on it.
    * `save_recommendation` is what makes a turn a recommendation, so a reply
-   * with no matching pick (a clarifying question) correctly gets no header.
+   * that saved nothing (a clarifying question, a list of options) gets no
+   * header. Titles in the text are no guide: a reply that rules a game out
+   * ("filter out Avowed, already recommended") names it as readily as one that
+   * picks it.
    */
-  function pickFor(text: string): Pick | undefined {
-    // Only the opening paragraph counts. The agent leads with the pick it is
-    // making, while later paragraphs routinely name OTHER games ("unlike Hades,
-    // which you own…") — matching on the whole reply would put a
-    // "Tonight's pick" header on a game the turn merely mentioned. Picks arrive
-    // newest-first, so the most recent match wins.
-    const lead = text.split(/\n\s*\n/)[0]?.toLowerCase() ?? "";
-    return picks.find((pick) => lead.includes(pick.game_title.toLowerCase()));
+  function pickFor(message: Message): Pick | undefined {
+    const title = message.pick?.toLowerCase();
+    return title ? picks.find((pick) => pick.game_title.toLowerCase() === title) : undefined;
   }
 
   async function addPick(pick: Pick) {
@@ -130,6 +128,7 @@ export function ChatView({
     setLiveNotes([]);
 
     let answer = "";
+    let pick: string | null = null;
     const notes: string[] = [];
     const handle = (event: ChatEvent) => {
       switch (event.kind) {
@@ -154,6 +153,7 @@ export function ChatView({
           setError(event.message);
           break;
         case "done": {
+          pick = event.pick;
           const caption = formatUsage(event.usage);
           setUsage(caption);
           onUsage(caption); // the desktop sidebar shows the running cost
@@ -171,6 +171,7 @@ export function ChatView({
     if (answer) {
       const entry: Message = { role: "assistant", content: answer };
       if (notes.length) entry.notes = notes;
+      if (pick) entry.pick = pick;
       setMessages((prior) => [...prior, entry]);
       // The turn may have saved a pick or touched the library; refresh both so
       // the new reply can render as a card with working actions.
@@ -239,9 +240,9 @@ export function ChatView({
               )}
               <RecCard
                 text={message.content}
-                pick={pickFor(message.content)}
+                pick={pickFor(message)}
                 onAdd={() => {
-                  const pick = pickFor(message.content);
+                  const pick = pickFor(message);
                   if (pick) void addPick(pick);
                 }}
               />

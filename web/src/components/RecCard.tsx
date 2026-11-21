@@ -7,10 +7,10 @@ import { Markdown } from "../markdown";
  * The design calls for a lit card with a kicker, a title/score row, the
  * reasoning, a highlighted price, an add-to-library action, and an alternatives
  * line. The model writes prose, so the structure comes from two sources: the
- * saved pick (title + playtime + owned, via `save_recommendation`) supplies the
- * header and the action target, and the prose is split so the price and the
- * alternatives get their own treatment. When a turn isn't a recommendation
- * there is no pick — the same card renders as a plain reply, no header.
+ * saved pick (title + owned, via `save_recommendation`) supplies the header and
+ * the action target, and the prose is split so the price and the alternatives
+ * get their own treatment. When a turn isn't a recommendation there is no pick
+ * — the same card renders as a plain reply, no header, no price box.
  *
  * A suggestion carries no thumbs: you don't rate a game you haven't played. Add
  * it to your library, and rate it there once you have (see the taste system).
@@ -21,6 +21,15 @@ const PRICE = /(\d[\d.,]*\s*(?:kr\.?|DKK|SEK|NOK|EUR|USD|GBP)|[$€£]\s?\d[\d.,
 
 /** Lead-ins to peel once the amount is lifted into the price box. */
 const PRICE_LEAD_IN = /^(it'?s|it is|currently|right now|the price is|priced at)\b[\s:,-]*/i;
+
+/**
+ * A plain sentence, not a markdown heading, list, table or quote. Only prose
+ * can give up its price to the price box: lifting one out of a heading left
+ * the rest printed as raw "### 🥇 … ~~289 kr~~".
+ */
+function isProse(paragraph: string): boolean {
+  return !/^\s*(#|\||>|[-*+]\s|\d+[.)]\s)/.test(paragraph);
+}
 
 function isAlternatives(paragraph: string): boolean {
   return /^(also\b|alternatives?\b|other options\b|worth a look\b)/i.test(paragraph.trim());
@@ -68,15 +77,14 @@ export function RecCard({
     }
   }
   if (!meta && pick) {
-    meta = [
-      pick.estimated_playtime ? `~${pick.estimated_playtime} h` : "",
-      pick.owned ? "in your library" : "not in your library",
-    ]
-      .filter(Boolean)
-      .join(" · ");
+    meta = pick.owned ? "in your library" : "not in your library";
   }
 
-  const priceIndex = paragraphs.findIndex((block) => PRICE.test(block));
+  // The price box belongs to a single pick. A reply listing several games
+  // (no pick) keeps every price where the agent wrote it.
+  const priceIndex = pick
+    ? paragraphs.findIndex((block) => isProse(block) && PRICE.test(block))
+    : -1;
   const altsIndex = paragraphs.findIndex(isAlternatives);
 
   return (

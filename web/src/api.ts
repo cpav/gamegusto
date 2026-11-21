@@ -53,7 +53,6 @@ export interface GameSuggestion {
 export interface Pick {
   game_title: string;
   reasoning: string;
-  estimated_playtime: number | null;
   owned: boolean;
 }
 
@@ -61,6 +60,8 @@ export interface Message {
   role: "user" | "assistant";
   content: string;
   notes?: string[];
+  /** Title of the recommendation this reply saved, when it saved one. */
+  pick?: string;
 }
 
 export interface Usage {
@@ -77,7 +78,7 @@ export type ChatEvent =
   | { kind: "tool"; tool: string }
   | { kind: "text"; text: string }
   | { kind: "error"; message: string }
-  | { kind: "done"; usage: Usage; memoryAvailable: boolean };
+  | { kind: "done"; usage: Usage; memoryAvailable: boolean; pick: string | null };
 
 export class ApiError extends Error {}
 
@@ -305,6 +306,7 @@ function decodeEvent(block: string): ChatEvent | null {
         kind: "done",
         usage: (payload.usage ?? {}) as Usage,
         memoryAvailable: payload.memory_available !== false,
+        pick: typeof payload.pick === "string" ? payload.pick : null,
       };
     default:
       return null;

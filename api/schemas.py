@@ -132,6 +132,5 @@ def pick_to_dict(rec: Recommendation, owned: bool) -> dict[str, Any]:
     return {
         "game_title": rec.game_title,
         "reasoning": rec.reasoning,
-        "estimated_playtime": rec.estimated_playtime,
         "owned": owned,
     }
