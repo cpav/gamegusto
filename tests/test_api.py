@@ -162,7 +162,12 @@ def make_app(
     sources: list[RecordSource] = [ManualSource(memory, USER)]
     library = LibraryService(sources=sources, enricher=enricher, memory=memory)
     tools = ToolRegistry(
-        memory=memory, library=library, search=search, enricher=enricher, user_id=USER
+        memory=memory,
+        library=library,
+        search=search,
+        enricher=enricher,
+        user_id=USER,
+        stores={},
     )
     runtime = AgentRuntime(
         bedrock=bedrock or FakeBedrock(script or []),
@@ -532,7 +537,12 @@ def test_conversation_restores_agent_context_after_restart() -> None:
     enricher = FakeEnricher()
     library = LibraryService(sources=[ManualSource(memory, USER)], enricher=enricher, memory=memory)
     tools = ToolRegistry(
-        memory=memory, library=library, search=search, enricher=enricher, user_id=USER
+        memory=memory,
+        library=library,
+        search=search,
+        enricher=enricher,
+        user_id=USER,
+        stores={},
     )
     runtime = AgentRuntime(
         bedrock=FakeBedrock([_answer_round("A follow-up pick.")]),

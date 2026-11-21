@@ -113,7 +113,7 @@ def test_taste_match_then_already_played_followup() -> None:
     search = SearchService(api_key=None)
     enricher = _IdentityEnricher()
     library = LibraryService([ManualSource(memory, USER_ID)], enricher, memory)  # type: ignore[arg-type]
-    tools = ToolRegistry(memory, library, search, enricher, USER_ID)  # type: ignore[arg-type]
+    tools = ToolRegistry(memory, library, search, enricher, USER_ID, stores={})  # type: ignore[arg-type]
 
     # The owned library (above) signals taste + is the exclusion set; the model
     # recommends NEW titles the user does not own.

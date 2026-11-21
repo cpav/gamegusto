@@ -27,6 +27,8 @@ from services.memory_service import MemoryService
 from services.search_service import SearchService
 from services.sources.base import RecordSource
 from services.sources.manual_source import ManualSource
+from services.stores.nintendo_store import NintendoStore
+from services.stores.xbox_store import XboxStore
 
 if TYPE_CHECKING:
     # Annotation only — see _build_gmail_source for why this is not a runtime
@@ -57,7 +59,8 @@ def build_app(
     The store-deals region resolves as **explicit ``config.deals_region`` ›
     ``detected_region`` (e.g. browser timezone, passed by the UI) › default**, and is
     surfaced to the agent in the system prompt so it knows the region (and currency)
-    without asking — the agent then reads deals itself via ``web_search`` (deep).
+    without asking — the agent then checks prices itself, through ``store_prices``
+    for the official Xbox and Nintendo stores and ``web_search`` for the rest.
     """
     region = config.deals_region or detected_region or DEFAULT_DEALS_REGION
     bedrock = BedrockService(config)
@@ -76,7 +79,12 @@ def build_app(
     enricher = Enricher(bedrock, search, igdb)
     library = LibraryService(sources=sources, enricher=enricher, memory=memory)
     tools = ToolRegistry(
-        memory=memory, library=library, search=search, enricher=enricher, user_id=user_id
+        memory=memory,
+        library=library,
+        search=search,
+        enricher=enricher,
+        user_id=user_id,
+        stores={"xbox": XboxStore(), "nintendo": NintendoStore()},
     )
     runtime = AgentRuntime(
         bedrock=bedrock,
