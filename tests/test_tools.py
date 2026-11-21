@@ -81,13 +81,17 @@ class _FakeResponse:
 class _FakeSearchHttp:
     """A Brave HTTP client returning canned results so web_search is deterministic."""
 
+    def __init__(self) -> None:
+        self.params: list[dict[str, Any]] = []
+
     def get(self, url: str, **kwargs: Any) -> _FakeResponse:
+        self.params.append(kwargs.get("params", {}))
         return _FakeResponse()
 
 
-def _registry() -> tuple[ToolRegistry, MemoryService]:
+def _registry(http: _FakeSearchHttp | None = None) -> tuple[ToolRegistry, MemoryService]:
     memory = MemoryService(_InMemoryClient())
-    search = SearchService(api_key="x", http=_FakeSearchHttp())
+    search = SearchService(api_key="x", http=http or _FakeSearchHttp())
     enricher = Enricher(_FakeBedrock(_ENRICH_JSON), search)  # type: ignore[arg-type]
     library = LibraryService([ManualSource(memory, USER_ID)], enricher, memory)
     return ToolRegistry(memory, library, search, enricher, USER_ID), memory
@@ -177,6 +181,28 @@ def test_web_search_deep_and_site() -> None:
         "web_search", {"query": "Xbox deals Denmark", "deep": True, "site": "microsoft.com"}
     )
     assert out["results"]
+
+
+def test_web_search_localizes_to_the_given_locale() -> None:
+    http = _FakeSearchHttp()
+    reg, _ = _registry(http)
+
+    out = reg.dispatch("web_search", {"query": "Xbox deals", "locale": "da-DK", "deep": True})
+
+    assert out["results"]
+    assert http.params[0]["country"] == "DK"
+    assert http.params[0]["search_lang"] == "da"
+
+
+def test_web_search_rejects_a_malformed_locale_without_searching() -> None:
+    """The model gets an error it can correct, rather than silently US results."""
+    http = _FakeSearchHttp()
+    reg, _ = _registry(http)
+
+    out = reg.dispatch("web_search", {"query": "Xbox deals", "locale": "Denmark"})
+
+    assert out["ok"] is False and "da-DK" in out["error"]
+    assert http.params == []
 
 
 def test_import_gmail_reports_delta() -> None:

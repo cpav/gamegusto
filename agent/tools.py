@@ -26,7 +26,7 @@ from models.platform import OwnedPlatform
 from models.recommendation import Recommendation
 from models.session import SessionData
 from services.memory_service import MemoryService
-from services.search_service import SearchService
+from services.search_service import SearchService, is_locale
 
 logger = logging.getLogger(__name__)
 
@@ -194,10 +194,13 @@ class ToolRegistry:
         query = str(tool_input.get("query", "")).strip()
         if not query:
             return {"ok": False, "error": "query is required"}
+        locale = str(tool_input.get("locale", "")).strip()
+        if locale and not is_locale(locale):
+            return {"ok": False, "error": "locale must be a language-region code such as da-DK"}
         site = str(tool_input.get("site", "")).strip()
         include_domains = [site] if site else None
         deep = bool(tool_input.get("deep"))
-        return {"results": self._search.web_search(query, include_domains, deep)}
+        return {"results": self._search.web_search(query, include_domains, deep, locale or None)}
 
     # --- personalization tools (Req 8) ---
 
@@ -402,15 +405,22 @@ _TOOL_SPECS: list[dict[str, Any]] = [
     _spec(
         "web_search",
         "Search the web for game info (genre, playtime, availability, reviews) or for "
-        "live store prices/deals. Set deep=true to read full page content (needed to "
-        "read actual prices off a store's deals page), and site to restrict to one "
-        "domain (e.g. 'microsoft.com', 'store.playstation.com', 'store.steampowered.com').",
+        "live store prices/deals. Returns result snippets, never whole pages. Results "
+        "are localized to the US unless you pass locale, so pass the user's for "
+        "anything regional such as store prices. Set deep=true for more results and "
+        "more text per result, and site to restrict to one domain (e.g. 'xbox.com', "
+        "'store.playstation.com', 'store.steampowered.com').",
         {
             "query": {"type": "string"},
+            "locale": {
+                "type": "string",
+                "description": "Language-region code such as 'da-DK' or 'en-GB': results "
+                "come from that country, in that language.",
+            },
             "deep": {
                 "type": "boolean",
-                "description": "Read full page content, not just a snippet. Use for store "
-                "deals pages, where prices live in the page body.",
+                "description": "Up to 20 results with extra text snippets each: more "
+                "chances to catch a price. Still snippets, not the full page.",
             },
             "site": {
                 "type": "string",

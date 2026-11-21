@@ -22,6 +22,7 @@ catalogue.
 
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -37,6 +38,16 @@ _TIMEOUT = 8
 #: what surfaces the price buried in a store deals page a bare snippet misses.
 _SHALLOW_COUNT = 5
 _DEEP_COUNT = 20
+
+#: A language-region locale such as ``da-DK``. Brave localizes by country and by
+#: search language separately and needs both: with the country alone, a Danish
+#: store query still ranked US pages first.
+_LOCALE = re.compile(r"([a-z]{2})-([a-z]{2})", re.IGNORECASE)
+
+
+def is_locale(value: str) -> bool:
+    """True for a language-region locale such as ``da-DK``."""
+    return _LOCALE.fullmatch(value) is not None
 
 
 class _Http(Protocol):
@@ -73,7 +84,11 @@ class SearchService:
         self._last_error: str | None = None
 
     def web_search(
-        self, query: str, include_domains: list[str] | None = None, deep: bool = False
+        self,
+        query: str,
+        include_domains: list[str] | None = None,
+        deep: bool = False,
+        locale: str | None = None,
     ) -> list[dict[str, str]]:
         """Return web snippets for ``query`` to inform agent reasoning.
 
@@ -82,29 +97,36 @@ class SearchService:
         single official store domain, so the agent reads the storefront rather than
         price-aggregator/grey-market sites. ``deep`` pulls the maximum results plus
         Brave's extra snippets, which is what surfaces the actual prices on a
-        store's deals page a basic snippet misses. A rate-limit miss or any failure
-        degrades to ``[]`` rather than raising (Req 5.4, 10.3).
+        store's deals page a basic snippet misses. ``locale`` (``da-DK``) localizes
+        results to that country and language; without it Brave answers as if from
+        the US, so regional store pages and prices never surface. A malformed
+        locale is not sent.
+
+        A rate-limit miss or any failure degrades to ``[]`` rather than raising
+        (Req 5.4, 10.3). A failure costs only that call: the next one tries again,
+        so one timeout cannot switch search off for the rest of the process.
         """
-        if not query.strip() or not self._available or not self._check_rate_limit():
+        if not query.strip() or not self._api_key or not self._check_rate_limit():
             return []
         term = query
         if include_domains:
             term = f"{query} " + " ".join(f"site:{domain}" for domain in include_domains)
         try:
-            data = self._search(term, deep)
+            data = self._search(term, deep, locale)
         except Exception as exc:  # noqa: BLE001 - degrade on any Brave failure (Req 10.3)
-            self._degrade(exc)
+            self._mark_unavailable(exc)
             return []
+        self._mark_available()
         return self._snippets(data)
 
     @property
     def is_available(self) -> bool:
-        """False without a key, or once a Brave call has failed; enables degradation."""
+        """False without a key, or while the most recent Brave call failed."""
         return self._available
 
     @property
     def last_error(self) -> str | None:
-        """Sanitized message for the most recent failure, or ``None`` (Req 10.3)."""
+        """Sanitized message for the most recent call's failure, or ``None`` (Req 10.3)."""
         return self._last_error
 
     def _check_rate_limit(self) -> bool:
@@ -121,13 +143,18 @@ class SearchService:
         self._rate.requests_this_minute += 1
         return True
 
-    def _search(self, query: str, deep: bool) -> dict[str, Any]:
+    def _search(self, query: str, deep: bool, locale: str | None) -> dict[str, Any]:
         """Issue one Brave web search and return the parsed JSON envelope."""
         params: dict[str, Any] = {"q": query, "count": _DEEP_COUNT if deep else _SHALLOW_COUNT}
         if deep:
             # Extra snippets carry more of the page body; harmless if the plan
             # does not return them.
             params["extra_snippets"] = "true"
+        match = _LOCALE.fullmatch(locale) if locale else None
+        if match:
+            language, country = match.groups()
+            params["country"] = country.upper()
+            params["search_lang"] = language.lower()
         response = self._http.get(
             _API_URL,
             headers={"Accept": "application/json", "X-Subscription-Token": str(self._api_key)},
@@ -138,8 +165,13 @@ class SearchService:
         payload = response.json()
         return payload if isinstance(payload, dict) else {}
 
-    def _degrade(self, exc: Exception) -> None:
-        """Mark the service unavailable and record a sanitized error (Req 10.3)."""
+    def _mark_available(self) -> None:
+        """Record that the last Brave call succeeded."""
+        self._available = True
+        self._last_error = None
+
+    def _mark_unavailable(self, exc: Exception) -> None:
+        """Record a failed Brave call with a sanitized error (Req 10.3)."""
         self._available = False
         self._last_error = ErrorHandler.sanitize_error(exc, "search")
 
