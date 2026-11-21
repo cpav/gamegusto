@@ -103,7 +103,7 @@ def _runtime(bedrock: Any) -> tuple[AgentRuntime, MemoryService]:
     search = SearchService(api_key=None)
     enricher = Enricher(bedrock, search)
     library = LibraryService([ManualSource(memory, USER_ID)], enricher, memory)
-    tools = ToolRegistry(memory, library, search, enricher, USER_ID)
+    tools = ToolRegistry(memory, library, search, enricher, USER_ID, stores={})
     return AgentRuntime(bedrock, tools, memory), memory
 
 
@@ -287,7 +287,7 @@ def test_callable_system_prompt_is_resolved_fresh_each_turn() -> None:
     memory = MemoryService(_InMemoryClient())
     enricher = Enricher(bedrock, search)  # type: ignore[arg-type]
     library = LibraryService([ManualSource(memory, USER_ID)], enricher, memory)
-    tools = ToolRegistry(memory, library, search, enricher, USER_ID)
+    tools = ToolRegistry(memory, library, search, enricher, USER_ID, stores={})
     runtime = AgentRuntime(
         bedrock,  # type: ignore[arg-type]
         tools,
@@ -370,7 +370,7 @@ def test_stateless_flag_reflects_memory_health() -> None:
     memory = MemoryService(_InMemoryClient())
     enricher = Enricher(bedrock, search)  # type: ignore[arg-type]
     library = LibraryService([ManualSource(memory, USER_ID)], enricher, memory)
-    tools = ToolRegistry(memory, library, search, enricher, USER_ID)
+    tools = ToolRegistry(memory, library, search, enricher, USER_ID, stores={})
     runtime = AgentRuntime(bedrock, tools, _StatelessMemory())  # type: ignore[arg-type]
 
     reply = runtime.send("hi")

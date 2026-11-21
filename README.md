@@ -11,10 +11,13 @@ web) and avoiding anything you already have.
 
 `models → services → agent → api → web`. The agent runs a Bedrock Converse tool-use
 loop (`agent/runtime.py`) over tools that wrap the services
-(`agent/tools.py`): platforms, library, enrichment, web search (with deep page
-reads for store deals), persistence.
-Memory is a single DynamoDB table; the LLM is a hard dependency while memory and
-Brave degrade gracefully. [`docs/v1-spec/`](docs/v1-spec/) holds the v1
+(`agent/tools.py`): platforms, library, enrichment, web search (localized to the
+user's region), official Xbox and Nintendo store prices (`services/stores/`),
+persistence.
+Memory is a single DynamoDB table; the LLM is a hard dependency while memory,
+Brave and the stores degrade gracefully. The stores read data their own pages
+load, not a documented API: `pytest -m integration tests/test_stores_live.py`
+checks they still answer. [`docs/v1-spec/`](docs/v1-spec/) holds the v1
 requirements and correctness properties, still cited by ~108 code comments;
 its UI chapters are historical.
 

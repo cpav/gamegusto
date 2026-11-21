@@ -28,6 +28,7 @@ class ErrorHandler:
         "search_unavailable": (
             "Game lookup is temporarily unavailable. Using available information."
         ),
+        "store_unavailable": "Official store prices are unavailable right now.",
         "gmail_unavailable": (
             "Couldn't read your Gmail purchases right now. The rest of the app still works."
         ),

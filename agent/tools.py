@@ -1,9 +1,10 @@
 """Tool registry exposed to the Bedrock agent.
 
 Each tool is a thin function plus a Converse ``toolSpec`` (JSON schema) that wraps
-existing services — :class:`MemoryService`, :class:`LibraryService`, and
-:class:`SearchService`. The model decides which tools to call and when; the
-registry only declares the surface and dispatches calls. Selection of the actual
+existing services — :class:`MemoryService`, :class:`LibraryService`,
+:class:`SearchService`, and the official :mod:`services.stores`. The model decides
+which tools to call and when; the registry only declares the surface and dispatches
+calls. Selection of the actual
 game is the model's job, not a tool — it reads the library, applies the user's
 stated taste/mood/time/owned platforms, and may enrich or web-search to fill gaps.
 
@@ -15,7 +16,7 @@ and the underlying services already degrade gracefully rather than raising.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from agent.enricher import Enricher
@@ -25,10 +26,18 @@ from models.game_record import GameRecord
 from models.platform import OwnedPlatform
 from models.recommendation import Recommendation
 from models.session import SessionData
+from services.error_handler import ErrorHandler
 from services.memory_service import MemoryService
 from services.search_service import SearchService, is_locale
+from services.stores.base import Store
 
 logger = logging.getLogger(__name__)
+
+#: store_prices bounds: enough matches per title to show the editions, few enough
+#: titles and deals to keep one tool result small.
+_MATCHES_PER_TITLE = 3
+_MAX_TITLES = 5
+_MAX_DEALS = 25
 
 #: One registered tool: its Converse spec plus the handler that executes it.
 ToolHandler = Callable[[dict[str, Any]], dict[str, Any]]
@@ -61,13 +70,21 @@ class ToolRegistry:
         search: SearchService,
         enricher: Enricher,
         user_id: str,
+        *,
+        stores: Mapping[str, Store],
     ) -> None:
-        """Build the registry around the shared service graph for ``user_id``."""
+        """Build the registry around the shared service graph for ``user_id``.
+
+        ``stores`` maps a platform name the model passes (``"xbox"``) to the store
+        that prices it; an empty mapping leaves ``store_prices`` answering that no
+        platform is covered.
+        """
         self._memory = memory
         self._library = library
         self._search = search
         self._enricher = enricher
         self._user_id = user_id
+        self._stores = stores
         self._handlers: dict[str, ToolHandler] = {
             "get_owned_platforms": self._get_owned_platforms,
             "add_platform": self._add_platform,
@@ -78,6 +95,7 @@ class ToolRegistry:
             "import_gmail": self._import_gmail,
             "enrich_game": self._enrich_game,
             "web_search": self._web_search,
+            "store_prices": self._store_prices,
             "get_recent_recommendations": self._get_recent_recommendations,
             "save_recommendation": self._save_recommendation,
         }
@@ -201,6 +219,42 @@ class ToolRegistry:
         include_domains = [site] if site else None
         deep = bool(tool_input.get("deep"))
         return {"results": self._search.web_search(query, include_domains, deep, locale or None)}
+
+    def _store_prices(self, tool_input: dict[str, Any]) -> dict[str, Any]:
+        platform = str(tool_input.get("platform", "")).strip().lower()
+        store = self._stores.get(platform)
+        if store is None:
+            covered = ", ".join(sorted(self._stores)) or "none"
+            return {"ok": False, "error": f"platform must be one of: {covered}"}
+        locale = str(tool_input.get("locale", "")).strip()
+        if not is_locale(locale):
+            return {"ok": False, "error": "locale must be a language-region code such as da-DK"}
+        raw_titles = tool_input.get("titles") or []
+        if isinstance(raw_titles, str):
+            raw_titles = [raw_titles]
+        titles = [str(t).strip() for t in raw_titles if str(t).strip()]
+        wants_deals = bool(tool_input.get("deals"))
+        if wants_deals == bool(titles):
+            return {"ok": False, "error": "pass either titles or deals=true, not both"}
+
+        try:
+            if wants_deals:
+                deals = store.deals(locale, _MAX_DEALS)
+                return {"ok": True, "store": store.name, "deals": [p.to_dict() for p in deals]}
+            matches = {
+                title: [p.to_dict() for p in store.lookup(title, locale, _MATCHES_PER_TITLE)]
+                for title in titles[:_MAX_TITLES]
+            }
+        except Exception as exc:  # noqa: BLE001 - any store failure falls back to search
+            message = ErrorHandler.sanitize_error(exc, "store")
+            return {
+                "ok": False,
+                "error": f"{message} Use web_search instead and say the price is unconfirmed.",
+            }
+        result: dict[str, Any] = {"ok": True, "store": store.name, "matches": matches}
+        if len(titles) > _MAX_TITLES:
+            result["note"] = f"only the first {_MAX_TITLES} titles were looked up"
+        return result
 
     # --- personalization tools (Req 8) ---
 
@@ -428,6 +482,35 @@ _TOOL_SPECS: list[dict[str, Any]] = [
             },
         },
         ["query"],
+    ),
+    _spec(
+        "store_prices",
+        "Official prices from the platform's own store, in the user's market and "
+        "currency: the store's own numbers, sale end dates included, never a tracker's "
+        "or another country's. Look up specific titles (each returns the store's "
+        "closest matches, editions included, so check you have the right one), or set "
+        "deals=true for what's on sale now. Covers Xbox (Microsoft Store) and Nintendo "
+        "(eShop); member-only prices such as Game Pass are excluded. If it fails, use "
+        "web_search and say the price is unconfirmed.",
+        {
+            "platform": {"type": "string", "enum": ["xbox", "nintendo"]},
+            "locale": {
+                "type": "string",
+                "description": "The user's language-region code, e.g. 'da-DK': sets the "
+                "store's market and currency.",
+            },
+            "titles": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": f"Games to price, up to {_MAX_TITLES}.",
+            },
+            "deals": {
+                "type": "boolean",
+                "description": "List games on sale now instead of looking up titles "
+                "(the store's own first page of deals).",
+            },
+        },
+        ["platform", "locale"],
     ),
     _spec(
         "get_recent_recommendations",

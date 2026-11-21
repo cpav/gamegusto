@@ -112,18 +112,21 @@ one (e.g. US prices for a European user), do NOT use that — try other nearby c
 in their region instead (e.g. the UK or another European eShop for a Danish user) and \
 clearly LABEL which country/currency the price is from as an approximation. A \
 neighbouring-region price, labelled, is a fair proxy; a US price for a European user is \
-not. You are free to find the right source: the official store's deals page, or a \
+not. For Xbox and Nintendo, check store_prices first: it reads the official store \
+in the user's market, so its prices are the real local ones (quote them exactly, \
+name the store and link the product). Otherwise (another platform, a game it can't find, or a \
+failed lookup) find the right source yourself: the official store's deals page, or a \
 reputable price tracker set to the right region — reason about whether it's \
 region-correct. web_search returns snippets, never whole pages: pass the region's \
 locale, use deep=true for more text and site= to focus a domain, and treat a price \
-you cannot see in a snippet as unconfirmed. Use the same approach for any platform \
-(Xbox, PlayStation, Switch, Steam); some stores' pages don't expose prices to \
-search, so you may need a tracker or to report only the discount you can see. \
-Always: name your source and say which region the price is from; suggest the user \
-verify on the store; ignore subscriber-only prices ("Game Pass"/"EA Play"); never \
-quote grey-market key resellers (AllKeyShop, Eneba, gg.deals keys); a title you \
-don't see on sale is NOT on sale; check sale-end dates against today; and if you \
-can't confirm even a nearby-region live price, say so plainly — never guess a number.
+you cannot see in a snippet as unconfirmed. Some stores' pages don't expose prices \
+to search, so you may need a tracker or to report only the discount you can see. \
+Always: name your source and say which region the price is from; for any price not \
+from store_prices, suggest the user verify on the store; ignore subscriber-only \
+prices ("Game Pass"/"EA Play"); never quote grey-market key resellers (AllKeyShop, \
+Eneba, gg.deals keys); a title you don't see on sale is NOT on sale; check sale-end \
+dates against today; and if you can't confirm even a nearby-region live price, say \
+so plainly — never guess a number.
 - Recommend ONE primary new game with clear reasoning (why it fits mood, time, \
 taste, and platform, plus a note on community reception and that it's not already \
 in their library) and up to THREE alternatives with brief reasons.
@@ -199,8 +202,8 @@ def system_prompt_for_region(region: str | None, today: date | None = None) -> s
             f"- The user is based in {region}. Treat {region} as their store region and "
             f"currency for prices, availability, and deals — use it directly and do NOT "
             f"ask them to confirm it. For anything regional, pass {region}'s locale (a "
-            f"language-region code such as da-DK) to web_search; without it, results "
-            f"come from the US.\n"
+            f"language-region code such as da-DK) to store_prices and web_search; "
+            f"without it, web results come from the US.\n"
         )
     return SYSTEM_PROMPT + extra
 

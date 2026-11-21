@@ -17,6 +17,7 @@ from models.game_record import GameRecord
 from services.memory_service import MemoryService
 from services.search_service import SearchService
 from services.sources.manual_source import ManualSource
+from services.stores.base import StoreError, StorePrice
 
 USER_ID = "tools-user"
 
@@ -89,12 +90,49 @@ class _FakeSearchHttp:
         return _FakeResponse()
 
 
-def _registry(http: _FakeSearchHttp | None = None) -> tuple[ToolRegistry, MemoryService]:
+class _FakeStore:
+    """A store answering from canned prices, recording what it was asked."""
+
+    name = "Fake Store"
+
+    def __init__(self, fail: bool = False) -> None:
+        self._fail = fail
+        self.asked: list[tuple[str, str, str, int]] = []
+
+    def deals(self, locale: str, limit: int) -> list[StorePrice]:
+        self.asked.append(("deals", "", locale, limit))
+        if self._fail:
+            raise StoreError("store changed its page")
+        return [_price("Hades", 92.0, 184.0, "2026-12-03")]
+
+    def lookup(self, title: str, locale: str, limit: int) -> list[StorePrice]:
+        self.asked.append(("lookup", title, locale, limit))
+        if self._fail:
+            raise StoreError("store changed its page")
+        return [_price(title, 219.0, 219.0, None)]
+
+
+def _price(title: str, price: float, regular: float, ends: str | None) -> StorePrice:
+    return StorePrice(
+        title=title,
+        platforms=("XboxSeriesX",),
+        price=price,
+        regular_price=regular,
+        currency="DKK",
+        sale_ends=ends,
+        url="https://store/x",
+    )
+
+
+def _registry(
+    http: _FakeSearchHttp | None = None, stores: dict[str, Any] | None = None
+) -> tuple[ToolRegistry, MemoryService]:
     memory = MemoryService(_InMemoryClient())
     search = SearchService(api_key="x", http=http or _FakeSearchHttp())
     enricher = Enricher(_FakeBedrock(_ENRICH_JSON), search)  # type: ignore[arg-type]
     library = LibraryService([ManualSource(memory, USER_ID)], enricher, memory)
-    return ToolRegistry(memory, library, search, enricher, USER_ID), memory
+    registry = ToolRegistry(memory, library, search, enricher, USER_ID, stores=stores or {})
+    return registry, memory
 
 
 def test_platform_tools_round_trip() -> None:
@@ -203,6 +241,90 @@ def test_web_search_rejects_a_malformed_locale_without_searching() -> None:
 
     assert out["ok"] is False and "da-DK" in out["error"]
     assert http.params == []
+
+
+def test_store_prices_lists_deals_with_discount_and_end_date() -> None:
+    store = _FakeStore()
+    reg, _ = _registry(stores={"xbox": store})
+
+    out = reg.dispatch("store_prices", {"platform": "Xbox", "locale": "da-DK", "deals": True})
+
+    assert out["ok"] is True and out["store"] == "Fake Store"
+    assert out["deals"] == [
+        {
+            "title": "Hades",
+            "platforms": ["XboxSeriesX"],
+            "price": 92.0,
+            "regular_price": 184.0,
+            "currency": "DKK",
+            "url": "https://store/x",
+            "discount_percent": 50,
+            "sale_ends": "2026-12-03",
+        }
+    ]
+    assert store.asked == [("deals", "", "da-DK", 25)]
+
+
+def test_store_prices_looks_up_titles_and_omits_sale_fields_at_full_price() -> None:
+    store = _FakeStore()
+    reg, _ = _registry(stores={"xbox": store})
+
+    out = reg.dispatch(
+        "store_prices", {"platform": "xbox", "locale": "da-DK", "titles": ["Hades II"]}
+    )
+
+    match = out["matches"]["Hades II"][0]
+    assert match["price"] == 219.0
+    assert "discount_percent" not in match and "sale_ends" not in match
+    assert store.asked == [("lookup", "Hades II", "da-DK", 3)]
+
+
+def test_store_prices_caps_titles_and_says_so() -> None:
+    store = _FakeStore()
+    reg, _ = _registry(stores={"xbox": store})
+    titles = [f"Game {i}" for i in range(7)]
+
+    out = reg.dispatch("store_prices", {"platform": "xbox", "locale": "da-DK", "titles": titles})
+
+    assert len(out["matches"]) == 5 and "first 5" in out["note"]
+
+
+def test_store_prices_accepts_a_bare_title_string() -> None:
+    """A model that sends one title as a string must not get it priced letter by letter."""
+    store = _FakeStore()
+    reg, _ = _registry(stores={"xbox": store})
+
+    out = reg.dispatch("store_prices", {"platform": "xbox", "locale": "da-DK", "titles": "Hades"})
+
+    assert list(out["matches"]) == ["Hades"]
+
+
+def test_store_prices_validates_its_input_before_asking_a_store() -> None:
+    store = _FakeStore()
+    reg, _ = _registry(stores={"xbox": store})
+
+    unknown = reg.dispatch("store_prices", {"platform": "steam", "locale": "da-DK", "deals": True})
+    bad_locale = reg.dispatch("store_prices", {"platform": "xbox", "locale": "DK", "deals": True})
+    neither = reg.dispatch("store_prices", {"platform": "xbox", "locale": "da-DK"})
+    both = reg.dispatch(
+        "store_prices",
+        {"platform": "xbox", "locale": "da-DK", "deals": True, "titles": ["Hades"]},
+    )
+
+    assert "xbox" in unknown["error"]
+    assert "da-DK" in bad_locale["error"]
+    assert neither["ok"] is False and both["ok"] is False
+    assert store.asked == []
+
+
+def test_a_failing_store_tells_the_model_to_fall_back_to_search() -> None:
+    reg, _ = _registry(stores={"nintendo": _FakeStore(fail=True)})
+
+    out = reg.dispatch("store_prices", {"platform": "nintendo", "locale": "da-DK", "deals": True})
+
+    assert out["ok"] is False
+    assert "web_search" in out["error"] and "unconfirmed" in out["error"]
+    assert "changed its page" not in out["error"]  # internals stay in the server log
 
 
 def test_import_gmail_reports_delta() -> None:
