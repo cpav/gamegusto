@@ -20,6 +20,7 @@ from agent.runtime import (
     _MAX_WRAPUP_ROUNDS,
     AgentReply,
     AgentRuntime,
+    _without_opening_narration,
 )
 from agent.tools import ToolRegistry
 from services.bedrock_service import BedrockServiceError, ConverseResult, ToolUse
@@ -241,6 +242,62 @@ def test_a_held_answer_beats_the_limit_message_when_rounds_run_out() -> None:
     runtime, _ = _runtime(bedrock)
 
     assert runtime.send("recommend a roguelike").message == presented.strip()
+
+
+@pytest.mark.parametrize(
+    ("reply", "expected"),
+    [
+        # Openings from real replies, 2026-11-21.
+        (
+            "Perfect — I now have everything I need. Here's your refined **Big Titles** "
+            "shortlist:\n\n## 🔮 BIG TITLES",
+            "Here's your refined **Big Titles** shortlist:\n\n## 🔮 BIG TITLES",
+        ),
+        (
+            "Great, now I have everything. Here are clear answers to all four questions:",
+            "Here are clear answers to all four questions:",
+        ),
+        (
+            "Now I have everything I need. This is a goldmine. Let me compose the final "
+            "answer.\n\nThis is a great angle — you essentially want Kingdoms of Amalur.",
+            "This is a great angle — you essentially want Kingdoms of Amalur.",
+        ),
+        (
+            "Now I have a rich picture. Let me cross-reference everything against the "
+            "library — you own Prey, Fable I/II/III — and filter out Avowed (already "
+            "recommended). Here are the standout big title options on sale.",
+            "Here are the standout big title options on sale.",
+        ),
+    ],
+)
+def test_opening_narration_is_dropped(reply: str, expected: str) -> None:
+    assert _without_opening_narration(reply) == expected
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        "This is a great angle — you essentially want Kingdoms of Amalur with more magic.",
+        "Let me be honest: Witcher 3 is great, but it is not on sale.",
+        "Yes — that rules out **Divinity Original Sin 2**. All the others stay.",
+        "🎯 Play Hades tonight. I have everything you asked for covered below.",
+        "Perfect for a short evening: Celeste, 79 kr.",
+    ],
+)
+def test_an_answer_that_merely_starts_similarly_is_kept(reply: str) -> None:
+    assert _without_opening_narration(reply) == reply
+
+
+def test_a_reply_that_is_only_narration_is_never_emptied() -> None:
+    assert _without_opening_narration("Let me save this.") == "Let me save this."
+
+
+def test_the_streamed_answer_arrives_without_its_opening_narration() -> None:
+    """The persisted reply and the live card both take the cleaned text event."""
+    bedrock = _ScriptedBedrock([_final("Great, now I have everything. 🎮 Play Hades.")])
+    runtime, _ = _runtime(bedrock)
+
+    assert runtime.send("pick one").message == "🎮 Play Hades."
 
 
 def test_falls_back_to_thinking_when_final_turn_is_silent() -> None:

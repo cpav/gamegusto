@@ -16,6 +16,7 @@ Memory and web search degrade gracefully via the tools they back.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable, Generator, Iterator
 from dataclasses import dataclass, field
 from datetime import date
@@ -166,6 +167,47 @@ with web_search when unsure.
 _MIN_PRESENTED_ANSWER_CHARS = 200
 
 
+#: A whole opening sentence that narrates the agent's process instead of answering:
+#: "Perfect — I now have everything I need.", "Now I have a rich picture.", "This
+#: is a goldmine.", "Let me compose the final answer." The prompt forbids these and
+#: the model writes them anyway, in most replies. Matching a WHOLE sentence keeps
+#: the net narrow: "This is a great angle — you want…" and "Let me be honest:
+#: Witcher 3 is great." are answers, and survive.
+_NARRATION = re.compile(
+    r"(?:(?:perfect|great|excellent|good|okay|ok|alright|right|now|awesome)[\s,!—–-]+)*"
+    r"(?:"
+    r"(?:now )?i(?:'ve| have)? (?:now )?(?:got |have )?(?:everything|all|enough)\b[^.!?\n]*"
+    r"|(?:now )?i(?: now)? have a (?:rich|clear|full|good|complete) picture\b[^.!?\n]*"
+    r"|let me (?:now )?(?:compose|put|pull|present|write|lay out|summari[sz]e|"
+    r"cross-reference|check|save|finali[sz]e|gather|bring|wrap)\b[^.!?\n]*"
+    r"|(?:this|that)(?: is|'s) (?:a goldmine|perfect|exactly what i needed)"
+    r")[.!]?",
+    re.IGNORECASE,
+)
+
+#: One leading sentence: up to the first "." or "!" that ends it, within its line.
+_LEADING_SENTENCE = re.compile(r"\s*([^\n]*?[.!])(?=\s|$)")
+
+#: Openings rarely run past three narrating sentences; the cap bounds the loop.
+_MAX_NARRATION_SENTENCES = 4
+
+
+def _without_opening_narration(text: str) -> str:
+    """``text`` minus leading sentences that narrate the process, never emptied."""
+    rest = text
+    for _ in range(_MAX_NARRATION_SENTENCES):
+        sentence = _LEADING_SENTENCE.match(rest)
+        if not sentence or not _NARRATION.fullmatch(sentence.group(1).strip()):
+            break
+        rest = rest[sentence.end() :]
+    return rest.strip() or text
+
+
+def _answer(text: str) -> AgentEvent:
+    """The event for answer text, as the user should read it."""
+    return AgentEvent(kind="text", text=_without_opening_narration(text))
+
+
 def _presents_answer(result: Any) -> bool:
     """True when a tool-calling turn's text may be the answer, not working notes.
 
@@ -195,7 +237,7 @@ def _settle(held: str | None, following: str) -> Iterator[AgentEvent]:
     if held is None:
         return
     notes = len(following) >= _MIN_PRESENTED_ANSWER_CHARS
-    yield AgentEvent(kind="thinking" if notes else "text", text=held)
+    yield AgentEvent(kind="thinking", text=held) if notes else _answer(held)
 
 
 def system_prompt_for_region(region: str | None, today: date | None = None) -> str:
@@ -451,7 +493,7 @@ class AgentRuntime:
             if final:
                 yield from _settle(held, text)
                 if text:
-                    yield AgentEvent(kind="text", text=text)
+                    yield _answer(text)
             elif _presents_answer(result):
                 yield from _settle(held, text)  # a later save turn: the earlier one was notes
                 held = text
@@ -484,7 +526,7 @@ class AgentRuntime:
             if final:
                 yield from _settle(held, text)
                 if text or held is None:
-                    yield AgentEvent(kind="text", text=text or _ITERATION_LIMIT_MESSAGE)
+                    yield _answer(text or _ITERATION_LIMIT_MESSAGE)
                 return
             if _presents_answer(result):
                 yield from _settle(held, text)
@@ -494,7 +536,7 @@ class AgentRuntime:
                 yield AgentEvent(kind="thinking", text=text)
             yield from self._apply_tools(result)
         # Out of rounds: a held save-turn text is the best answer there is.
-        yield AgentEvent(kind="text", text=held or _ITERATION_LIMIT_MESSAGE)
+        yield _answer(held or _ITERATION_LIMIT_MESSAGE)
 
     def _apply_tools(self, result: Any) -> Iterator[AgentEvent]:
         """Dispatch every tool the model asked for, yielding a tool event per call and

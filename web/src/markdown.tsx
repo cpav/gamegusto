@@ -122,7 +122,12 @@ export function Markdown({ text, inline = false }: { text: string; inline?: bool
     } else if (heading) {
       flushBullets();
       flushParagraph();
-      blocks.push(<h3 key={`h-${blocks.length}`}>{renderInline(heading[2], `h-${blocks.length}`)}</h3>);
+      // Two levels are enough for a reply: a section ("## Big titles") and an
+      // item within it ("### 🥇 Skyrim — 134,97 kr"). Rendered alike, the two
+      // ran together as one block of same-size bold lines.
+      const Tag = heading[1].length <= 2 ? "h3" : "h4";
+      const key = `h-${blocks.length}`;
+      blocks.push(<Tag key={key}>{renderInline(heading[2], key)}</Tag>);
     } else if (bullet) {
       flushParagraph();
       bullets.push(bullet[1]);
