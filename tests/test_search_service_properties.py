@@ -18,11 +18,12 @@ from __future__ import annotations
 from typing import Any
 from unittest import mock
 
+import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from services import search_service
-from services.search_service import SearchService
+from services.search_service import SearchService, is_locale
 
 # Canned Brave web-search envelope shared by every fake call.
 BRAVE_RESPONSE: dict[str, Any] = {
@@ -119,6 +120,42 @@ def test_deep_requests_more_results_and_extra_snippets() -> None:
     assert params["extra_snippets"] == "true"
 
 
+def test_locale_sends_country_and_search_language() -> None:
+    """Brave needs both halves: the country alone still ranked US store pages first."""
+    http = FakeHttp()
+    _service(http).web_search("xbox deals", locale="da-DK")
+
+    params = http.calls[0][1]["params"]
+    assert params["country"] == "DK"
+    assert params["search_lang"] == "da"
+
+
+def test_without_a_locale_brave_picks_its_default() -> None:
+    http = FakeHttp()
+    _service(http).web_search("xbox deals")
+
+    params = http.calls[0][1]["params"]
+    assert "country" not in params and "search_lang" not in params
+
+
+def test_a_malformed_locale_is_not_sent() -> None:
+    http = FakeHttp()
+    _service(http).web_search("xbox deals", locale="Denmark")
+
+    params = http.calls[0][1]["params"]
+    assert "country" not in params and "search_lang" not in params
+
+
+@pytest.mark.parametrize("value", ["da-DK", "en-gb", "SV-se"])
+def test_is_locale_accepts_language_region_codes(value: str) -> None:
+    assert is_locale(value)
+
+
+@pytest.mark.parametrize("value", ["Denmark", "da_DK", "DK", "", "da-DK-x", "dan-DK"])
+def test_is_locale_rejects_anything_else(value: str) -> None:
+    assert not is_locale(value)
+
+
 def test_no_key_is_unavailable_and_never_calls() -> None:
     http = FakeHttp()
     service = SearchService(api_key=None, http=http)
@@ -134,16 +171,34 @@ def test_blank_query_returns_nothing_without_calling() -> None:
     assert http.call_count == 0
 
 
-def test_web_search_degrades_on_failure() -> None:
-    """A raising client degrades to [] and marks the service unavailable (Req 10.3)."""
+def test_a_failed_call_degrades_and_the_next_call_recovers() -> None:
+    """A failure degrades to [] and is reported (Req 10.3), but costs only that call.
 
-    class _Boom:
+    Search used to switch itself off for the life of the process after any single
+    failure, so one timeout silenced web search until the Lambda was recycled.
+    """
+
+    class _FailsOnce:
+        def __init__(self) -> None:
+            self.calls = 0
+
         def get(self, url: str, **kwargs: Any) -> Any:
-            raise RuntimeError("brave down")
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("brave timed out")
+            return FakeResponse(BRAVE_RESPONSE)
 
-    service = SearchService("key", http=_Boom())
+    http = _FailsOnce()
+    service = SearchService("key", http=http)
+
     assert service.web_search("Hades") == []
     assert service.is_available is False
+    assert service.last_error
+
+    assert service.web_search("Hades")
+    assert http.calls == 2
+    assert service.is_available is True
+    assert service.last_error is None
 
 
 def test_malformed_payload_degrades_to_empty() -> None:
