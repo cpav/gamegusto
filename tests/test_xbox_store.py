@@ -124,6 +124,16 @@ def test_lookup_uses_the_store_search_and_respects_the_limit() -> None:
     assert kwargs["params"] == {"q": "Forza"}
 
 
+def test_lookup_lists_console_versions_first_then_pc_only_ones() -> None:
+    """A PC-only listing is the answer to "is it on Xbox?", so a lookup keeps it,
+    last and with its platforms. Dropped, the agent read Microsoft's PC listing for
+    Forspoken off the web as an Xbox release. Deals stay console-only."""
+    found = XboxStore(_Http(_page())).lookup("anything", "da-DK", 10)
+
+    assert [f.title for f in found] == ["Forza Horizon 6", "Member Deal", "Hades II", "Desktop Sim"]
+    assert found[-1].platforms == ("PC",)
+
+
 def test_a_page_from_another_market_is_an_error_not_a_foreign_price() -> None:
     with pytest.raises(StoreError, match="en-US"):
         XboxStore(_Http(_page(locale="en-US"))).deals("da-DK", 10)

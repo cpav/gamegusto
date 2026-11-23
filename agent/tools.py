@@ -490,8 +490,10 @@ _TOOL_SPECS: list[dict[str, Any]] = [
         "or another country's. Look up specific titles (each returns the store's "
         "closest matches, editions included, so check you have the right one), or set "
         "deals=true for what's on sale now. Covers Xbox (Microsoft Store) and Nintendo "
-        "(eShop); member-only prices such as Game Pass are excluded. If it fails, use "
-        "web_search and say the price is unconfirmed.",
+        "(eShop); member-only prices such as Game Pass are excluded. Check each "
+        "result's platforms: an Xbox result without XboxSeriesX or XboxOne is listed "
+        "for PC only and does not play on a console. If it fails, use web_search and "
+        "say the price is unconfirmed.",
         {
             "platform": {"type": "string", "enum": ["xbox", "nintendo"]},
             "locale": {

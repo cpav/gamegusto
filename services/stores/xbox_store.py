@@ -25,7 +25,7 @@ _BASE = "https://www.xbox.com"
 _STATE_MARKER = "__PRELOADED_STATE__"
 
 #: Products playable on an Xbox console. PC-only listings appear in the same
-#: lists and are noise for someone shopping for their console.
+#: lists: noise in a list of deals, but the answer when a game is looked up.
 _CONSOLES = frozenset({"XboxSeriesX", "XboxOne"})
 
 
@@ -38,14 +38,21 @@ class XboxStore:
         self._http = http or requests
 
     def deals(self, locale: str, limit: int) -> list[StorePrice]:
-        """The store's deals page, first page, in the store's own order."""
+        """The store's deals page, first page, console games, in the store's own order."""
         state = self._page(f"/{locale}/games/browse/game-deals", locale, {})
-        return _prices(state, locale)[:limit]
+        return _prices(state, locale, consoles_only=True)[:limit]
 
     def lookup(self, title: str, locale: str, limit: int) -> list[StorePrice]:
-        """The store's own search for ``title``, in its relevance order."""
+        """The store's own search for ``title``: console versions first, then PC-only.
+
+        A PC-only listing is returned, platforms and all, rather than dropped.
+        Dropped, it read as "not in the store", and the agent went to web search,
+        found Microsoft's PC listing for Forspoken and called it an Xbox release.
+        """
         state = self._page(f"/{locale}/search/results/games", locale, {"q": title})
-        return _prices(state, locale)[:limit]
+        found = _prices(state, locale, consoles_only=False)
+        found.sort(key=lambda price: not _CONSOLES.intersection(price.platforms))  # stable
+        return found[:limit]
 
     def _page(self, path: str, locale: str, params: dict[str, str]) -> dict[str, Any]:
         """Fetch one xbox.com page and return its embedded state for ``locale``."""
@@ -75,8 +82,8 @@ def _preloaded_state(html: str) -> dict[str, Any]:
     return state
 
 
-def _prices(state: dict[str, Any], locale: str) -> list[StorePrice]:
-    """Console products from the page's one product list, priced, in display order."""
+def _prices(state: dict[str, Any], locale: str, *, consoles_only: bool) -> list[StorePrice]:
+    """Products from the page's one product list, priced, in display order."""
     channels = _dig(state, "core2", "channels", "channelData")
     summaries = _dig(state, "core2", "products", "productSummaries")
     if not isinstance(channels, dict) or not isinstance(summaries, dict):
@@ -93,7 +100,7 @@ def _prices(state: dict[str, Any], locale: str) -> list[StorePrice]:
         if not isinstance(summary, dict):
             continue
         platforms = tuple(str(p) for p in summary.get("availableOn") or [])
-        if not _CONSOLES.intersection(platforms):
+        if consoles_only and not _CONSOLES.intersection(platforms):
             continue
         price = _public_price(summary)
         if price is None:
