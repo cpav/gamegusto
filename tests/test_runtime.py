@@ -258,6 +258,10 @@ def test_a_held_answer_beats_the_limit_message_when_rounds_run_out() -> None:
             "Here are clear answers to all four questions:",
         ),
         (
+            "Got everything I need. Here's the full rundown:",
+            "Here's the full rundown:",
+        ),
+        (
             "Now I have everything I need. This is a goldmine. Let me compose the final "
             "answer.\n\nThis is a great angle — you essentially want Kingdoms of Amalur.",
             "This is a great angle — you essentially want Kingdoms of Amalur.",

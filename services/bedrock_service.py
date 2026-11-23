@@ -11,12 +11,14 @@ Boundary to the Claude Sonnet base model on Amazon Bedrock via the Converse API
   the runtime executes any requested tools and calls again until the model emits
   a final answer.
 
-Extended thinking is intentionally **not** enabled for the tool-use turn:
-interleaved ``reasoningContent`` blocks returned alongside tool use must be
-echoed back verbatim on the next turn, which the pinned boto3 cannot round-trip
-(it surfaces them as ``SDK_UNKNOWN_MEMBER``). Running the loop without thinking
-keeps the message history clean and portable; the model still reasons strongly
-over the tools.
+The tool loop runs with **adaptive thinking**. Without a private place to reason
+the model reasoned in visible text, and its final message routinely opened with
+working notes ("Control is at full price… Let me put this all together. Perfect,
+now I have everything.") that no prompt rule stopped. Thinking arrives as
+``reasoningContent`` blocks carrying a signature, which must be echoed back
+verbatim on the next round of the loop. The SDK pinned when this loop was first
+written could not represent them (``SDK_UNKNOWN_MEMBER``), which is why thinking
+was off until 2026-11; blocks the SDK cannot represent are still dropped.
 
 The LLM is a hard dependency: any failure raises ``BedrockServiceError`` with a
 sanitized message. Callers never fall back to mock/deterministic output.
@@ -26,6 +28,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any
@@ -49,6 +52,32 @@ _ANSWER_TOKEN_HEADROOM = 4096
 # round's prefix instead of re-billing it at full price.
 _CACHE_POINT: dict[str, Any] = {"cachePoint": {"type": "default"}}
 
+#: Thinking for the tool loop. Adaptive lets the model decide when and how much to
+#: think, between tool calls included; effort bounds how much, and so the cost
+#: (thinking bills as output tokens).
+_TOOL_TURN_THINKING: dict[str, Any] = {
+    "thinking": {"type": "adaptive"},
+    "output_config": {"effort": "low"},
+}
+
+#: A tool round's output ceiling, thinking included. The ceiling itself costs
+#: nothing; set too low, it would cut a long recommendation off after a long think.
+_TOOL_TURN_MAX_TOKENS = 16_000
+
+#: How often a sign of life goes out while the model thinks. Thinking is never
+#: streamed to the user, and CloudFront drops a response that stays silent for 60 s
+#: (``origin_read_timeout`` in infra/stack/cloudfront.tf). Low effort stayed
+#: under 20 s of silence in testing; medium reached 41 s, so the margin is thin.
+_KEEPALIVE_SECONDS = 15.0
+
+
+@dataclass(frozen=True)
+class StillThinking:
+    """Yielded by :meth:`BedrockService.converse_tools_stream` while the model thinks.
+
+    It carries nothing: it exists so a caller can keep a quiet connection alive.
+    """
+
 
 def _rejects_cache_points(exc: Exception) -> bool:
     """Heuristic: the call failed because of the cache-point blocks themselves.
@@ -58,6 +87,20 @@ def _rejects_cache_points(exc: Exception) -> bool:
     sanitized error exactly as before.
     """
     return "cache" in str(exc).lower()
+
+
+def _thinking_block(parts: dict[str, Any]) -> dict[str, Any]:
+    """A streamed thinking block, rebuilt in the shape Converse expects back.
+
+    Redacted thinking (encrypted, no text) goes back as it came; readable thinking
+    goes back with its signature, which is how the API checks it is unaltered.
+    """
+    if parts["redacted"] and not parts["thinking_parts"]:
+        return {"reasoningContent": {"redactedContent": parts["redacted"]}}
+    text: dict[str, Any] = {"text": "".join(parts["thinking_parts"])}
+    if parts["signature"]:
+        text["signature"] = parts["signature"]
+    return {"reasoningContent": {"reasoningText": text}}
 
 
 class BedrockServiceError(RuntimeError):
@@ -162,11 +205,12 @@ class BedrockService:
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]],
         system: str,
-    ) -> Iterator[str | ConverseResult]:
+    ) -> Iterator[str | StillThinking | ConverseResult]:
         """Streaming variant of :meth:`converse_tools` (ConverseStream API).
 
-        Yields answer-text deltas (``str``) as the model produces them, then —
-        always last — the fully assembled :class:`ConverseResult`, identical in
+        Yields answer-text deltas (``str``) as the model produces them, a
+        :class:`StillThinking` at most every ``_KEEPALIVE_SECONDS`` while it
+        thinks, then — always last — the fully assembled :class:`ConverseResult`, identical in
         shape to what :meth:`converse_tools` returns, so callers can treat the
         final item exactly like a non-streamed round. Prompt caching and the
         cache-rejection fallback behave the same as the non-streaming call.
@@ -186,17 +230,22 @@ class BedrockService:
         yield from self._assemble_stream(stream)
 
     @staticmethod
-    def _assemble_stream(stream: Iterator[dict[str, Any]]) -> Iterator[str | ConverseResult]:
+    def _assemble_stream(
+        stream: Iterator[dict[str, Any]],
+    ) -> Iterator[str | StillThinking | ConverseResult]:
         """Re-assemble ConverseStream events into deltas + a ConverseResult.
 
-        Mirrors :meth:`_parse_tool_turn`: only ``text`` and ``toolUse`` blocks
-        are kept (indexed by ``contentBlockIndex``; tool input arrives as JSON
-        string fragments), anything else is ignored, and usage comes from the
-        trailing ``metadata`` event.
+        Mirrors :meth:`_parse_tool_turn`: ``text``, ``toolUse`` and thinking
+        (``reasoningContent``) blocks are kept, indexed by ``contentBlockIndex``.
+        Tool input and thinking arrive as fragments; thinking is never yielded as
+        a delta (it is not for the user) but is rebuilt whole, signature included,
+        so it can be echoed back. Anything else is ignored, and usage comes from
+        the trailing ``metadata`` event.
         """
         stop_reason = ""
         usage: dict[str, int] = {}
         blocks: dict[int, dict[str, Any]] = {}
+        last_signal = time.monotonic()
         try:
             for event in stream:
                 if "contentBlockStart" in event:
@@ -216,9 +265,24 @@ class BedrockService:
                         # Text blocks have no start event; create on first delta.
                         block = blocks.setdefault(index, {"text_parts": []})
                         block["text_parts"].append(delta["text"])
+                        last_signal = time.monotonic()
                         yield delta["text"]
                     elif isinstance(delta.get("toolUse"), dict) and index in blocks:
                         blocks[index]["input_parts"].append(delta["toolUse"].get("input", ""))
+                    elif isinstance(delta.get("reasoningContent"), dict):
+                        thought = blocks.setdefault(
+                            index, {"thinking_parts": [], "signature": "", "redacted": b""}
+                        )
+                        part = delta["reasoningContent"]
+                        if isinstance(part.get("text"), str):
+                            thought["thinking_parts"].append(part["text"])
+                        if isinstance(part.get("signature"), str):
+                            thought["signature"] += part["signature"]
+                        if isinstance(part.get("redactedContent"), bytes):
+                            thought["redacted"] += part["redactedContent"]
+                        if time.monotonic() - last_signal >= _KEEPALIVE_SECONDS:
+                            last_signal = time.monotonic()
+                            yield StillThinking()
                 elif "messageStop" in event:
                     stop_reason = event["messageStop"].get("stopReason", "")
                 elif "metadata" in event:
@@ -232,7 +296,9 @@ class BedrockService:
         assistant_content: list[dict[str, Any]] = []
         for index in sorted(blocks):
             block = blocks[index]
-            if "text_parts" in block:
+            if "thinking_parts" in block:
+                assistant_content.append(_thinking_block(block))
+            elif "text_parts" in block:
                 text = "".join(block["text_parts"])
                 text_parts.append(text)
                 assistant_content.append({"text": text})
@@ -292,7 +358,8 @@ class BedrockService:
             "modelId": self._model_id,
             "system": system_blocks,
             "messages": messages,
-            "inferenceConfig": {"maxTokens": self._reasoning_budget + _ANSWER_TOKEN_HEADROOM},
+            "inferenceConfig": {"maxTokens": _TOOL_TURN_MAX_TOKENS},
+            "additionalModelRequestFields": _TOOL_TURN_THINKING,
         }
         if tools:  # Converse rejects an empty toolConfig ({"tools": []}); set only when non-empty
             kwargs["toolConfig"] = {"tools": tools}
@@ -302,8 +369,10 @@ class BedrockService:
     def _parse_tool_turn(response: dict[str, Any]) -> ConverseResult:
         """Parse a Converse tool-use response into a :class:`ConverseResult`.
 
-        Keeps only well-formed ``text``/``toolUse`` blocks in ``assistant_content``
-        so any model-internal block the SDK cannot represent is never echoed back.
+        Keeps well-formed ``text``/``toolUse`` blocks and thinking
+        (``reasoningContent``, echoed back verbatim as the API requires) in
+        ``assistant_content``; a block the SDK cannot represent is dropped, never
+        echoed back.
         """
         try:
             stop_reason = response["stopReason"]
@@ -330,6 +399,8 @@ class BedrockService:
                     )
                 )
                 assistant_content.append({"toolUse": use})
+            elif isinstance(block.get("reasoningContent"), dict):
+                assistant_content.append({"reasoningContent": block["reasoningContent"]})
 
         raw_usage = response.get("usage", {})
         usage = {k: v for k, v in raw_usage.items() if isinstance(v, int)}

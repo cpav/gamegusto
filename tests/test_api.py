@@ -32,6 +32,7 @@ from services.bedrock_service import (
     BedrockService,
     BedrockServiceError,
     ConverseResult,
+    StillThinking,
     ToolUse,
 )
 from services.igdb_service import GameSuggestion, IgdbService
@@ -71,11 +72,13 @@ class FakeBedrock(BedrockService):
 
     The streaming variant re-plays each scripted round as two text deltas
     followed by the assembled result — the same contract the real
-    ``converse_tools_stream`` provides.
+    ``converse_tools_stream`` provides — preceded by ``pings`` signs of life, as
+    the real stream gives while the model thinks.
     """
 
-    def __init__(self, script: list[ConverseResult | BedrockServiceError]) -> None:
+    def __init__(self, script: list[ConverseResult | BedrockServiceError], pings: int = 0) -> None:
         self._script = list(script)
+        self._pings = pings
 
     def converse_tools(
         self,
@@ -93,8 +96,10 @@ class FakeBedrock(BedrockService):
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]],
         system: str,
-    ) -> Iterator[str | ConverseResult]:
+    ) -> Iterator[str | StillThinking | ConverseResult]:
         result = self.converse_tools(messages, tools, system)
+        for _ in range(self._pings):
+            yield StillThinking()
         if result.text:
             middle = max(1, len(result.text) // 2)
             yield result.text[:middle]
@@ -196,10 +201,16 @@ def make_app(
 
 
 def parse_sse(body: str) -> list[tuple[str, dict[str, Any]]]:
-    """Split an SSE body into (event-name, decoded-payload) pairs."""
+    """Split an SSE body into (event-name, decoded-payload) pairs.
+
+    Comment blocks (``: …``, the keepalive) carry no event and are skipped, as
+    the web client does.
+    """
     events: list[tuple[str, dict[str, Any]]] = []
     for block in body.strip().split("\n\n"):
         lines = block.split("\n")
+        if not any(line.startswith("event: ") for line in lines):
+            continue
         name = next(line.removeprefix("event: ") for line in lines if line.startswith("event: "))
         data = next(line.removeprefix("data: ") for line in lines if line.startswith("data: "))
         events.append((name, json.loads(data)))
@@ -456,6 +467,19 @@ def test_chat_streams_events_and_persists_transcript() -> None:
     assert "Death's Door" in messages[1]["content"]
     assert messages[1]["notes"] == ["let me check your platforms"]
     assert "pick" not in messages[1]
+
+
+def test_thinking_keeps_the_stream_alive_without_touching_the_reply() -> None:
+    """While the model thinks nothing is streamed, and CloudFront drops a response
+    silent for 60 s. Keepalives go out as SSE comments, which clients skip, and
+    never become part of the answer."""
+    client, _, _ = make_app(bedrock=FakeBedrock([_answer_round()], pings=2))
+    response = client.post("/api/chat", json={"message": "cozy tonight"})
+
+    assert response.text.count(": still thinking\n\n") == 2
+    assert [name for name, _ in parse_sse(response.text)] == ["delta", "delta", "text", "done"]
+    reply = client.get("/api/conversation").json()["messages"][1]["content"]
+    assert reply == "🎯 Play Death's Door tonight — it fits."
 
 
 def _save_round(title: str) -> ConverseResult:

@@ -396,6 +396,11 @@ def create_app(ctx: AppContext) -> FastAPI:
                     elif event.kind == "tool":
                         saved_pick = saved_pick or event.tool == "save_recommendation"
                         yield _sse("tool", {"tool": event.tool})
+                    elif event.kind == "ping":
+                        # An SSE comment: clients ignore it, but it keeps the
+                        # stream from going silent long enough for CloudFront
+                        # to drop it while the model thinks.
+                        yield ": still thinking\n\n"
                     elif event.kind == "thinking":
                         notes.append(event.text)
                         yield _sse("thinking", {"text": event.text})

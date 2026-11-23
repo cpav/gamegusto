@@ -23,7 +23,12 @@ from datetime import date
 from typing import Any, Literal
 
 from agent.tools import ToolRegistry
-from services.bedrock_service import BedrockService, BedrockServiceError, ConverseResult
+from services.bedrock_service import (
+    BedrockService,
+    BedrockServiceError,
+    ConverseResult,
+    StillThinking,
+)
 from services.memory_service import MemoryService
 
 #: Raised if a streaming round ends without its final assembled result — a
@@ -177,6 +182,7 @@ _NARRATION = re.compile(
     r"(?:(?:perfect|great|excellent|good|okay|ok|alright|right|now|awesome)[\s,!—–-]+)*"
     r"(?:"
     r"(?:now )?i(?:'ve| have)? (?:now )?(?:got |have )?(?:everything|all|enough)\b[^.!?\n]*"
+    r"|got (?:everything|all|enough)\b[^.!?\n]*"
     r"|(?:now )?i(?: now)? have a (?:rich|clear|full|good|complete) picture\b[^.!?\n]*"
     r"|let me (?:now )?(?:compose|put|pull|present|write|lay out|summari[sz]e|"
     r"cross-reference|check|save|finali[sz]e|gather|bring|wrap)\b[^.!?\n]*"
@@ -291,10 +297,13 @@ class AgentEvent:
     e.g. "🔧 searching the web…"); ``kind == "delta"`` (only when streaming with
     ``deltas=True``) carries one token-level text fragment of the round in
     progress — render it live, then let the round's closing ``thinking``/``text``
-    event replace the accumulated fragments (deltas alone are never authoritative).
+    event replace the accumulated fragments (deltas alone are never authoritative);
+    ``kind == "ping"`` (also only with ``deltas=True``) carries nothing — the model
+    is thinking, and a streaming caller should send a sign of life so a quiet
+    connection is not dropped.
     """
 
-    kind: Literal["text", "tool", "thinking", "delta"]
+    kind: Literal["text", "tool", "thinking", "delta", "ping"]
     text: str = ""
     tool: str = ""
 
@@ -475,6 +484,8 @@ class AgentRuntime:
         ):
             if isinstance(item, str):
                 yield AgentEvent(kind="delta", text=item)
+            elif isinstance(item, StillThinking):
+                yield AgentEvent(kind="ping")
             else:
                 result = item
         if result is None:  # defensive: the stream contract ends with a result
